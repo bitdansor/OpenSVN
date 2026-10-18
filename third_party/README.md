@@ -53,10 +53,10 @@ ls build/OpenSVN.app/Contents/Resources/licenses    # must exist before release
 
 ## Windows
 
-Not started. The expected inventory is Subversion for Windows (`svn.exe`,
-Apache-2.0) plus its runtime DLLs; APR-iconv and the Microsoft C runtime will need
-the same treatment. Record the real list when `apps/windows` exists — do not copy
-this table.
+Not started. `apps/windows` is an empty placeholder as of 2026-10-18. The
+expected inventory is Subversion for Windows (`svn.exe`, Apache-2.0) plus its
+runtime DLLs; APR-iconv and the Microsoft C runtime will need the same treatment.
+Record the real list when the port starts — do not copy this table.
 
 ## Rules for adding a dependency
 

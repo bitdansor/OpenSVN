@@ -6,6 +6,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed
+
+- **The entire Windows skeleton** — `apps/windows/**`,
+  `.github/workflows/windows-ci.yml` and `scripts/bootstrap-windows.ps1`. The
+  C++/WinUI tree never compiled: its first real build showed a test project
+  missing `/std:c++20`, no GoogleTest installed from vcpkg, and a WinUI project
+  declaring a UWP target framework. An uncompiled port in the tree meant every
+  review had to rediscover that it proved nothing, so it is gone rather than
+  maintained as a claim. `apps/windows/` now holds a placeholder only; the
+  planning documents, `ADR-0005` and `packaging/windows/` are untouched.
+  Restarting the port means landing code + CI + bootstrap in one PR.
+
 ### Fixed
 
 - macOS CI rejected the package on Swift 6.1.2 while the same code compiled on
@@ -83,7 +95,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and the rules for adding a dependency.
 - `CODE_OF_CONDUCT.md`.
 
-### Added (Windows, uncompiled skeleton)
+### Added (Windows, uncompiled skeleton — removed in Unreleased)
 
 - `apps/windows/` WinUI 3 + C++20 project: `OpenSVN.sln`, `OpenSVN.vcxproj`,
   `Package.appxmanifest`, `app.manifest`, shell (`App`, `MainWindow`) with the five

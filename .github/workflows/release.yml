@@ -56,20 +56,6 @@ jobs:
           name: macos-unsigned
           path: OpenSVN-*-UNSIGNED.zip
 
-  windows:
-    name: Windows package (unsigned)
-    runs-on: windows-2022
-    needs: version
-    # Disabled until the Windows project compiles: see apps/windows/README.md.
-    if: false
-    steps:
-      - uses: actions/checkout@v4
-      - run: msbuild apps/windows/OpenSVN.sln /p:Configuration=Release /p:Platform=x64
-      - name: Packaging (not implemented)
-        run: |
-          # ADR-0005 decides MSIX vs EXE; until then there is nothing to package.
-          echo "TODO: msix / exe packaging per ADR-0005"
-
   publish:
     name: Publish release
     runs-on: ubuntu-latest

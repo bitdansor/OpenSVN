@@ -3,6 +3,9 @@
 > 状态：**暂定**（倾向 MSIX，未在干净系统上实测）
 > 日期：2026-10-18
 > 关联：规划 §2、§8，执行计划 S0-6、S6-x
+>
+> **2026-10-18 注**：ADR 保留，但 `apps/windows/` 已清空、Windows 端尚未开始，
+> 本文所有结论都没有对应的可执行物。重做 Windows 端时先复核本文，不要默认它仍然成立。
 
 ## 背景
 
@@ -14,7 +17,7 @@ Windows 端有两种现实选择：**MSIX**（现代打包，带身份、可增�
 
 ## 决定（暂定）
 
-1. **主目标：MSIX（packaged）**，与 WinUI 3 模板一致。`apps/windows/OpenSVN/Package.appxmanifest` 已经是这个形态。
+1. **主目标：MSIX（packaged）**，与 WinUI 3 模板一致。上一版骨架曾按此形态写过 `Package.appxmanifest`（已随 `apps/windows/` 一起删除），重做时照此声明。
 2. MSIX 的 `runFullTrust` 能力必须声明——应用要启动 `svn.exe` 子进程，这是 packaged app 的已知边界；完整信任不是"提权"，但仍需在发布说明中讲清楚。
 3. **不使用 `broadFileSystemAccess`**。工作副本位置由用户通过文件选择器指定，其余路径一律不可见；这样即使清单被误改，应用也拿不到全盘访问。
 4. `svn.exe` 以**自包含**方式随包分发（对应 ADR-0003 的 macOS 策略），放在安装目录下由发现逻辑优先使用；系统安装的 svn 只作为回退。

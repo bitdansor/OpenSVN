@@ -71,6 +71,10 @@ REQUIRED_FILES = [
 # layout (Sources/ + Tests/ instead of a pure Xcode-native tree). Every entry here
 # must exist and carry at least one file: an empty directory is not tracked by git,
 # so "the folder exists" is only true if something inside it is committed.
+#
+# Only `apps/windows` itself is listed for the Windows side: its subtree was
+# removed on 2026-10-18 and will be rebuilt from scratch, so asserting the old
+# Model/Services/Views layout now would just encode a plan we no longer follow.
 LAYOUT_DIRS = [
     ".github/workflows",
     ".github/ISSUE_TEMPLATE",
@@ -80,12 +84,6 @@ LAYOUT_DIRS = [
     "apps/macos/Resources",
     "apps/macos/OpenSVN.xcodeproj",
     "apps/windows",
-    "apps/windows/OpenSVN",
-    "apps/windows/OpenSVN/Models",
-    "apps/windows/OpenSVN/Services",
-    "apps/windows/OpenSVN/Views",
-    "apps/windows/OpenSVN/Assets",
-    "apps/windows/OpenSVNTests",
     "specifications",
     "tests/fixtures",
     "tests/scenarios",
@@ -105,21 +103,13 @@ LAYOUT_DIRS = [
 
 # Files whose absence would mean a platform or a packaging path is only nominal.
 LAYOUT_FILES = [
-    "apps/windows/README.md",
-    "apps/windows/OpenSVN.sln",
-    "apps/windows/vcpkg.json",
-    "apps/windows/OpenSVN/OpenSVN.vcxproj",
-    "apps/windows/OpenSVN/Package.appxmanifest",
-    "apps/windows/OpenSVNTests/OpenSVNTests.vcxproj",
     "apps/macos/Package.swift",
     "scripts/bootstrap-macos.sh",
-    "scripts/bootstrap-windows.ps1",
     "scripts/build-macos-app.sh",
     "scripts/setup-test-repo.sh",
     "scripts/capture-fixtures.sh",
     "scripts/verify-release.py",
     ".github/workflows/macos-ci.yml",
-    ".github/workflows/windows-ci.yml",
     ".github/workflows/release.yml",
     ".github/workflows/codeql.yml",
     "packaging/macos/README.md",
@@ -310,18 +300,33 @@ def check_layout(report: Report) -> None:
     if not missing_dirs and not missing_files:
         report.ok(f"{len(LAYOUT_DIRS)} planned directories and {len(LAYOUT_FILES)} anchor files present")
 
-    # Both platforms must state their own status; a silent empty port is how
-    # "Windows support" gets claimed without existing.
-    for platform in ("macos", "windows"):
-        readme = ROOT / "apps" / platform / "README.md"
-        if not readme.is_file():
-            report.fail(f"apps/{platform}/README.md is missing — the platform state must be written down")
+    # The macOS port must state its own status; a silent tree is how
+    # "implemented" gets claimed without existing.
+    readme = ROOT / "apps" / "macos" / "README.md"
+    if not readme.is_file():
+        report.fail("apps/macos/README.md is missing — the platform state must be written down")
+    else:
+        text = readme.read_text(encoding="utf-8").lower()
+        if "status" in text:
+            report.ok("apps/macos/README.md states its status")
         else:
-            text = readme.read_text(encoding="utf-8").lower()
-            if "status" in text:
-                report.ok(f"apps/{platform}/README.md states its status")
-            else:
-                report.warn(f"apps/{platform}/README.md does not state a status")
+            report.warn("apps/macos/README.md does not state a status")
+
+    # Windows was emptied on 2026-10-18 and will be rebuilt from scratch, so the
+    # old "the README must state a status" check no longer applies. What still
+    # matters is that code and CI never exist without each other: the previous
+    # skeleton shipped without either compiling or a working gate.
+    windows_sources = [
+        p for p in (ROOT / "apps" / "windows").rglob("*")
+        if p.is_file() and p.suffix in {".sln", ".vcxproj", ".cpp", ".h", ".xaml", ".vcxproj.filters"}
+    ]
+    if windows_sources:
+        report.warn(
+            f"apps/windows holds {len(windows_sources)} source file(s) but no windows CI — "
+            "restore .github/workflows/windows-ci.yml in the same PR that adds them"
+        )
+    else:
+        report.ok("apps/windows is an empty placeholder (no source files)")
 
 
 # ---------------------------------------------------------------------------

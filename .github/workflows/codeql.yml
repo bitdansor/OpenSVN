@@ -1,7 +1,8 @@
 name: CodeQL
 
 # Swift is analysed today. C++ joins the matrix in the PR that makes the Windows
-# build green (CodeQL needs a compilable project, and apps/windows is a skeleton).
+# build green (CodeQL needs a compilable project; apps/windows is an empty
+# placeholder as of 2026-10-18).
 #
 # Code scanning is only available on private repositories with a GitHub Advanced
 # Security licence. This repository is private and has none, so the first run

@@ -47,4 +47,4 @@ apps/macos/
 
 ## 与 Windows 侧的一致性
 
-Windows 端仍是规划 §4 的原样布局（`OpenSVN/{Models,Services,Views}` + `OpenSVNTests/`），因为 C++ 没有等价的"库 + 可执行"轻量构建方式值得引入。两端结构不同不是问题，**契约一致**才是要求（规划 §3）。
+Windows 端尚未开始（`apps/windows/` 只是空占位）。重做时不必复制本文的结构：两端结构可以不同，**契约一致**才是要求（规划 §3）。

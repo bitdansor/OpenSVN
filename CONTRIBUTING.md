@@ -4,8 +4,10 @@
 
 - Read `specifications/` first. Those documents, not the current implementation,
   define correct behaviour. If code and contract disagree, that is a bug.
-- macOS work lives in `apps/macos`, Windows work in `apps/windows`. Cross-platform
-  behaviour changes require a contract change first.
+- macOS work lives in `apps/macos`. `apps/windows` is an empty placeholder: the
+  Windows port has not started, and when it does, code + CI + bootstrap script
+  must land in the same PR. Cross-platform behaviour changes require a contract
+  change first.
 
 ## Non-negotiable rules (PR checklist)
 

@@ -27,22 +27,24 @@
 | Apache Subversion CLI | 1.14.5（Homebrew） | 与 CI 同主版本 |
 | Git | 系统自带 | |
 
-## 3. Windows 工具链（尚未实测）
+## 3. Windows 工具链（尚未生效）
 
-> 这些版本来自规划文档，**没有一台机器实际编译过**。`vswhere -latest` 的实测输出写入本表之前，任何一条都不可信。
+> `apps/windows/` 已于 2026-10-18 清空，`windows-ci.yml` 与 `bootstrap-windows.ps1`
+> 一并删除。下表是**重做时打算用的版本**，不是当前约束——仓库里没有任何东西在读它。
+> 第一次真机编译后，用 `vswhere -latest` 的实测输出替换对应行，并恢复 CI 与引导脚本。
 
-| 组件 | 固定版本 | 说明 |
+| 组件 | 计划版本 | 说明 |
 |---|---|---|
 | Windows | 11（build 22000+） | 主目标，见 ADR-0004 |
 | Visual Studio | 2022 17.x / 2026（含 **Desktop development with C++** 与 **Windows App SDK C++ templates**） | 版本以 `vswhere -latest` 实际输出为准 |
-| MSVC 平台工具集 | v143 | `OpenSVN.vcxproj` 固定，不用 `$(DefaultPlatformToolset)` |
-| C++ 标准 | C++20（`stdcpp20`） | 不用 C++23 预览特性 |
+| MSVC 平台工具集 | v143 | 工程里显式固定，不用 `$(DefaultPlatformToolset)` |
+| C++ 标准 | C++20 | 2026-10-18 的 CI 实测：漏设 `/std:c++20` 会让 `std::string_view`/`std::optional` 全部报错 |
 | Windows SDK | 10.0.26100.0（最低 10.0.22000.0） | 工程固定，不用 `10.0`（浮动到最新） |
 | Windows App SDK | 1.6.250205002（NuGet 固定） | 浮版本是构建漂移的主要来源 |
 | vcpkg | manifest 模式，`builtin-baseline` 2024.11.16 | 仅测试工程使用（GoogleTest 1.14） |
 
-`apps/windows` 的任何版本调整都必须同时更新本表与工程文件；`windows-ci.yml`
-里的 `WINDOWS_SDK` 变量是第三处，三者不一致即视为配置错误。
+重做时的第一条规则：**代码、CI、引导脚本必须同一次提交里出现**。
+上一次的骨架只有代码，没有能跑的构建，结果是一堆编译错误挂了一个月没人看见。
 
 ## 复现命令
 

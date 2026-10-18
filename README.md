@@ -6,13 +6,14 @@ OpenSVN is a free, open-source, native GUI client for Apache Subversion (SVN) on
 macOS is built with Swift 6 + SwiftUI/AppKit; Windows (planned) with C++20 + WinUI 3.
 No Electron, no Qt, no embedded browser.
 
-> Status: `v0.1.0-dev` — macOS core + GUI under active development. Windows target not started yet.
+> Status: `v0.1.0-dev` — macOS core + GUI under active development. The Windows
+> tree was deliberately emptied on 2026-10-18 and will be rebuilt from scratch.
 
 ## Repository layout
 
 ```text
 apps/macos/            Swift Package (OpenSVNCore + SwiftUI app) and Xcode project
-apps/windows/          WinUI 3 + C++20: skeleton, never compiled yet (see its README)
+apps/windows/          Reserved for the Windows port; intentionally empty
 specifications/        Cross-platform behaviour contracts (the source of truth)
 tests/fixtures/        Recorded `svn --xml` outputs used by contract tests
 tests/scenarios/       Fault-injection catalogue (F1-F15) and its future harness
@@ -24,10 +25,11 @@ assets/                Branding sources; generated icons; screenshots
 third_party/           Dependency inventory and licence obligations
 ```
 
-Both platform READMEs state what is actually verified:
-[macOS](apps/macos/README.md) (implemented, tested) and
-[Windows](apps/windows/README.md) (skeleton, uncompiled). Nothing in the Windows
-tree is claimed to work until `windows-ci.yml` is green.
+What is actually verified is written down in
+[apps/macos/README.md](apps/macos/README.md) (implemented, tested). `apps/windows/`
+contains only a placeholder: the previous C++/WinUI skeleton never compiled, so it
+was removed rather than left as a claim nobody could check. `windows-ci.yml` and
+`bootstrap-windows.ps1` were removed with it and must come back together.
 
 ## Build & run (macOS)
 

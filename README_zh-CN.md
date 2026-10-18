@@ -5,13 +5,14 @@
 macOS 端使用 Swift 6 + SwiftUI/AppKit；Windows 端（规划中）使用 C++20 + WinUI 3。
 不使用 Electron、Qt 或内嵌浏览器。
 
-> 当前状态：`v0.1.0-dev`，macOS 核心层与界面正在开发，Windows 端尚未开始。
+> 当前状态：`v0.1.0-dev`，macOS 核心层与界面正在开发。Windows 端已于 2026-10-18
+> 清空，后续从零重做。
 
 ## 仓库结构
 
 ```text
 apps/macos/            Swift Package（OpenSVNCore + SwiftUI 应用）与 Xcode 工程
-apps/windows/          WinUI 3 + C++20 骨架，尚未编译（见其 README）
+apps/windows/          预留给 Windows 端，当前刻意保持为空
 specifications/        跨平台行为契约（唯一事实来源）
 tests/fixtures/        采集的 `svn --xml` 输出，用于契约测试
 tests/scenarios/       故障注入场景目录（F1–F15）与将来的执行器
@@ -23,10 +24,10 @@ assets/                品牌源文件、生成的图标、截图
 third_party/           第三方依赖清单与许可证义务
 ```
 
-两端各自写清"哪些是真的验证过的"：
-[macOS](apps/macos/README.md)（已实现、有测试）、
-[Windows](apps/windows/README.md)（骨架、未编译）。在 `windows-ci.yml` 变绿之前，
-Windows 目录里没有任何东西可以声称可用。
+哪些是真的验证过的，写在 [apps/macos/README.md](apps/macos/README.md)（已实现、有测试）。
+`apps/windows/` 只剩占位文件：之前那套 C++/WinUI 骨架一次都没编译通过，
+所以直接删掉，而不是留一份没人能验证的声明。`windows-ci.yml` 与
+`bootstrap-windows.ps1` 已随之移除，将来必须与代码一起回来。
 
 ## 构建与运行（macOS）
 
