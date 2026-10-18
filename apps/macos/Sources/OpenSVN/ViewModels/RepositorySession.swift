@@ -458,7 +458,18 @@ final class RepositorySession: Identifiable {
 
     /// Runs the operation; on an authentication failure asks the UI for
     /// credentials once and retries exactly once.
-    private func withAuthRetry<T>(_ operation: (SVNCredential?) async throws -> T) async throws -> T {
+    ///
+    /// The closure is `@MainActor` and the result is required to be `Sendable`
+    /// on purpose. Without both, Swift 6.0 rejects the call with
+    /// "non-sendable result type 'T' cannot be sent from nonisolated context":
+    /// a plain async closure parameter is treated as nonisolated there, so the
+    /// result would cross an isolation boundary on the way back. Swift 6.2+
+    /// runs nonisolated async functions on the caller's actor by default
+    /// (SE-0461) and no longer diagnoses it, which is why this compiled locally
+    /// on 6.4 while CI on 6.0 failed.
+    private func withAuthRetry<T: Sendable>(
+        _ operation: @MainActor (SVNCredential?) async throws -> T
+    ) async throws -> T {
         do {
             return try await operation(credential)
         } catch let error as SVNError where error.code.isAuthenticationRelated {

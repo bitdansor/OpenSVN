@@ -18,10 +18,13 @@ permissions:
   contents: read
 
 env:
-  # Pinned toolchain baseline — see docs/development/toolchain.md.
-  # Bump deliberately in a dedicated PR; never let the runner float.
-  EXPECTED_SWIFT: "6.0"
-  EXPECTED_MACOS: "14.0"
+  # Actual CI toolchain — recorded from the runner, see docs/development/toolchain.md.
+  # This is the *strictest* compiler the code must satisfy: Swift 6.2 changed the
+  # default actor isolation of nonisolated async functions (SE-0461), so newer
+  # local toolchains accept code that 6.1 rejects. Never assume a green local
+  # build means a green CI build for concurrency changes.
+  EXPECTED_SWIFT: "6.1"
+  EXPECTED_MACOS: "15"
 
 jobs:
   package:
@@ -38,8 +41,15 @@ jobs:
           sw_vers
           xcodebuild -version
           swift --version
-          swift --version | grep -q "Swift version ${EXPECTED_SWIFT%%.*}" \
-            || echo "::warning::Swift version differs from the pinned ${EXPECTED_SWIFT} baseline"
+          # A major-version-only check would silently accept any future Swift, which
+          # is exactly how the 6.4-vs-6.1 divergence went unnoticed. Match major.minor
+          # and update this file plus toolchain.md in the same PR when the runner moves.
+          if ! swift --version | grep -q "Swift version ${EXPECTED_SWIFT}\."; then
+            echo "::warning::runner Swift is not the pinned ${EXPECTED_SWIFT} baseline — update docs/development/toolchain.md if this is intentional"
+          fi
+          if [[ "$(sw_vers -productVersion)" != ${EXPECTED_MACOS}.* ]]; then
+            echo "::warning::runner macOS is not the pinned ${EXPECTED_MACOS} baseline"
+          fi
 
       - name: Ensure Subversion CLI
         run: |
