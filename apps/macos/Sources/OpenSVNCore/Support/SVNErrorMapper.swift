@@ -129,6 +129,8 @@ public enum SVNErrorMapper {
             return "存在未解决的冲突"
         case .pathNotFound:
             return "路径不存在"
+        case .backupFailed:
+            return "无法在解决冲突前备份文件，操作已中止"
         case .cancelled:
             return "操作已取消"
         case .timeout:

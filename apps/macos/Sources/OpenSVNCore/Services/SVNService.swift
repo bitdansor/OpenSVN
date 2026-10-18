@@ -7,17 +7,22 @@ public struct SVNServiceConfiguration: Sendable {
     public var credentialStore: any CredentialStoring
     public var environment: [String: String]
     public var timeout: TimeInterval
+    /// Where conflict backups go. `nil` uses `ConflictGuard.defaultRoot`
+    /// (`~/Library/Application Support/OpenSVN/ConflictBackups`).
+    public var conflictBackupRoot: URL?
 
     public init(
         installation: SVNInstallation,
         credentialStore: any CredentialStoring = KeychainCredentialStore(),
         environment: [String: String] = ProcessInfo.processInfo.environment,
-        timeout: TimeInterval = 300
+        timeout: TimeInterval = 300,
+        conflictBackupRoot: URL? = nil
     ) {
         self.installation = installation
         self.credentialStore = credentialStore
         self.environment = environment
         self.timeout = timeout
+        self.conflictBackupRoot = conflictBackupRoot
     }
 }
 
@@ -39,11 +44,13 @@ public actor SVNService {
     private let credentials: any CredentialStoring
     private let gate = WCWriteGate()
     private let defaultTimeout: TimeInterval
+    private let conflictGuard: ConflictGuard
 
     public init(configuration: SVNServiceConfiguration) {
         self.installation = configuration.installation
         self.credentials = configuration.credentialStore
         self.defaultTimeout = configuration.timeout
+        self.conflictGuard = ConflictGuard(root: configuration.conflictBackupRoot)
         self.runner = SVNProcessRunner(
             executableURL: configuration.installation.executableURL,
             environment: configuration.environment,
@@ -428,25 +435,55 @@ public actor SVNService {
         }
     }
 
+    /// Marks conflicts resolved with `svn resolve --accept=<strategy>`.
+    ///
+    /// Two things happen around the svn call, both required by 执行计划 S5-3:
+    /// 1. the conflict artifacts are copied aside **before** anything is
+    ///    overwritten — `--accept` is irreversible and svn keeps no local copy;
+    /// 2. the file is scanned afterwards, because `--accept=working` only clears
+    ///    the conflict state and happily leaves `<<<<<<<` markers in place.
+    ///
+    /// The backup runs inside the working-copy lock: a concurrent write between
+    /// the copy and the resolve would make the backup describe a file state that
+    /// never existed.
+    ///
+    /// - Parameter backup: pass `false` only when the caller already made its
+    ///   own copy. A failed backup aborts the resolve (`SVN-0303`).
+    @discardableResult
     public func resolve(
         _ paths: [URL],
         strategy: ResolveStrategy,
-        confirmed: Bool
-    ) async throws {
-        guard !paths.isEmpty else { return }
+        confirmed: Bool,
+        backup: Bool = true
+    ) async throws -> ResolveOutcome {
+        guard !paths.isEmpty else { return ResolveOutcome() }
         guard !strategy.isDestructive || confirmed else {
             throw SVNError(
                 code: .confirmationRequired,
-                message: "「\(strategy.rawValue)」会覆盖本地或服务器端内容",
+                message: "「\(strategy.title)」会覆盖本地或服务器端内容",
                 diagnosticOutput: strategy.consequence
             )
         }
+
         let key = WorkingCopyLocator.serializationKey(for: paths[0])
-        try await gate.withLock(key) {
+        let outcome = try await gate.withLock(key) {
+            let record = backup
+                ? try self.conflictGuard.backup(paths: paths, reason: "resolve-\(strategy.rawValue)")
+                : nil
             var args = ["resolve", "--accept=\(strategy.rawValue)"]
             args += paths.map(\.standardizedFileURL.path)
             _ = try await self.invoke(args, workingDirectory: nil, credential: nil, repositoryURL: nil)
+            return ResolveOutcome(
+                resolvedPaths: paths.map(\.standardizedFileURL.path),
+                backup: record,
+                scans: self.conflictGuard.scan(paths: paths)
+            )
         }
+
+        // Retention runs outside the lock: deleting old backups must not hold up
+        // the next write, and failing to prune is not worth failing the resolve.
+        conflictGuard.prune()
+        return outcome
     }
 
     // MARK: - Credentials

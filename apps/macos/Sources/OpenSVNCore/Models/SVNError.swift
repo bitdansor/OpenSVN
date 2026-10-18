@@ -15,6 +15,7 @@ public enum SVNErrorCode: Sendable, Hashable, Codable {
     case outOfDate
     case conflictRemains
     case pathNotFound
+    case backupFailed
     case hostKeyVerificationFailed
     case timeout
     case cancelled
@@ -42,7 +43,7 @@ public enum SVNErrorCode: Sendable, Hashable, Codable {
              .confirmationRequired, .hostKeyVerificationFailed, .notAWorkingCopy:
             return .needsUserAction
         case .svnNotFound, .unsupportedVersion, .workingCopyNeedsUpgrade,
-             .pathNotFound, .timeout, .cancelled, .invalidInvocation,
+             .pathNotFound, .backupFailed, .timeout, .cancelled, .invalidInvocation,
              .xmlParseFailure, .commandFailed, .unknown:
             return .fatal
         }
@@ -62,6 +63,7 @@ public enum SVNErrorCode: Sendable, Hashable, Codable {
         case .outOfDate: return "SVN-0202"
         case .conflictRemains: return "SVN-0301"
         case .pathNotFound: return "SVN-0302"
+        case .backupFailed: return "SVN-0303"
         case .hostKeyVerificationFailed: return "SVN-0103"
         case .timeout: return "SVN-0401"
         case .cancelled: return "SVN-0402"
@@ -92,6 +94,8 @@ public enum SVNErrorCode: Sendable, Hashable, Codable {
             return "本地副本已过期，请先 Update 再提交。"
         case .conflictRemains:
             return "仍有未解决的冲突，解决后需标记 resolve 才能提交。"
+        case .backupFailed:
+            return "无法在解决冲突前备份文件，操作已中止以免数据丢失。请检查磁盘空间与目录写权限。"
         case .hostKeyVerificationFailed:
             return "服务器 SSH 主机密钥未被信任，请核对指纹后再连接。"
         case .timeout:

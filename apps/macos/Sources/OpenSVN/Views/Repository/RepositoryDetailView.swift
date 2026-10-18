@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import OpenSVNCore
 
@@ -91,6 +92,24 @@ struct RepositoryDetailView: View {
             Button("好", role: .cancel) { session.presentedError = nil }
         } message: { presented in
             Text(presented.detail.isEmpty ? presented.title : "\(presented.title)\n\n\(presented.detail)")
+        }
+        .alert(
+            session.resolveReport?.title ?? "解决冲突",
+            isPresented: Binding(
+                get: { session.resolveReport != nil },
+                set: { if !$0 { session.dismissResolveReport() } }
+            ),
+            presenting: session.resolveReport
+        ) { report in
+            if let directory = report.backupDirectory {
+                Button("在 Finder 中显示备份") {
+                    NSWorkspace.shared.activateFileViewerSelecting([directory])
+                    session.dismissResolveReport()
+                }
+            }
+            Button("好", role: .cancel) { session.dismissResolveReport() }
+        } message: { report in
+            Text(report.message)
         }
         .confirmationDialog(
             session.confirmation?.title ?? "确认操作",

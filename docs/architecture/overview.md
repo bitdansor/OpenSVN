@@ -83,7 +83,7 @@ Windows 实现与 macOS 逐层对应，但不共享代码——共享的是 `spe
 
 ## 未实现（按阶段）
 
-- 冲突解决向导（阶段 5）：目前只有策略选择 + 二次确认，没有三方合并编辑器。
+- 冲突三方合并编辑器（阶段 5 后半）：策略选择、二次确认、解决前备份、解决后残留标记校验都已实现（`ConflictGuard` + `ResolveOutcome`），缺的是并排合并界面。
 - 中断恢复（S5-4）：尚未记录“进行中的操作”。
 - 内置运行时打包：脚本已写（`scripts/bundle-svn-runtime.sh`），未接入 CI。
 - Windows 端：目录、模型、服务层与 WinUI 外壳已写，但**一次都没有在 Windows 上编译过**；`windows-ci.yml` 因此是非阻塞状态，详见 `apps/windows/README.md`。

@@ -26,6 +26,29 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - SwiftUI shell with repository sidebar, task center, Changes / History / Diff /
   Commit / Settings pages.
 
+### Added (macOS core, conflict safety — S5-3)
+
+- `ConflictGuard`: copies the working file and its conflict copies (`.mine`,
+  `.r<N>`, `.working`, `.orig`, `.rej`) to
+  `~/Library/Application Support/OpenSVN/ConflictBackups/` **before**
+  `svn resolve`. A failed backup aborts with the new `SVN-0303` rather than
+  overwriting without a way back; the last 10 backups per working copy are kept.
+- `SVNService.resolve` now returns `ResolveOutcome`: the backup record plus a
+  post-resolve scan for leftover `<<<<<<<` / `>>>>>>>` / `|||||||` markers.
+  A bare `=======` is deliberately not flagged — it is a valid reStructuredText
+  underline.
+- Bulk resolve (more than one path) always asks for confirmation, including the
+  non-destructive `working` strategy.
+
+### Fixed (macOS app)
+
+- The conflict menu showed raw `--accept` tokens (`working`, `mine-full`, …).
+  It now shows one plain-language sentence per option, as the execution plan
+  requires; `ResolveStrategy.title` is the single source for that wording.
+- Resolve results are reported in a dedicated alert: where the backup went
+  (with "reveal in Finder") and, when relevant, which files still contain
+  conflict markers and at which lines.
+
 ### Added (tooling and governance)
 
 - `.github/workflows/macos-ci.yml`: package build + tests, app-bundle assembly,

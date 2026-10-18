@@ -49,7 +49,10 @@ struct ServiceIntegrationTests {
                 installation: installation,
                 credentialStore: InMemoryCredentialStore(),
                 environment: ProcessInfo.processInfo.environment,
-                timeout: 60
+                timeout: 60,
+                // Keep test backups inside the fixture, never in
+                // ~/Library/Application Support/OpenSVN.
+                conflictBackupRoot: root.appendingPathComponent("backups", isDirectory: true)
             )
         )
         return Fixture(root: root, repository: repository, workingCopy: workingCopy, service: service, installation: installation)
@@ -187,6 +190,44 @@ struct ServiceIntegrationTests {
         // It is a no-op on a file without conflicts, which is exactly the point:
         // the guard is about data loss, not about svn's own checks.
         try await fixture.service.resolve([readme], strategy: .working, confirmed: false)
+    }
+
+    @Test("resolve copies the conflicted file aside before overwriting it")
+    func resolveTakesBackup() async throws {
+        let fixture = try await makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let service = fixture.service
+        let repoURL = "file://\(fixture.repository.path)/trunk"
+        try await service.checkout(url: repoURL, to: fixture.workingCopy)
+
+        // Another working copy pushes a change to the same file...
+        let other = fixture.root.appendingPathComponent("wc-other", isDirectory: true)
+        try await service.checkout(url: repoURL, to: other)
+        let otherReadme = other.appendingPathComponent("README.md")
+        try "# from the server\n".write(to: otherReadme, atomically: true, encoding: .utf8)
+        _ = try await service.commit([otherReadme], message: "server side")
+
+        // ...while this one has an uncommitted edit.
+        let readme = fixture.workingCopy.appendingPathComponent("README.md")
+        try "# local edit\n".write(to: readme, atomically: true, encoding: .utf8)
+        _ = try await service.update(at: fixture.workingCopy)
+
+        let status = try await service.status(at: fixture.workingCopy)
+        #expect(status.conflicted.contains { $0.path.hasSuffix("README.md") })
+
+        // `theirs-full` destroys the local edit; the backup must be the copy
+        // that still has it.
+        let outcome = try await service.resolve([readme], strategy: .theirsFull, confirmed: true)
+        let backup = try #require(outcome.backup)
+        let saved = try #require(
+            backup.entries.first { $0.sourcePath == readme.standardizedFileURL.path }
+        )
+        let savedText = try String(contentsOfFile: saved.backupPath, encoding: .utf8)
+        #expect(savedText.contains("local edit"))
+
+        let resolved = try String(contentsOf: readme, encoding: .utf8)
+        #expect(resolved.contains("from the server"))
+        #expect(outcome.pathsWithResidualMarkers.isEmpty)
     }
 }
 

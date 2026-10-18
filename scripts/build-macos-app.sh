@@ -21,8 +21,14 @@ case "$APP" in
 esac
 
 cd "$PACKAGE"
-swift build -c "$CONFIG" --product OpenSVN
-BIN_DIR="$(swift build -c "$CONFIG" --show-bin-path)"
+
+# SwiftPM compiles its manifest under sandbox-exec, which some hardened shells
+# refuse with "sandbox_apply: Operation not permitted". Such environments can set
+# SWIFT_FLAGS=--disable-sandbox; CI leaves it empty.
+SWIFT_FLAGS="${SWIFT_FLAGS:-}"
+
+swift build -c "$CONFIG" $SWIFT_FLAGS --product OpenSVN
+BIN_DIR="$(swift build -c "$CONFIG" $SWIFT_FLAGS --show-bin-path)"
 BIN="$BIN_DIR/OpenSVN"
 [[ -x "$BIN" ]] || { echo "error: executable not found at $BIN" >&2; exit 1; }
 

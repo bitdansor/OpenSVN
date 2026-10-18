@@ -110,8 +110,10 @@ struct ChangesView: View {
         if entry.hasConflicts {
             Menu("解决冲突") {
                 ForEach(ResolveStrategy.allCases, id: \.self) { strategy in
-                    Button(strategy.rawValue) {
+                    Button {
                         session.resolve(entry, strategy: strategy)
+                    } label: {
+                        Label(strategy.title, systemImage: strategy.menuSymbol)
                     }
                     .help(strategy.consequence)
                 }
@@ -165,6 +167,20 @@ struct ChangesView: View {
                     }
                 }
                 .disabled(selectedEntries.isEmpty)
+
+                Divider()
+
+                Menu("解决全部冲突（\(session.conflictedEntries.count)）") {
+                    ForEach(ResolveStrategy.allCases, id: \.self) { strategy in
+                        Button {
+                            session.resolveAllConflicts(strategy: strategy)
+                        } label: {
+                            Label(strategy.title, systemImage: strategy.menuSymbol)
+                        }
+                        .help(strategy.consequence)
+                    }
+                }
+                .disabled(session.conflictedEntries.isEmpty)
             } label: {
                 Label("操作", systemImage: "ellipsis.circle")
             }

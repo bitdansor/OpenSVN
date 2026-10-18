@@ -53,7 +53,7 @@ Rules that keep the harness honest:
 | F12 | Repository requires upgrade / unknown format | Refuses and explains; **never** auto-upgrades (R5) | untouched | ◻ |
 | F13 | Two windows act on the same working copy | Writes serialize; second action waits visibly instead of interleaving | consistent | ✅ `writes on one working copy never overlap` (gate only) |
 | F14 | Tree conflict on a directory | Presented as a tree conflict, distinct from text/property | untouched until the user decides | ✅ `conflicted working copy: every state maps to the right field` (parsing) |
-| F15 | `svn resolve --accept=theirs-full` requested | Explicit confirmation naming the local edits that will be lost | local edits gone **after** confirmation, backup kept | ✅ `resolve refuses destructive strategies without confirmation` (guard only) |
+| F15 | `svn resolve --accept=theirs-full` requested | Explicit confirmation naming the local edits that will be lost | local edits gone **after** confirmation, backup kept | ✅ `resolve refuses destructive strategies without confirmation` · `resolve copies the conflicted file aside before overwriting it` |
 
 ## Why the gaps are acceptable right now
 

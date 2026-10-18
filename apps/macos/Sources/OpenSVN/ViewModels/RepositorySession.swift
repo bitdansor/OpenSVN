@@ -32,6 +32,16 @@ final class RepositorySession: Identifiable {
         let action: @MainActor () async -> Void
     }
 
+    /// Non-fatal outcome of a resolve: where the backup went, and whether the
+    /// file still contains conflict markers. Shown as an alert, not an error.
+    struct ResolveReport: Identifiable {
+        let id = UUID()
+        let title: String
+        let message: String
+        /// Present when a backup was taken, so the alert can reveal it in Finder.
+        let backupDirectory: URL?
+    }
+
     nonisolated let bookmark: RepositoryBookmark
     private(set) var service: SVNService?
     private var taskCenter: TaskCenter?
@@ -53,6 +63,7 @@ final class RepositorySession: Identifiable {
     var commitSelection: Set<String> = []
     var presentedError: PresentedError?
     var confirmation: Confirmation?
+    var resolveReport: ResolveReport?
 
     init(
         bookmark: RepositoryBookmark,
@@ -308,28 +319,122 @@ final class RepositorySession: Identifiable {
     }
 
     func resolve(_ entry: StatusEntry, strategy: ResolveStrategy) {
-        guard let service else { return }
-        let url = entryURL(entry)
-        let requiresConfirmation = strategy.isDestructive
-        if requiresConfirmation {
+        resolve([entry], strategy: strategy)
+    }
+
+    /// Resolves several conflicts with one strategy.
+    ///
+    /// Any batch (two or more files) asks for confirmation even with the
+    /// non-destructive `working` strategy: a bulk `resolve --accept=working`
+    /// marks *everything* resolved, including files the user never opened.
+    func resolve(_ entries: [StatusEntry], strategy: ResolveStrategy) {
+        guard let service, !entries.isEmpty else { return }
+        let urls = entries.map(entryURL)
+        let isBatch = urls.count > 1
+
+        if strategy.isDestructive || isBatch {
             confirmation = Confirmation(
-                title: "解决冲突：\(relativePath(entry.path))",
-                message: strategy.consequence,
+                title: isBatch
+                    ? "解决 \(urls.count) 个冲突"
+                    : "解决冲突：\(relativePath(entries[0].path))",
+                message: confirmationMessage(for: entries, strategy: strategy, isBatch: isBatch),
                 confirmLabel: "确认解决",
-                isDestructive: true,
+                isDestructive: strategy.isDestructive,
                 action: { [weak self] in
-                    await self?.perform("解决冲突") { _, _ in
-                        try await service.resolve([url], strategy: strategy, confirmed: true)
-                    }
+                    await self?.performResolve(urls, strategy: strategy, service: service)
                 }
             )
         } else {
-            Task {
-                await perform("解决冲突") { _, _ in
-                    try await service.resolve([url], strategy: strategy, confirmed: false)
-                }
+            Task { await performResolve(urls, strategy: strategy, service: service) }
+        }
+    }
+
+    /// Entry point for "resolve everything", used by the Changes toolbar.
+    func resolveAllConflicts(strategy: ResolveStrategy) {
+        resolve(conflictedEntries, strategy: strategy)
+    }
+
+    func dismissResolveReport() {
+        resolveReport = nil
+    }
+
+    private func confirmationMessage(
+        for entries: [StatusEntry],
+        strategy: ResolveStrategy,
+        isBatch: Bool
+    ) -> String {
+        var lines: [String] = [strategy.consequence]
+        if isBatch {
+            lines.append("")
+            lines.append("将一次处理 \(entries.count) 个文件：")
+            for entry in entries.prefix(8) {
+                lines.append("· \(relativePath(entry.path))")
+            }
+            if entries.count > 8 {
+                lines.append("… 其余 \(entries.count - 8) 个")
             }
         }
+        lines.append("")
+        lines.append("解决前会把冲突相关文件备份到应用支持目录，出问题可以从那里取回。")
+        return lines.joined(separator: "\n")
+    }
+
+    private func performResolve(
+        _ urls: [URL],
+        strategy: ResolveStrategy,
+        service: SVNService
+    ) async {
+        guard let taskCenter else { return }
+        let title = urls.count == 1 ? "解决冲突" : "解决 \(urls.count) 个冲突"
+        do {
+            let outcome = try await taskCenter.run(title) { _ in
+                try await service.resolve(urls, strategy: strategy, confirmed: true)
+            }
+            await refresh()
+            resolveReport = makeReport(outcome, strategy: strategy)
+        } catch {
+            handle(error)
+        }
+    }
+
+    private func makeReport(_ outcome: ResolveOutcome, strategy: ResolveStrategy) -> ResolveReport {
+        var lines: [String] = []
+        if let backup = outcome.backup {
+            let path = (backup.directory.path as NSString).abbreviatingWithTildeInPath
+            lines.append("已备份 \(backup.entries.count) 个冲突文件到：\n\(path)")
+        } else {
+            lines.append("没有需要备份的冲突副本（可能已被他人解决或文件已删除）。")
+        }
+
+        let residual = outcome.scans.filter(\.hasUnresolvedMarkers)
+        guard !residual.isEmpty else {
+            let skipped = outcome.scans.filter { scan in
+                if case .skipped = scan.result { return true }
+                return false
+            }
+            if !skipped.isEmpty {
+                lines.append("\(skipped.count) 个文件无法扫描（二进制或超过 8 MB）。")
+            }
+            return ResolveReport(
+                title: "已解决 \(outcome.resolvedPaths.count) 个冲突",
+                message: lines.joined(separator: "\n\n"),
+                backupDirectory: outcome.backup?.directory
+            )
+        }
+
+        lines.append("以下文件仍含冲突标记（`<<<<<<<` / `>>>>>>>`），直接提交会把标记写进仓库：")
+        for scan in residual {
+            guard case .unresolved(let markers) = scan.result else { continue }
+            let sample = markers.prefix(5).map(String.init).joined(separator: "、")
+            let suffix = markers.count > 5 ? "…" : ""
+            lines.append("· \(relativePath(scan.path))（第 \(sample)\(suffix) 行）")
+        }
+        lines.append("请手工编辑这些文件，或在「变更」页改用其它解决方式。")
+        return ResolveReport(
+            title: "已标记为已解决，但仍有 \(residual.count) 个文件含冲突标记",
+            message: lines.joined(separator: "\n\n"),
+            backupDirectory: outcome.backup?.directory
+        )
     }
 
     // MARK: - Plumbing

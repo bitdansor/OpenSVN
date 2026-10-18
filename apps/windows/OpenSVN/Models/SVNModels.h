@@ -181,7 +181,7 @@ struct InfoReport {
 enum class SVNErrorCode {
     svnNotFound, unsupportedVersion, notAWorkingCopy, workingCopyLocked,
     workingCopyNeedsUpgrade, authenticationRequired, authorizationFailed,
-    networkFailure, outOfDate, conflictRemains, pathNotFound,
+    networkFailure, outOfDate, conflictRemains, pathNotFound, backupFailed,
     hostKeyVerificationFailed, timeout, cancelled, confirmationRequired,
     invalidInvocation, xmlParseFailure, commandFailed, unknown
 };

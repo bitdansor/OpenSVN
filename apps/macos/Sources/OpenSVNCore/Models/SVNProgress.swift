@@ -143,6 +143,27 @@ public enum ResolveStrategy: String, Sendable, Hashable, CaseIterable {
         }
     }
 
+    /// Menu title. Never expose `rawValue` in the UI: `--accept` tokens are
+    /// implementation details and, per 执行计划 §7, each option must state its
+    /// consequence in plain language.
+    public var title: String {
+        switch self {
+        case .working:
+            return "保留当前内容，仅清除冲突标记"
+        case .mineFull:
+            return "用我的版本覆盖（丢弃服务器改动）"
+        case .theirsFull:
+            return "用服务器版本覆盖（丢弃我的改动）"
+        case .base:
+            return "恢复基线版本（丢弃双方改动）"
+        }
+    }
+
+    /// SF Symbol hinting that the option cannot be undone.
+    public var menuSymbol: String {
+        isDestructive ? "exclamationmark.triangle" : "checkmark.circle"
+    }
+
     /// One-sentence, human-readable consequence, shown next to each option.
     public var consequence: String {
         switch self {

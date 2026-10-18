@@ -135,6 +135,7 @@ std::string SVNError::identifier() const {
         case SVNErrorCode::outOfDate: return "SVN-0202";
         case SVNErrorCode::conflictRemains: return "SVN-0301";
         case SVNErrorCode::pathNotFound: return "SVN-0302";
+        case SVNErrorCode::backupFailed: return "SVN-0303";
         case SVNErrorCode::timeout: return "SVN-0401";
         case SVNErrorCode::cancelled: return "SVN-0402";
         case SVNErrorCode::confirmationRequired: return "SVN-0501";
@@ -178,6 +179,8 @@ std::string SVNError::remediation() const {
             return "当前 svn 版本不在支持区间内，请升级 OpenSVN 或改用受支持的 svn。";
         case SVNErrorCode::pathNotFound:
             return "目标路径不存在或已被删除。";
+        case SVNErrorCode::backupFailed:
+            return "无法在解决冲突前备份文件，操作已中止以免数据丢失。请检查磁盘空间与目录写权限。";
         case SVNErrorCode::invalidInvocation:
         case SVNErrorCode::xmlParseFailure:
         case SVNErrorCode::commandFailed:

@@ -29,6 +29,7 @@
 | `SVN-0202` outOfDate | 需要先 update | `E160028`, `E155011` | recoverable | 先 Update 再提交 |
 | `SVN-0301` conflictRemains | 仍有冲突 | `E155015` | needsUserAction | 解决冲突并 resolve |
 | `SVN-0302` pathNotFound | 路径不存在 | `E160013` | fatal | 刷新后重试 |
+| `SVN-0303` backupFailed | 解决冲突前的本地备份失败 | — | fatal | 检查磁盘空间与目录权限；操作已中止，未覆盖任何文件 |
 | `SVN-0401` timeout | 超时 | — | fatal | 重试或调整超时 |
 | `SVN-0402` cancelled | 用户取消 | — | fatal | 必要时 Cleanup |
 | `SVN-0501` confirmationRequired | 危险操作未确认 | — | needsUserAction | 查看预览后确认 |
