@@ -15,6 +15,11 @@
 
 匹配优先级：**先 SVN 错误 token（`E\d{6}`），再消息文本**。消息文案随版本与语言变化，token 相对稳定。
 
+表内顺序即匹配顺序，先命中者胜。因此「原因」token 必须排在其后果之前——两个由 S5-5 场景实测发现的例子：
+
+- 只读工作副本先输出 `E155004 … Failed to lock working copy`，再输出 `E200031: attempt to write a readonly database`。若 `E155004` 先命中，用户会被告知执行 Cleanup，而 Cleanup 要写同一块只读磁盘，必然同样失败。
+- 用更新版 svn 创建的仓库先输出 `E170013: Unable to connect`，真正原因 `E160043: Expected FS format …` 排在第三行。若 `E170013` 先命中，用户会去排查网络，而仓库其实只是太新。
+
 | 应用码 | 触发条件 | SVN token | 分级 | 用户可见建议 |
 |---|---|---|---|---|
 | `SVN-0001` svnNotFound | 探测不到可执行文件 / 无法启动 | — | fatal | 在设置中指定 svn 路径或安装运行时 |
@@ -22,10 +27,12 @@
 | `SVN-0003` notAWorkingCopy | 目标不是工作副本 | `E155007` | needsUserAction | 重新选择工作副本或重新检出 |
 | `SVN-0004` workingCopyLocked | 内部锁 / 上次操作未完成 | `E155004`, `E155037` | recoverable | 先执行 Cleanup |
 | `SVN-0005` workingCopyNeedsUpgrade | 工作副本格式过旧/过新 | `E155036`, `E195020` | fatal | 不自动升级，改用兼容客户端 |
+| `SVN-0006` permissionDenied | 工作副本目录或磁盘不可写 | `E200031`, `E000013`, `E000030` | needsUserAction | 检查文件权限、只读卷或磁盘空间；Cleanup 无法解决只读磁盘 |
+| `SVN-0007` repositoryNeedsUpgrade | 仓库数据格式超出当前 svn 支持范围 | `E160043` | fatal | 不自动升级仓库，改用与该仓库匹配的 svn 或由管理员升级 |
 | `SVN-0101` authenticationRequired | 需要凭据 | `E215004` | needsUserAction | 输入用户名密码，重试一次 |
 | `SVN-0102` authorizationFailed | 凭据被拒绝 | `E170001` | needsUserAction | 检查账号与权限 |
 | `SVN-0103` hostKeyVerificationFailed | SSH 主机密钥不受信 | `E170008`, `E170011` | needsUserAction | 核对指纹后再连接 |
-| `SVN-0201` networkFailure | 连接失败/超时/代理 | `E170013`, `E175002`, `E175012`, `E210002`, `E670002`, `E000111` | recoverable | 检查网络与仓库地址 |
+| `SVN-0201` networkFailure | 连接失败/超时/传输中断/代理 | `E170013`, `E175002`, `E175012`, `E210002`, `E670002`, `E000111`, `E000054`, `E000104`, `E000061` | recoverable | 检查网络与仓库地址 |
 | `SVN-0202` outOfDate | 需要先 update | `E160028`, `E155011` | recoverable | 先 Update 再提交 |
 | `SVN-0301` conflictRemains | 仍有冲突 | `E155015` | needsUserAction | 解决冲突并 resolve |
 | `SVN-0302` pathNotFound | 路径不存在 | `E160013` | fatal | 刷新后重试 |
@@ -40,7 +47,9 @@
 
 ## 3. 文本兜底（无 token 时）
 
-`authorization failed`、`authentication failed`、`could not authenticate`、`no more credentials`、`is not a working copy`、`run 'svn cleanup'`、`previous operation has not finished`、`remains in conflict`、`one or more conflicts remain`、`out of date`、`unable to connect`、`connection refused`、`connection timed out`、`host key verification failed`、`unsupported working copy format`、`too old`。
+`authorization failed`、`authentication failed`、`could not authenticate`、`no more credentials`、`is not a working copy`、`run 'svn cleanup'`、`previous operation has not finished`、`remains in conflict`、`one or more conflicts remain`、`out of date`、`unable to connect`、`connection refused`、`connection timed out`、`connection reset by peer`、`can't read from connection`、`connection was closed`、`host key verification failed`、`unsupported working copy format`、`too old`、`attempt to write a readonly database`、`permission denied`、`read-only file system`、`expected fs format`、`unsupported repository format`。
+
+`E0000xx` 的数字后缀是**平台的 errno**，同一个故障在 macOS 与 Linux 上 token 不同（例如连接被重置：macOS `E000054`、Linux `E000104`；连接被拒绝：macOS `E000061`、Linux `E000111`），因此表里两侧都要有。
 
 为避免误判，文本兜底只在没有任何 `E` token 命中时使用。
 

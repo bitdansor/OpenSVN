@@ -126,6 +126,20 @@ struct ErrorMappingTests {
         #expect(conflict.code == .conflictRemains)
     }
 
+    @Test("a connection reset mid-transfer is a network failure, not a bug report")
+    func connectionReset() throws {
+        // Verbatim from svn 1.14.5 while building tests/scenarios/failure/F10:
+        // the proxy severed the connection partway through an update.
+        let error = try #require(SVNErrorMapper.error(from: result(
+            stderr: "svn: E000054: Can't read from connection: Connection reset by peer\n"
+        )))
+        #expect(error.code == .networkFailure)
+        #expect(error.svnCode == "E000054")
+        // Falling through to commandFailed would ask the user to file an issue
+        // for their Wi-Fi dropping.
+        #expect(error.code != .commandFailed(exitCode: 1))
+    }
+
     @Test("unknown failures keep the exit code and redact the diagnostic")
     func unknown() throws {
         let error = try #require(SVNErrorMapper.error(from: result(
@@ -143,6 +157,43 @@ struct ErrorMappingTests {
     @Test("success yields no error")
     func success() {
         #expect(SVNErrorMapper.error(from: SVNProcessResult(exitCode: 0, standardOutput: "", standardError: "", duration: 0)) == nil)
+    }
+
+    // Both `stderr` blocks below are copied verbatim from svn 1.14.5 while
+    // building tests/scenarios/failure/F11 and /F12. They are the reason the two
+    // cases exist: the token svn prints *first* is not the cause.
+
+    @Test("a read-only working copy is a permission problem, not a lock")
+    func readOnlyWorkingCopy() throws {
+        let error = try #require(SVNErrorMapper.error(from: result(
+            stderr: """
+            svn: E155004: Run 'svn cleanup' to remove locks (type 'svn help cleanup' for details)
+            svn: E155004: Commit failed (details follow):
+            svn: E155004: Failed to lock working copy '/tmp/x/wc'.
+            svn: E200031: sqlite[S8]: attempt to write a readonly database
+            svn: E200042: Additional errors:
+            svn: E200031: sqlite[S8]: attempt to write a readonly database
+            """
+        )))
+        #expect(error.code == .permissionDenied)
+        #expect(error.code.identifier == "SVN-0006")
+        // Telling the user to run cleanup would send them to a command that
+        // writes to the same read-only directory and fails identically.
+        #expect(error.code.remediation?.contains("Cleanup 无法解决只读磁盘") == true)
+    }
+
+    @Test("a repository from a newer svn is not a network failure")
+    func repositoryFormat() throws {
+        let error = try #require(SVNErrorMapper.error(from: result(
+            stderr: """
+            svn: E170013: Unable to connect to a repository at URL 'file:///tmp/x/repo/trunk'
+            svn: E180001: Unable to open repository 'file:///tmp/x/repo/trunk'
+            svn: E160043: Expected FS format between '1' and '8'; found format '99'
+            """
+        )))
+        #expect(error.code == .repositoryNeedsUpgrade)
+        #expect(error.code.identifier == "SVN-0007")
+        #expect(error.code.remediation?.contains("不会自动升级仓库") == true)
     }
 }
 

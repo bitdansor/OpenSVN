@@ -6,6 +6,35 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (fault-injection scenarios — S5-5)
+
+- `tests/scenarios/failure/`: five `arrange/act/assert` scenarios that drive real
+  svn processes instead of feeding parsers canned bytes — F8 stale commit,
+  F9 SIGKILL mid-commit, F10 network drop during update, F11 read-only working
+  copy, F12 repository format too new. Wired into macOS CI as its own job.
+- `tests/scenarios/support/tcp_proxy.py`: a TCP relay that severs a connection
+  after N bytes. Timing-based faults ("kill the server after 200 ms") pass or
+  fail depending on machine speed; a byte budget does not.
+- `opensvn-probe`: a development-only executable that runs captured svn stderr
+  through `SVNErrorMapper` and prints the stable identifier, so a shell scenario
+  can assert what the app would actually show. Not part of the app bundle.
+- `verify-release.py --scenarios`: every scenario has its four files, its stages
+  are executable, and the catalog has not drifted out of date.
+
+### Fixed (found by the scenarios, not by reading the code)
+
+- A read-only working copy was reported as `SVN-0004` "working copy locked, run
+  Cleanup" — a command that writes to the very disk that just refused the write.
+  svn prints `E155004` before the real cause `E200031`; the mapper now matches
+  permission tokens first and reports the new `SVN-0006`.
+- A repository from a newer svn was reported as `SVN-0201` "check the network",
+  because `svn` prints `E170013: Unable to connect` before
+  `E160043: Expected FS format`. Now `SVN-0007`, with an explicit "this will not
+  be auto-upgraded".
+- A connection reset mid-transfer (`E000054`) fell through to `SVN-9999` "please
+  file an issue". Now `SVN-0201`; Linux errno variants (`E000104`, `E000061`,
+  `E000111`) are covered too, because the numeric suffix is per-platform.
+
 ### Added (interruption recovery — S5-4)
 
 - `OperationJournal`: a durable record of in-flight writes, written before the

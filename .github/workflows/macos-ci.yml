@@ -109,3 +109,45 @@ jobs:
             -derivedDataPath build/DerivedData \
             CODE_SIGNING_ALLOWED=NO \
             build
+
+  # S5-5: fault injection. Separate from `package` on purpose — these drive real
+  # svn processes, a real svnserve on loopback and a proxy that severs the link
+  # mid-transfer, so a failure here means the product misbehaves in the world,
+  # not that a unit test disagrees with itself.
+  scenarios:
+    name: Fault-injection scenarios (S5-5)
+    runs-on: macos-15
+    timeout-minutes: 20
+    needs: package
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure Subversion CLI
+        run: |
+          if ! command -v svn >/dev/null 2>&1; then
+            echo "svn not preinstalled on this image; installing via Homebrew"
+            brew install subversion
+          fi
+          svn --version --quiet
+          svnadmin --version --quiet
+          svnserve --version --quiet
+
+      # The scenarios assert on the app's own classification, which lives in
+      # OpenSVNCore; a shell script cannot reach it without this probe.
+      - name: Build the error probe
+        working-directory: apps/macos
+        run: swift build --product opensvn-probe
+
+      - name: Run scenarios
+        run: tests/scenarios/run.sh
+
+      - name: Upload scenario logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scenario-logs
+          path: tests/.work/scenarios/**/*.log
+          if-no-files-found: ignore
+          retention-days: 7

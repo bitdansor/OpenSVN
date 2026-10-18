@@ -21,6 +21,8 @@ Rules:
 - A scenario that needs a server starts `svnserve` on a loopback port; nothing
   here may require internet access.
 
-Nothing is implemented here yet: the first entries arrive with execution plan
-S5-5, so that `tests/scenarios/failure/` and this directory share one harness
-instead of growing two.
+Nothing is implemented here yet. The S5-5 fault-injection scenarios now live in
+`tests/scenarios/failure/` and own the `arrange/act/assert` harness
+(`tests/scenarios/lib.sh`, `run.sh`); this directory stays for the cross-platform
+and multi-svn-version work that needs a second platform or a second svn install,
+and should reuse that harness rather than grow a second one.

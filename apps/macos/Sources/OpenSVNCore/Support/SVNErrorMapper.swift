@@ -14,6 +14,14 @@ public enum SVNErrorMapper {
         ("E215004", .authenticationRequired),
         ("E170008", .hostKeyVerificationFailed),
         ("E170011", .hostKeyVerificationFailed),
+        // A read-only working copy reports `E155004 … Failed to lock working copy`
+        // followed by `E200031: sqlite: attempt to write a readonly database`.
+        // The lock token comes first in the output, so the permission tokens must
+        // be *matched* first — otherwise the user is told to run cleanup, which
+        // fails for the same reason the commit did.
+        ("E200031", .permissionDenied),
+        ("E000013", .permissionDenied),
+        ("E000030", .permissionDenied),
         ("E155004", .workingCopyLocked),
         ("E155037", .workingCopyLocked),
         ("E155007", .notAWorkingCopy),
@@ -22,13 +30,29 @@ public enum SVNErrorMapper {
         ("E155015", .conflictRemains),
         ("E155011", .outOfDate),
         ("E160028", .outOfDate),
+        // `svn checkout file://repo` against a repository written by a newer
+        // svn reports "Unable to connect" (E170013), "Unable to open
+        // repository" (E180001) and only then the real cause, E160043. Matching
+        // E170013 first sends the user to check the network for a repository
+        // that is simply too new.
+        ("E160043", .repositoryNeedsUpgrade),
         ("E160013", .pathNotFound),
         ("E170013", .networkFailure),
         ("E175002", .networkFailure),
         ("E175012", .networkFailure),
         ("E210002", .networkFailure),
         ("E670002", .networkFailure),
-        ("E000111", .networkFailure)
+        ("E000111", .networkFailure),
+        // APR_ECONNRESET: the peer reset the connection mid-response. This is
+        // what a dropped Wi-Fi link or a flapping VPN looks like, and it arrives
+        // with no other `E` token to lean on.
+        //
+        // The numeric suffix is the platform's errno, so the same failure has
+        // different tokens on macOS (54 / 61) and Linux (104 / 111) — which is
+        // why E000111 is already in this table.
+        ("E000054", .networkFailure),
+        ("E000104", .networkFailure),
+        ("E000061", .networkFailure)
     ]
 
     private static let textTable: [(needle: String, code: SVNErrorCode)] = [
@@ -45,9 +69,19 @@ public enum SVNErrorMapper {
         ("unable to connect", .networkFailure),
         ("connection refused", .networkFailure),
         ("connection timed out", .networkFailure),
+        ("connection reset by peer", .networkFailure),
+        ("can't read from connection", .networkFailure),
+        ("connection was closed", .networkFailure),
         ("host key verification failed", .hostKeyVerificationFailed),
         ("unsupported working copy format", .workingCopyNeedsUpgrade),
-        ("too old", .workingCopyNeedsUpgrade)
+        ("too old", .workingCopyNeedsUpgrade),
+        // Only reached when no `E` token is present at all, e.g. a wrapper script
+        // that swallowed the code.
+        ("attempt to write a readonly database", .permissionDenied),
+        ("permission denied", .permissionDenied),
+        ("read-only file system", .permissionDenied),
+        ("expected fs format", .repositoryNeedsUpgrade),
+        ("unsupported repository format", .repositoryNeedsUpgrade)
     ]
 
     /// Returns nil when the result represents success.
@@ -115,6 +149,10 @@ public enum SVNErrorMapper {
             return "目标不是 SVN 工作副本"
         case .workingCopyNeedsUpgrade:
             return "工作副本格式不受支持"
+        case .permissionDenied:
+            return "工作副本目录或磁盘不可写"
+        case .repositoryNeedsUpgrade:
+            return "仓库数据格式不受支持"
         case .authenticationRequired:
             return "服务器要求认证"
         case .authorizationFailed:

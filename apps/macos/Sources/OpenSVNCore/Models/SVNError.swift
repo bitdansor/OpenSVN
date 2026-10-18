@@ -9,6 +9,14 @@ public enum SVNErrorCode: Sendable, Hashable, Codable {
     case notAWorkingCopy
     case workingCopyLocked
     case workingCopyNeedsUpgrade
+    /// The working copy directory (or the disk) is not writable.
+    ///
+    /// Kept apart from `workingCopyLocked` because the remedy is the opposite:
+    /// `svn cleanup` writes to the very place that refused the write.
+    case permissionDenied
+    /// The *repository* data format is outside what this svn supports. Distinct
+    /// from `workingCopyNeedsUpgrade`, which is about the local `.svn` format.
+    case repositoryNeedsUpgrade
     case authenticationRequired
     case authorizationFailed
     case networkFailure
@@ -40,9 +48,11 @@ public enum SVNErrorCode: Sendable, Hashable, Codable {
         case .networkFailure, .workingCopyLocked, .outOfDate:
             return .recoverable
         case .authenticationRequired, .authorizationFailed, .conflictRemains,
-             .confirmationRequired, .hostKeyVerificationFailed, .notAWorkingCopy:
+             .confirmationRequired, .hostKeyVerificationFailed, .notAWorkingCopy,
+             .permissionDenied:
             return .needsUserAction
         case .svnNotFound, .unsupportedVersion, .workingCopyNeedsUpgrade,
+             .repositoryNeedsUpgrade,
              .pathNotFound, .backupFailed, .timeout, .cancelled, .invalidInvocation,
              .xmlParseFailure, .commandFailed, .unknown:
             return .fatal
@@ -57,6 +67,8 @@ public enum SVNErrorCode: Sendable, Hashable, Codable {
         case .notAWorkingCopy: return "SVN-0003"
         case .workingCopyLocked: return "SVN-0004"
         case .workingCopyNeedsUpgrade: return "SVN-0005"
+        case .permissionDenied: return "SVN-0006"
+        case .repositoryNeedsUpgrade: return "SVN-0007"
         case .authenticationRequired: return "SVN-0101"
         case .authorizationFailed: return "SVN-0102"
         case .networkFailure: return "SVN-0201"
@@ -82,6 +94,10 @@ public enum SVNErrorCode: Sendable, Hashable, Codable {
             return "工作副本被锁定。请先执行 Cleanup 清理内部锁。"
         case .workingCopyNeedsUpgrade:
             return "该工作副本由更新版本的 Subversion 创建，OpenSVN 不会自动升级它。请使用兼容版本的客户端。"
+        case .permissionDenied:
+            return "工作副本目录或磁盘不可写。请检查文件权限、只读卷或磁盘空间；Cleanup 无法解决只读磁盘。"
+        case .repositoryNeedsUpgrade:
+            return "仓库的数据格式不在当前 svn 的支持范围内。OpenSVN 不会自动升级仓库，请使用与该仓库匹配的 svn，或由仓库管理员升级。"
         case .notAWorkingCopy:
             return "所选目录不是 SVN 工作副本，或已被移动。"
         case .authenticationRequired:

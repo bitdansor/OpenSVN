@@ -8,7 +8,10 @@ let package = Package(
     ],
     products: [
         .library(name: "OpenSVNCore", targets: ["OpenSVNCore"]),
-        .executable(name: "OpenSVN", targets: ["OpenSVN"])
+        .executable(name: "OpenSVN", targets: ["OpenSVN"]),
+        // Development-only: lets the shell scenarios assert the app's error
+        // classification. Not part of the app bundle.
+        .executable(name: "opensvn-probe", targets: ["OpenSVNProbe"])
     ],
     targets: [
         .target(
@@ -19,6 +22,11 @@ let package = Package(
             name: "OpenSVN",
             dependencies: ["OpenSVNCore"],
             path: "Sources/OpenSVN"
+        ),
+        .executableTarget(
+            name: "OpenSVNProbe",
+            dependencies: ["OpenSVNCore"],
+            path: "Sources/OpenSVNProbe"
         ),
         .testTarget(
             name: "OpenSVNCoreTests",

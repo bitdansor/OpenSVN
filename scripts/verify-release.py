@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Repository and release-artifact consistency checks.
 
-Modes (any combination, default = --layout --metadata --fixtures):
+Modes (any combination, default = --layout --metadata --fixtures --scenarios):
 
   --layout          the planned tree from 规划 §4 exists and is not empty
   --metadata        VERSION / CHANGELOG / Info.plist / governance files agree
   --fixtures        every recorded `svn --xml` fixture is well-formed and typed
+  --scenarios       every fault-injection scenario has its four files and is runnable
   --bundle PATH     an assembled .app is internally consistent and shippable
-  --all             layout + metadata + fixtures + bundle (requires --bundle)
+  --all             layout + metadata + fixtures + scenarios + bundle (requires --bundle)
 
 Exit code is 0 only when every check passes. This script must stay
 dependency-free: it runs on a bare CI runner and locally before a release.
@@ -478,19 +479,83 @@ def check_bundle(report: Report, bundle_arg: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# fault-injection scenarios (S5-5)
+# ---------------------------------------------------------------------------
+SCENARIO_DIR = ROOT / "tests" / "scenarios" / "failure"
+SCENARIO_STAGES = ("arrange.sh", "act.sh", "assert.sh")
+
+
+def check_scenarios(report: Report) -> None:
+    report.section("Fault-injection scenarios (S5-5)")
+
+    if not SCENARIO_DIR.is_dir():
+        report.ok("no scenarios yet")
+        return
+
+    broken = []
+    for directory in sorted(p for p in SCENARIO_DIR.iterdir() if p.is_dir()):
+        name = directory.name
+        if not (directory / "scenario.md").is_file():
+            broken.append(f"{name}: missing scenario.md (what the user should see, not just what the code does)")
+            continue
+        for stage in SCENARIO_STAGES:
+            script = directory / stage
+            if not script.is_file():
+                broken.append(f"{name}: missing {stage}")
+            elif not os.access(script, os.X_OK):
+                # The runner refuses non-executable stages, so a missed chmod
+                # would only surface as a red CI run with a confusing message.
+                broken.append(f"{name}: {stage} is not executable")
+
+    if broken:
+        for problem in broken:
+            report.fail(problem)
+    else:
+        count = len([p for p in SCENARIO_DIR.iterdir() if p.is_dir()])
+        report.ok(f"{count} scenario(s) each have scenario.md + arrange/act/assert")
+
+    # The catalog is the contract these scenarios are written against; a scenario
+    # that exists but is still marked planned means the table drifted. A row may
+    # legitimately hold both marks (F9 is automated except for the GUI kill), so
+    # only rows with no ✅ at all count as planned.
+    catalog = ROOT / "tests" / "scenarios" / "README.md"
+    if catalog.is_file():
+        planned = []
+        for line in catalog.read_text(encoding="utf-8").splitlines():
+            match = re.match(r"^\|\s*(F\d+)\s*\|", line)
+            if match and "◻" in line and "✅" not in line:
+                planned.append(match.group(1))
+        implemented = {
+            p.name.split("-")[0].upper()
+            for p in SCENARIO_DIR.iterdir()
+            if p.is_dir()
+        }
+        stale = [f for f in planned if f in implemented]
+        if stale:
+            report.warn(f"catalog still marks {', '.join(sorted(stale))} as planned, but a scenario exists")
+        else:
+            report.ok("catalog and scenarios agree")
+
+
+# ---------------------------------------------------------------------------
 def main() -> int:
     parser = argparse.ArgumentParser(description="OpenSVN consistency checks")
     parser.add_argument("--metadata", action="store_true", help="VERSION/CHANGELOG/Info.plist/files")
     parser.add_argument("--layout", action="store_true", help="planned directory tree is intact")
     parser.add_argument("--fixtures", action="store_true", help="recorded svn XML fixtures")
+    parser.add_argument("--scenarios", action="store_true", help="fault-injection scenarios are complete")
     parser.add_argument("--bundle", metavar="PATH", help="assembled .app to inspect")
     parser.add_argument("--all", action="store_true", help="everything (needs --bundle)")
     args = parser.parse_args()
 
-    explicit = args.metadata or args.layout or args.fixtures or bool(args.bundle) or args.all
+    explicit = (
+        args.metadata or args.layout or args.fixtures or args.scenarios
+        or bool(args.bundle) or args.all
+    )
     run_layout = args.layout or args.all or not explicit
     run_metadata = args.metadata or args.all or not explicit
     run_fixtures = args.fixtures or args.all or not explicit
+    run_scenarios = args.scenarios or args.all or not explicit
 
     report = Report()
     if run_layout:
@@ -499,6 +564,8 @@ def main() -> int:
         check_metadata(report)
     if run_fixtures:
         check_fixtures(report)
+    if run_scenarios:
+        check_scenarios(report)
     if args.bundle:
         check_bundle(report, args.bundle)
 
