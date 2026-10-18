@@ -53,6 +53,9 @@ struct OpenSVNApp: App {
                     .keyboardShortcut("j", modifiers: [.command, .shift])
                 Button("取消全部任务") { appState.taskCenter.clear() }
             }
+            CommandGroup(replacing: .help) {
+                Button("试一次三方合并…") { appState.showingDemoSheet = true }
+            }
         }
 
         Settings {

@@ -126,6 +126,48 @@ svn CLI (child process)
 三个版本从 `svn info --xml` 的 `<conflict>` 块读（`prev-base-file` / `prev-wc-file` /
 `source-right` 的 revision），不从文件名猜：同一文件被更新多次后会留下多个 `.r*`。
 
+## 演示数据与引导（S5-2 配套）
+
+三方合并是**最难自助体验**的功能：要两份工作副本、一次已提交的改动、一次冲突的本地改动，
+还要 `svnadmin`。为此 `DemoWorkspace` 在本机生成完整场景，应用和脚本共用同一份定义：
+
+- 应用：欢迎页「想先试试三方合并？」与「帮助 → 试一次三方合并…」→ 生成并直接打开工作副本。
+- 终端：`scripts/create-conflict-demo.sh`，转发给 `opensvn-probe demo`。
+- 位置：`~/OpenSVN 合并演示`。目录带 `.opensvn-demo` 标记；若目标目录存在且没有标记，
+  生成器**拒绝执行**而不是覆盖——一个"生成示例"的命令不该有能力删掉用户的东西。
+- 不联网：仓库是 `file://`。
+
+样本刻意做成三类，因为"每个文件都冲突"会教错东西：
+
+| 文件 | 用户会看到 |
+|---|---|
+| `src/calculator.swift` | 3 处自动合并，1 处需要决定 |
+| `docs/config.md` | 2 处自动合并，1 处需要决定 |
+| `docs/发布说明.md` | 中文文件名，同样可以合并 |
+| `docs/属性冲突.txt` | 属性冲突——三方合并处理不了，需整体选一边 |
+| `src/util.swift` | 只有服务器改过，更新时已自动合并 |
+
+`DemoWorkspaceTests` 断言的是**这个混合比例**（`merged.conflicts.count == 1`，且渲染结果里
+既有我的"本地版本"又有服务器的"避免 -0"），不是"文件生成了"。样本退化时，测试先红。
+
+引导分三层，每层回答一个不同的问题：
+
+1. 变更页顶部 `ConflictGuideBanner`——**这里有冲突，可以做什么**。直接给「开始三方合并」，
+   不再只藏在右键菜单第二层。
+2. 合并编辑器顶部三步条——**这三栏是什么关系**。每张冲突卡还有一行原因说明。
+3. 编辑器底部——**为什么按钮还是灰的**（还有 N 处未决定）。
+
+### 一个反复出现的布局陷阱
+
+`NavigationSplitView` 不能放进 `VStack`。它会上报自己的理想高度（本机 1737 pt），把窗口
+内容撑到远超窗口尺寸：侧边栏空白、文件列表滚动到只剩最后几行。恢复横幅因此放在 **detail 列
+内部**，而不是横跨整个窗口。
+
+同理，下列写法也会重新触发：窗口内容上的 `.frame(minWidth:minHeight:)`、
+`.windowResizability(.contentMinSize)`。正确做法是只设 `.defaultSize`，并让
+`RepositoryDetailView` 用 `GeometryReader` 给内容列一个实测高度——只写
+`.frame(maxHeight: .infinity)` 时，文件列表会按内容自适应并滚出可视区。
+
 ## 未实现（按阶段）
 
 - 内置运行时打包：脚本已写（`scripts/bundle-svn-runtime.sh`），未接入 CI。

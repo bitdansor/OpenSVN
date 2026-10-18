@@ -17,6 +17,8 @@ struct MergeEditorView: View {
         VStack(spacing: 0) {
             header
             Divider()
+            guide
+            Divider()
             if editor.conflicts.isEmpty {
                 ContentUnavailableView {
                     Label("没有需要决定的冲突", systemImage: "checkmark.seal")
@@ -41,6 +43,39 @@ struct MergeEditorView: View {
     }
 
     // MARK: - Chrome
+
+    /// The three-step strip is the whole mental model of a three-way merge. It is
+    /// always visible rather than a first-run tooltip: the question "which side am
+    /// I looking at?" recurs on every card, not just the first one.
+    private var guide: some View {
+        HStack(alignment: .top, spacing: 16) {
+            step(1, "看三栏", "左边是我的文件，中间是双方共同的基线，右边是服务器上的版本。")
+            step(2, "每处选一边", "只有两边都改了同一处才需要决定；单边改动已经自动采用。")
+            step(3, "写回文件", "点「写入并标记已解决」，文件内容就是你的决定，冲突随之解除。")
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(Color.accentColor.opacity(0.06))
+    }
+
+    private func step(_ index: Int, _ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 7) {
+            Text("\(index)")
+                .font(.caption2.weight(.bold))
+                .foregroundStyle(.white)
+                .frame(width: 16, height: 16)
+                .background(Circle().fill(Color.accentColor))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 
     private var header: some View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -74,9 +109,16 @@ struct MergeEditorView: View {
 
     private var footer: some View {
         HStack(spacing: 12) {
-            Text("写入前会把当前的冲突文件备份到应用支持目录。")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("写入前会把当前的冲突文件备份到应用支持目录，写错了可以找回。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                if !editor.unresolved.isEmpty {
+                    Text("还有 \(editor.unresolved.count) 处没有决定 —— 每一处都必须选一边，合并结果才不会丢内容。")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+            }
             Spacer()
             Button("取消") { dismiss() }
                 .keyboardShortcut(.cancelAction)
@@ -109,6 +151,12 @@ struct MergeEditorView: View {
                         .foregroundStyle(.orange)
                 }
             }
+
+            // Naming *why* this region needs a decision is what turns three
+            // panels of text into a question the user can answer.
+            Text(reason(for: conflict))
+                .font(.caption)
+                .foregroundStyle(editor.choice(for: conflict.id) == nil ? .orange : .secondary)
 
             HStack(alignment: .top, spacing: 10) {
                 sidePanel("我的", lines: conflict.mineLines, tint: .blue)
@@ -155,5 +203,23 @@ struct MergeEditorView: View {
             .background(Color(nsColor: .textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The engine only asks when both sides changed the same region differently,
+    /// but the *shape* of the disagreement differs and the label should say which
+    /// one it is. The empty-side branches are defensive: `ThreeWayMerge` resolves
+    /// one-sided changes by itself, so reaching them would mean the engine changed
+    /// and this text would be the first visible symptom.
+    private func reason(for conflict: MergeConflict) -> String {
+        if conflict.baseLines.isEmpty {
+            return "这里原本没有内容，两边各自新增了不同的内容。"
+        }
+        if conflict.mineLines.isEmpty {
+            return "我删掉了这段，服务器改动了它。"
+        }
+        if conflict.theirsLines.isEmpty {
+            return "服务器删掉了这段，我改动了它。"
+        }
+        return "两边改了同一处，而且内容不同 —— 这是唯一需要你决定的情况。"
     }
 }

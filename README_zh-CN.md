@@ -43,11 +43,26 @@ open build/OpenSVN.app
 
 签名与公证流水线尚未接入，产物为 ad-hoc 签名，仅供本机使用。
 
+### 试一下三方合并
+
+合并编辑器不好凭空试：它需要两份工作副本、一次已提交的改动和一次冲突的本地改动。
+应用和脚本都能在本机把这套东西直接造出来（`file://` 仓库，不联网）：
+
+```bash
+scripts/create-conflict-demo.sh        # ~/OpenSVN 合并演示
+```
+
+或者在应用里：欢迎页点「想先试试三方合并？」，或菜单「帮助 → 试一次三方合并…」。
+生成后会自动打开工作副本，「变更」页顶部会出现橙色引导条，点「开始三方合并」即可。
+
+样本里有三类情况：能自动合并的改动、需要你决定的文本冲突、以及一个**不能**三方合并的
+属性冲突——后者需要整体选一边，引导条会说明区别。
+
 ### 自检
 
 ```bash
 scripts/bootstrap-macos.sh              # 缺什么依赖
-cd apps/macos && swift test             # 49 个测试 / 11 个套件，需要真实 svn
+cd apps/macos && swift test             # 94 个测试 / 16 个套件，需要真实 svn
 python3 scripts/verify-release.py       # VERSION / CHANGELOG / Info.plist / fixture 一致性
 python3 scripts/verify-release.py --bundle build/OpenSVN.app
 ```

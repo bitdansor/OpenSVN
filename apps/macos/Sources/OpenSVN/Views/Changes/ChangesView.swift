@@ -7,6 +7,9 @@ struct ChangesView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if session.status != nil, !session.conflictedEntries.isEmpty {
+                ConflictGuideBanner(session: session)
+            }
             if session.status == nil {
                 ProgressView("正在读取工作副本…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -71,6 +74,19 @@ struct ChangesView: View {
             }
             if entry.hasConflicts {
                 ConflictBadges(flags: entry.conflicts)
+            }
+            // The inline button is the discoverable path. The context menu keeps
+            // the same action for consistency, but a capability that only exists
+            // in a right-click menu is a capability most users never learn.
+            if entry.hasConflicts, entry.conflicts.contains(.text) {
+                Button {
+                    session.beginMerge(entry)
+                } label: {
+                    Label("三方合并", systemImage: "arrow.triangle.branch")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("并排比较我的改动、基线和服务器改动，逐块决定保留哪一边")
             }
             if let lock = entry.repositoryLock {
                 Label(lock.owner ?? "已锁定", systemImage: "lock.fill")

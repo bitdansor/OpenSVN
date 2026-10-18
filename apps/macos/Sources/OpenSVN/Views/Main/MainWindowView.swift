@@ -7,8 +7,10 @@ struct MainWindowView: View {
 
     /// `safeAreaInset` on a `NavigationSplitView` does not reserve space here:
     /// both columns keep their own scroll views and the inset view is painted
-    /// over them. The banner is a `VStack` row instead, so the split view starts
-    /// below it and the sidebar's first row stays clickable.
+    /// over them. Wrapping the whole split view in a `VStack` is worse — the split
+    /// view then reports its own ideal height (1737 pt in practice) and overflows
+    /// the window, pushing the sidebar and the file list out of view. So the
+    /// banner lives inside the *detail* column, where a plain `VStack` behaves.
     private var showsRecoveryBanner: Bool {
         !appState.recoveryItems.isEmpty || appState.journalQuarantineURL != nil
     }
@@ -16,16 +18,15 @@ struct MainWindowView: View {
     var body: some View {
         @Bindable var appState = appState
 
-        VStack(spacing: 0) {
-            if showsRecoveryBanner {
-                RecoveryBanner()
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-
-            NavigationSplitView {
-                SidebarView()
-                    .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 340)
-            } detail: {
+        NavigationSplitView {
+            SidebarView()
+                .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 340)
+        } detail: {
+            VStack(spacing: 0) {
+                if showsRecoveryBanner {
+                    RecoveryBanner()
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
                 if let session = appState.selectedSession {
                     RepositoryDetailView(session: session)
                         .id(session.id)
@@ -33,8 +34,8 @@ struct MainWindowView: View {
                     WelcomeView()
                 }
             }
-            .navigationTitle(appState.selectedBookmark?.name ?? "OpenSVN")
         }
+        .navigationTitle(appState.selectedBookmark?.name ?? "OpenSVN")
         .animation(.easeOut(duration: 0.18), value: showsRecoveryBanner)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
@@ -91,6 +92,10 @@ struct MainWindowView: View {
             SettingsView()
                 .environment(appState)
         }
+        .sheet(isPresented: $appState.showingDemoSheet) {
+            DemoWorkspaceSheet()
+                .environment(appState)
+        }
     }
 }
 
@@ -112,6 +117,12 @@ private struct WelcomeView: View {
                 Button("检出仓库…") { appState.showingCheckoutSheet = true }
                     .buttonStyle(.borderedProminent)
             }
+
+            Button("想先试试三方合并？用一份带冲突的演示数据") {
+                appState.showingDemoSheet = true
+            }
+            .buttonStyle(.link)
+            .font(.callout)
 
             if let installation = appState.installation {
                 Text("使用 svn \(installation.version.description) · \(installation.source.displayName)")

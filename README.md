@@ -45,11 +45,29 @@ open build/OpenSVN.app
 
 `fastlane`/notarisation is not set up yet; the produced `.app` is ad-hoc signed and intended for local use.
 
+### Trying a three-way merge
+
+The merge editor is awkward to evaluate from scratch: it needs two working copies,
+an edit that reached the repository, a conflicting local edit, and `svnadmin`.
+Both the app and a script can build that locally (`file://`, no network):
+
+```bash
+scripts/create-conflict-demo.sh        # ~/OpenSVN 合并演示
+```
+
+In the app: the welcome screen link, or **帮助 → 试一次三方合并…**. The generated
+working copy opens automatically and the changes page shows an orange guide strip
+with **开始三方合并**.
+
+The sample deliberately mixes three cases: edits that merge silently, text
+conflicts that need a decision, and a property conflict that *cannot* be merged
+three ways — the guide explains the difference instead of asserting it.
+
 ### Checks
 
 ```bash
 scripts/bootstrap-macos.sh              # what is missing in this environment?
-cd apps/macos && swift test             # 49 tests across 11 suites; real svn required
+cd apps/macos && swift test             # 94 tests across 16 suites; real svn required
 python3 scripts/verify-release.py       # VERSION / CHANGELOG / Info.plist / fixtures agree
 python3 scripts/verify-release.py --bundle build/OpenSVN.app
 ```

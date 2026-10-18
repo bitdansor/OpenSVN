@@ -18,6 +18,15 @@ final class AppState {
         var errorMessage: String?
     }
 
+    /// Progress of the "try a merge" demo builder. Kept on `AppState` rather than
+    /// in the sheet's `@State` so that closing the sheet mid-build does not strand
+    /// the operation or lose its failure message.
+    enum DemoPhase: Equatable {
+        case idle
+        case building
+        case failed(String)
+    }
+
     private(set) var bookmarks: [RepositoryBookmark] = []
     private(set) var sessions: [UUID: RepositorySession] = [:]
     var selectedBookmarkID: UUID?
@@ -30,6 +39,11 @@ final class AppState {
     var showingCheckoutSheet = false
     var showingTaskCenter = false
     var showingSettings = false
+    var showingDemoSheet = false
+    private(set) var demoPhase: DemoPhase = .idle
+    /// Set when a previously generated demo working copy is still on disk, so the
+    /// sheet can offer "open" instead of "generate".
+    private(set) var demoWorkingCopy: URL?
 
     /// Writes that were running when a previous launch died. Empty during a
     /// healthy session; the banner only appears when this is non-empty.
@@ -187,6 +201,66 @@ final class AppState {
         panel.message = "选择 SVN 工作副本目录（包含 .svn 的目录）"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         addRepository(at: url)
+    }
+
+    // MARK: - Merge demo
+    //
+    // The merge editor is the hardest thing in the app to evaluate without data:
+    // it needs two working copies, a committed edit, a conflicting local edit, and
+    // a working `svnadmin`. Nobody does that to try a feature. This builds the
+    // whole setup locally, then opens it — the shortest path from "what is this?"
+    // to "I see what it does".
+
+    func refreshDemoAvailability() {
+        demoWorkingCopy = WorkingCopyLocator.isWorkingCopy(DemoWorkspace.defaultWorkingCopy)
+            ? DemoWorkspace.defaultWorkingCopy
+            : nil
+    }
+
+    func createDemoWorkspace() async {
+        guard let installation else {
+            demoPhase = .failed("svn 还没有就绪，无法生成演示。")
+            return
+        }
+        guard let svnadmin = DemoWorkspace.adminTool(nextTo: installation.executableURL) else {
+            demoPhase = .failed(
+                "找不到 svnadmin（应当与 svn 在同一目录）。请安装完整版 Subversion，"
+                + "或在终端运行 scripts/create-conflict-demo.sh。"
+            )
+            return
+        }
+
+        demoPhase = .building
+        let workspace = DemoWorkspace(svn: installation.executableURL, svnadmin: svnadmin)
+        do {
+            // Building writes files and waits on several processes; keep it off the
+            // main actor so the sheet keeps animating.
+            let result = try await Task.detached(priority: .userInitiated) {
+                try await workspace.build()
+            }.value
+            demoPhase = .idle
+            demoWorkingCopy = result.workingCopy
+            showingDemoSheet = false
+            addRepository(at: result.workingCopy)
+            if let session = selectedSession {
+                await session.refresh()
+            }
+        } catch let error as SVNError {
+            demoPhase = .failed(error.message)
+        } catch {
+            demoPhase = .failed(error.localizedDescription)
+        }
+    }
+
+    func openExistingDemo() {
+        refreshDemoAvailability()
+        guard let demoWorkingCopy else { return }
+        showingDemoSheet = false
+        addRepository(at: demoWorkingCopy)
+    }
+
+    func dismissDemoFailure() {
+        demoPhase = .idle
     }
 
     // MARK: - Credentials

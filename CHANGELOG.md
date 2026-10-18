@@ -6,6 +6,40 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (merge demo and in-app guidance)
+
+- `DemoWorkspace` (+ `opensvn-probe demo`): builds a local `file://` repository and
+  a working copy that already contains the conflict mix the editor is meant for —
+  three text conflicts that need a decision, regions only one side changed (merged
+  silently), a file only the server changed, and one property conflict that cannot
+  be three-way merged. Refuses to touch a folder it did not create (marker file).
+- `scripts/create-conflict-demo.sh`: terminal entry point for the same sample; it
+  forwards to `DemoWorkspace` so the in-app button and the script cannot drift.
+- **试一次三方合并** sheet (Welcome screen + 帮助 menu): explains what will be
+  created, where, and what the user will see, then opens the working copy.
+- `ConflictGuideBanner`: an orange strip above the file list that states how many
+  conflicts exist, which kind they are, what a three-way merge actually does, and
+  offers **开始三方合并** directly. The context menu was the only entry point
+  before, which made the capability effectively undiscoverable.
+- Per-row **三方合并** button on text conflicts.
+- `MergeEditorView` now carries a three-step strip (look at the columns → choose
+  per region → write back) and a per-region reason line ("两边改了同一处…"),
+  plus a footer count of undecided regions.
+
+### Fixed (window layout)
+
+- The root window wrapped `NavigationSplitView` in a `VStack` (added for the
+  recovery banner). A split view inside a `VStack` reports its own ideal height —
+  1737 pt here — and overflows the window, so the sidebar rendered empty and the
+  file list scrolled to a position where only its last five rows were visible. The
+  split view is the root again; the recovery banner lives inside the detail column.
+- `RepositoryDetailView` gives its content column a measured height
+  (`GeometryReader`). `.frame(maxHeight: .infinity)` alone let the file list size
+  itself from content and scroll past the visible area.
+- The same investigation found that `.frame(minWidth:minHeight:)` on the window
+  content and `.windowResizability(.contentMinSize)` both re-introduce the
+  oversized-height behaviour, so neither is used; `.defaultSize` alone is correct.
+
 ### Added (three-way merge editor — S5-2)
 
 - `ThreeWayMerge`: line-based three-way merge (base / mine / theirs) that yields

@@ -53,8 +53,16 @@ struct RepositoryDetailView: View {
             .padding(.vertical, 8)
             Divider()
 
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // A plain `.frame(maxHeight: .infinity)` is not enough here: the file
+            // list inside would size itself from its content, report a much taller
+            // ideal height than the window, and scroll to a position that leaves
+            // only the tail of the list visible. Giving the column its measured
+            // size makes the list a bounded scroll view again.
+            GeometryReader { proxy in
+                content
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
