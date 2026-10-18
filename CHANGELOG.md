@@ -6,6 +6,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- macOS CI rejected the package on Swift 6.1.2 while the same code compiled on
+  Swift 6.4: `withAuthRetry` now takes an `@MainActor` closure and requires a
+  `Sendable` result. Swift 6.2 changed the default isolation of nonisolated
+  async functions (SE-0461), which hid the diagnosis locally rather than fixing
+  it. The CI toolchain assertion now compares major.minor instead of only the
+  major version, so a future runner image cannot silently move the baseline.
+- Windows CI failed before building anything: `Report toolchain` hardcoded
+  `vswhere.exe` under `%ProgramFiles%`, but the windows-2022 image installs the
+  Visual Studio Installer under `%ProgramFiles(x86)%`. The step now probes PATH
+  and both prefixes, never fails the job, and the whole job is non-blocking
+  until the port actually compiles.
+
 ### Added (macOS core, `v0.1.x`)
 
 - `OpenSVNCore` Swift package: data models with text / property / tree conflicts

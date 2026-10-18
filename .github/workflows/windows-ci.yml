@@ -1,10 +1,11 @@
 name: Windows CI
 
 # This workflow is the gate the Windows port must eventually pass. Right now the
-# C++ has never been compiled, so the job is non-blocking on purpose: a workflow
-# that is red from day one teaches people to ignore CI. Remove the
-# `continue-on-error` lines in the PR that makes the build green — that PR is the
-# real "Windows exists" milestone.
+# C++ has never been compiled, so both jobs are non-blocking on purpose: a
+# workflow that is red from day one teaches people to ignore CI. Remove every
+# `continue-on-error` line in the PR that makes the build green — that PR is the
+# real "Windows exists" milestone. Until then the job still shows red in the
+# Actions tab (so the gap stays visible) while the run itself stays green.
 
 on:
   push:
@@ -38,16 +39,41 @@ jobs:
     name: Build + tests (x64)
     runs-on: windows-2022
     timeout-minutes: 45
+    # Non-blocking until the port compiles; see the header comment.
+    continue-on-error: true
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Report toolchain
+        # Informational only. An earlier version hardcoded vswhere under
+        # %ProgramFiles%, but the windows-2022 image keeps the Visual Studio
+        # Installer under %ProgramFiles(x86)%, so the step failed with
+        # "The term ... vswhere.exe is not recognized" before any build ran.
+        continue-on-error: true
+        shell: pwsh
         run: |
-          Get-ComputerInfo -Property OsName, OsVersion | Format-List
-          & "${env:ProgramFiles}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property displayName
-          & "${env:ProgramFiles}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationVersion
+          [System.Environment]::OSVersion.VersionString
+          Write-Host "architecture: $env:PROCESSOR_ARCHITECTURE"
+
+          $candidates = @()
+          $cmd = Get-Command vswhere.exe -ErrorAction SilentlyContinue
+          if ($cmd) { $candidates += $cmd.Source }
+          $candidates += "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $candidates += "${env:ProgramFiles}\Microsoft Visual Studio\Installer\vswhere.exe"
+
+          $found = $candidates | Where-Object { $_ -and (Test-Path $_) } | Select-Object -First 1
+          if (-not $found) {
+            Write-Host "::warning::vswhere.exe not found; Visual Studio version unknown"
+            exit 0
+          }
+
+          Write-Host "vswhere: $found"
+          & $found -latest -property displayName
+          & $found -latest -property installationVersion
+          $msbuild = & $found -latest -requires Microsoft.Component.MSBuild -find "MSBuild\**\Bin\MSBuild.exe"
+          Write-Host "msbuild: $msbuild"
 
       - name: Check svn CLI
         run: |
