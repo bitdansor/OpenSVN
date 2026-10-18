@@ -14,6 +14,10 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   async functions (SE-0461), which hid the diagnosis locally rather than fixing
   it. The CI toolchain assertion now compares major.minor instead of only the
   major version, so a future runner image cannot silently move the baseline.
+- CodeQL failed after a 12-minute Swift build with "Code scanning is not enabled
+  for this repository": code scanning needs GitHub Advanced Security on private
+  repositories. The job is now skipped (not faked green) while the repository is
+  private, and starts automatically once it is public.
 - Windows CI failed before building anything: `Report toolchain` hardcoded
   `vswhere.exe` under `%ProgramFiles%`, but the windows-2022 image installs the
   Visual Studio Installer under `%ProgramFiles(x86)%`. The step now probes PATH

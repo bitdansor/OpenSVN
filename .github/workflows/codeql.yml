@@ -2,6 +2,14 @@ name: CodeQL
 
 # Swift is analysed today. C++ joins the matrix in the PR that makes the Windows
 # build green (CodeQL needs a compilable project, and apps/windows is a skeleton).
+#
+# Code scanning is only available on private repositories with a GitHub Advanced
+# Security licence. This repository is private and has none, so the first run
+# (39106470737) spent 12 minutes building and then failed in Analyze with
+# "Code scanning is not enabled for this repository". Skipping on private repos
+# keeps the state honest — the job shows as skipped, never as a passing scan.
+# The project is Apache-2.0 and will be opened; scanning then starts with no edit.
+# To run it while private, enable code scanning and remove the `if:` line.
 
 on:
   push:
@@ -23,6 +31,7 @@ permissions:
 jobs:
   analyze:
     name: Analyze (${{ matrix.language }})
+    if: github.event.repository.private == false
     runs-on: macos-15
     timeout-minutes: 40
     strategy:
