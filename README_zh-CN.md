@@ -11,12 +11,22 @@ macOS 端使用 Swift 6 + SwiftUI/AppKit；Windows 端（规划中）使用 C++2
 
 ```text
 apps/macos/            Swift Package（OpenSVNCore + SwiftUI 应用）与 Xcode 工程
+apps/windows/          WinUI 3 + C++20 骨架，尚未编译（见其 README）
 specifications/        跨平台行为契约（唯一事实来源）
 tests/fixtures/        采集的 `svn --xml` 输出，用于契约测试
-tests/integration/     端到端工作副本场景
-scripts/               测试仓库、环境引导与应用打包脚本
-docs/                  架构说明与 ADR
+tests/scenarios/       故障注入场景目录（F1–F15）与将来的执行器
+tests/integration/     跨平台的慢速工作副本场景
+scripts/               环境引导、测试仓库、fixture 采集、打包与发布自检
+packaging/{macos,windows}/  签名、公证、安装包定义（阶段 6）
+docs/                  架构、ADR、用户手册、发布说明
+assets/                品牌源文件、生成的图标、截图
+third_party/           第三方依赖清单与许可证义务
 ```
+
+两端各自写清"哪些是真的验证过的"：
+[macOS](apps/macos/README.md)（已实现、有测试）、
+[Windows](apps/windows/README.md)（骨架、未编译）。在 `windows-ci.yml` 变绿之前，
+Windows 目录里没有任何东西可以声称可用。
 
 ## 构建与运行（macOS）
 

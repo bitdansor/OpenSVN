@@ -13,6 +13,16 @@
 | svnadmin | 1.14.5 | 仅测试仓库使用，不是用户依赖 |
 | Python | 3.13（脚本辅助） | 仅 `scripts/` 与 Release 校验使用，无第三方包 |
 | Git | 系统自带 | |
+| **Windows** | 11（build 22000+） | 主目标，见 ADR-0004 |
+| Visual Studio | 2022 17.x / 2026（含 **Desktop development with C++** 与 **Windows App SDK C++ templates**） | 版本以 `vswhere -latest` 实际输出为准，写入本表后才可采信 |
+| MSVC 平台工具集 | v143 | `OpenSVN.vcxproj` 固定，不用 `$(DefaultPlatformToolset)` |
+| C++ 标准 | C++20（`stdcpp20`） | 不用 C++23 预览特性 |
+| Windows SDK | 10.0.26100.0（最低 10.0.22000.0） | 工程固定，不用 `10.0`（浮动到最新） |
+| Windows App SDK | 1.6.250205002（NuGet 固定） | 浮版本是构建漂移的主要来源 |
+| vcpkg | manifest 模式，`builtin-baseline` 2024.11.16 | 仅测试工程使用（GoogleTest 1.14） |
+
+`apps/windows` 的任何版本调整都必须同时更新本表与工程文件；`windows-ci.yml`
+里的 `WINDOWS_SDK` 变量是第三处，三者不一致即视为配置错误。
 
 ## 复现命令
 

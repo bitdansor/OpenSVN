@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="OpenSVN.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:muxc="using:Microsoft.UI.Xaml.Controls"
+    Title="OpenSVN">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <muxc:NavigationView x:Name="Navigation" Grid.Row="0"
+                             PaneDisplayMode="Left"
+                             IsBackButtonVisible="Collapsed"
+                             IsSettingsVisible="False"
+                             SelectionChanged="OnNavigationSelectionChanged">
+            <muxc:NavigationView.MenuItems>
+                <muxc:NavigationViewItem Content="Repository" Tag="repository" />
+                <muxc:NavigationViewItem Content="Changes" Tag="changes" />
+                <muxc:NavigationViewItem Content="History" Tag="history" />
+                <muxc:NavigationViewItem Content="Diff" Tag="diff" />
+                <muxc:NavigationViewItem Content="Commit" Tag="commit" />
+                <muxc:NavigationViewItem Content="Settings" Tag="settings" />
+            </muxc:NavigationView.MenuItems>
+
+            <Grid Padding="24">
+                <StackPanel Spacing="8" VerticalAlignment="Center">
+                    <TextBlock x:Name="SectionTitle" Style="{StaticResource TitleTextBlockStyle}" />
+                    <TextBlock x:Name="SectionBody" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+            </Grid>
+        </muxc:NavigationView>
+
+        <!-- One status line, always visible: the same place the macOS task center
+             reports progress and failures. Tests do not depend on it. -->
+        <InfoBar x:Name="StatusBar" Grid.Row="1" IsOpen="False" IsClosable="True"
+                 Severity="Informational" />
+    </Grid>
+</Window>

@@ -1,0 +1,38 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "OpenSVN", "OpenSVN\OpenSVN.vcxproj", "{D3BA0DFC-E5EF-5EA0-90E2-F182EBAA1D93}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "OpenSVNTests", "OpenSVNTests\OpenSVNTests.vcxproj", "{0AC34523-672F-55F7-868A-6603291CBADA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|ARM64 = Debug|ARM64
+		Release|x64 = Release|x64
+		Release|ARM64 = Release|ARM64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D3BA0DFC-E5EF-5EA0-90E2-F182EBAA1D93}.Debug|x64.ActiveCfg = Debug|x64
+		{D3BA0DFC-E5EF-5EA0-90E2-F182EBAA1D93}.Debug|x64.Build.0 = Debug|x64
+		{D3BA0DFC-E5EF-5EA0-90E2-F182EBAA1D93}.Debug|ARM64.ActiveCfg = Debug|ARM64
+		{D3BA0DFC-E5EF-5EA0-90E2-F182EBAA1D93}.Debug|ARM64.Build.0 = Debug|ARM64
+		{D3BA0DFC-E5EF-5EA0-90E2-F182EBAA1D93}.Release|x64.ActiveCfg = Release|x64
+		{D3BA0DFC-E5EF-5EA0-90E2-F182EBAA1D93}.Release|x64.Build.0 = Release|x64
+		{D3BA0DFC-E5EF-5EA0-90E2-F182EBAA1D93}.Release|ARM64.ActiveCfg = Release|ARM64
+		{D3BA0DFC-E5EF-5EA0-90E2-F182EBAA1D93}.Release|ARM64.Build.0 = Release|ARM64
+		{0AC34523-672F-55F7-868A-6603291CBADA}.Debug|x64.ActiveCfg = Debug|x64
+		{0AC34523-672F-55F7-868A-6603291CBADA}.Debug|x64.Build.0 = Debug|x64
+		{0AC34523-672F-55F7-868A-6603291CBADA}.Debug|ARM64.ActiveCfg = Debug|x64
+		{0AC34523-672F-55F7-868A-6603291CBADA}.Release|x64.ActiveCfg = Release|x64
+		{0AC34523-672F-55F7-868A-6603291CBADA}.Release|x64.Build.0 = Release|x64
+		{0AC34523-672F-55F7-868A-6603291CBADA}.Release|ARM64.ActiveCfg = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {EE134273-0179-5B01-BFA1-4534286B0DBC}
+	EndGlobalSection
+EndGlobal

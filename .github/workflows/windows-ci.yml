@@ -1,0 +1,95 @@
+name: Windows CI
+
+# This workflow is the gate the Windows port must eventually pass. Right now the
+# C++ has never been compiled, so the job is non-blocking on purpose: a workflow
+# that is red from day one teaches people to ignore CI. Remove the
+# `continue-on-error` lines in the PR that makes the build green — that PR is the
+# real "Windows exists" milestone.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/windows/**"
+      - "tests/fixtures/**"
+      - "scripts/bootstrap-windows.ps1"
+      - ".github/workflows/windows-ci.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/windows/**"
+      - "tests/fixtures/**"
+      - ".github/workflows/windows-ci.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: windows-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Pinned SDK baseline, see docs/development/toolchain.md.
+  WINDOWS_SDK: "10.0.26100.0"
+
+jobs:
+  build:
+    name: Build + tests (x64)
+    runs-on: windows-2022
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Report toolchain
+        run: |
+          Get-ComputerInfo -Property OsName, OsVersion | Format-List
+          & "${env:ProgramFiles}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property displayName
+          & "${env:ProgramFiles}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationVersion
+
+      - name: Check svn CLI
+        run: |
+          # svn.exe ships with the GitHub runner image; if that changes, install it.
+          if (-not (Get-Command svn.exe -ErrorAction SilentlyContinue)) {
+            Write-Host "::warning::svn.exe not on PATH, contract tests against a real repository will be skipped"
+          } else {
+            svn --version --quiet
+          }
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Restore
+        continue-on-error: true
+        run: msbuild apps/windows/OpenSVN.sln /t:Restore /p:Configuration=Debug /p:Platform=x64
+
+      - name: Build app
+        continue-on-error: true
+        run: msbuild apps/windows/OpenSVN.sln /p:Configuration=Debug /p:Platform=x64 /m /verbosity:minimal
+
+      - name: Run contract tests
+        continue-on-error: true
+        run: |
+          $test = Get-ChildItem -Recurse -Filter OpenSVNTests.exe | Select-Object -First 1
+          if (-not $test) { Write-Error "OpenSVNTests.exe not produced"; exit 1 }
+          & $test.FullName --gtest_output=xml:test-results.xml
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-results
+          path: test-results.xml
+          if-no-files-found: ignore
+
+  # Parser parity is the reason the Windows job exists at all: the same fixture
+  # must produce the same fields. Enabled once the parser compiles.
+  parity:
+    name: Fixture parity (blocked until parser compiles)
+    runs-on: windows-2022
+    needs: build
+    if: false
+    steps:
+      - run: echo "Compare OpenSVN Windows JSON output with the macOS baseline."

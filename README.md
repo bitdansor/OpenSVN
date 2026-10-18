@@ -12,12 +12,22 @@ No Electron, no Qt, no embedded browser.
 
 ```text
 apps/macos/            Swift Package (OpenSVNCore + SwiftUI app) and Xcode project
+apps/windows/          WinUI 3 + C++20: skeleton, never compiled yet (see its README)
 specifications/        Cross-platform behaviour contracts (the source of truth)
 tests/fixtures/        Recorded `svn --xml` outputs used by contract tests
-tests/integration/     End-to-end working-copy scenarios
-scripts/               Test repo setup, bootstrap, app bundling
-docs/                  Architecture notes and ADRs
+tests/scenarios/       Fault-injection catalogue (F1-F15) and its future harness
+tests/integration/     Slow cross-platform working-copy scenarios
+scripts/               Bootstrap, test repo, fixtures, app bundling, release checks
+packaging/{macos,windows}/  Signing, notarisation, installer definitions (stage 6)
+docs/                  Architecture, ADRs, user guide, release notes
+assets/                Branding sources; generated icons; screenshots
+third_party/           Dependency inventory and licence obligations
 ```
+
+Both platform READMEs state what is actually verified:
+[macOS](apps/macos/README.md) (implemented, tested) and
+[Windows](apps/windows/README.md) (skeleton, uncompiled). Nothing in the Windows
+tree is claimed to work until `windows-ci.yml` is green.
 
 ## Build & run (macOS)
 

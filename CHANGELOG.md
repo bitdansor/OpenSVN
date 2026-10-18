@@ -42,6 +42,37 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and the rules for adding a dependency.
 - `CODE_OF_CONDUCT.md`.
 
+### Added (Windows, uncompiled skeleton)
+
+- `apps/windows/` WinUI 3 + C++20 project: `OpenSVN.sln`, `OpenSVN.vcxproj`,
+  `Package.appxmanifest`, `app.manifest`, shell (`App`, `MainWindow`) with the five
+  navigation targets.
+- Portable model layer (`Models/SVNModels.*`): same fields and error identifiers as
+  the macOS implementation; unknown status tokens preserved. Compiled and asserted
+  on macOS with clang.
+- `Services/SVNProcessRunner.*`: `CreateProcessW` from an argument array with
+  `CommandLineToArgvW`-correct quoting, Job Object so cancellation kills the tree,
+  two drain threads, `std::stop_token`, stdin writer thread.
+- `Services/SVNXMLParser.*` on `Windows.Data.Xml.Dom`, `Services/CredentialStore.*`
+  on Credential Manager, `Services/SVNService.*` with `WorkingCopyGate` and
+  confirmation guards for destructive operations.
+- `OpenSVNTests/` GoogleTest contract tests (model layer), `vcpkg.json` manifest.
+- `.github/workflows/windows-ci.yml` (non-blocking until the port compiles),
+  `scripts/bootstrap-windows.ps1`.
+
+### Added (repository layout)
+
+- `assets/{branding,icons,screenshots}`, `packaging/windows`, `docs/user-guide`,
+  `docs/releases`, `apps/{macos,windows}/README.md`, `tests/integration/README.md`
+  — the planned tree from 规划 §4, with the macOS deviation recorded in ADR-0007.
+- `verify-release.py --layout` checks every planned directory carries a committed
+  file (an empty directory does not survive a clone) and that both platform
+  READMEs state their status.
+- ADR-0001 (naming), ADR-0002 (licence and third-party obligations),
+  ADR-0005 (Windows packaging), ADR-0007 (macOS source layout).
+- `.github/workflows/{release,codeql}.yml`: release refuses to publish unsigned
+  artifacts; CodeQL covers Swift until the C++ compiles.
+
 ## [0.1.0-dev] - 2026-10-18
 
 - Repository skeleton, governance files, ADR-0003 (bundled SVN runtime).

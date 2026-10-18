@@ -1,0 +1,49 @@
+name: CodeQL
+
+# Swift is analysed today. C++ joins the matrix in the PR that makes the Windows
+# build green (CodeQL needs a compilable project, and apps/windows is a skeleton).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/macos/**"
+      - ".github/workflows/codeql.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "apps/macos/**"
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  security-events: write
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: macos-15
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [swift]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-and-quality
+
+      - name: Build
+        working-directory: apps/macos
+        run: swift build
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"

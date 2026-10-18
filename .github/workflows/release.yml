@@ -1,0 +1,84 @@
+name: Release
+
+# Stage 6 work, sketched here so the shape is agreed before it is built:
+#   tag v* -> build both platforms -> sign -> notarise/verify -> publish assets.
+# Until then this workflow produces an UNSIGNED local artifact and stops. It must
+# never publish something unverified, so the release job refuses to run without
+# the signing secrets.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build artifacts without creating a release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    name: Check VERSION matches the tag
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: read
+        run: echo "version=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
+      - name: Compare with tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          version="${{ steps.read.outputs.version }}"
+          # A tag must be the release version, never a -dev one.
+          case "$version" in *-dev*) echo "::error::VERSION is '$version', refusing to release a dev build"; exit 1;; esac
+          case "$tag" in "$version"|"$version"-*) ;; *) echo "::error::tag v$tag does not match VERSION $version"; exit 1;; esac
+
+  macos:
+    name: macOS bundle (unsigned)
+    runs-on: macos-15
+    needs: version
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: CONFIG=release scripts/build-macos-app.sh
+      - name: Verify bundle
+        run: python3 scripts/verify-release.py --bundle build/OpenSVN.app
+      - name: Package
+        run: |
+          ditto -c -k --keepParent build/OpenSVN.app "OpenSVN-${{ needs.version.outputs.version }}-macos-arm64-UNSIGNED.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-unsigned
+          path: OpenSVN-*-UNSIGNED.zip
+
+  windows:
+    name: Windows package (unsigned)
+    runs-on: windows-2022
+    needs: version
+    # Disabled until the Windows project compiles: see apps/windows/README.md.
+    if: false
+    steps:
+      - uses: actions/checkout@v4
+      - run: msbuild apps/windows/OpenSVN.sln /p:Configuration=Release /p:Platform=x64
+      - name: Packaging (not implemented)
+        run: |
+          # ADR-0005 decides MSIX vs EXE; until then there is nothing to package.
+          echo "TODO: msix / exe packaging per ADR-0005"
+
+  publish:
+    name: Publish release
+    runs-on: ubuntu-latest
+    needs: [version, macos]
+    if: startsWith(github.ref, 'refs/tags/v') && (inputs.dry_run == false || inputs.dry_run == null)
+    steps:
+      - uses: actions/download-artifact@v4
+      - name: Refuse to publish unsigned builds
+        run: |
+          echo "::error::Signing and notarisation are not wired up yet (stage 6)."
+          echo "Publishing now would ship an unsigned app that Gatekeeper blocks."
+          exit 1

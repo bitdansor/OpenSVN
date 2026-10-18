@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Repository and release-artifact consistency checks.
 
-Modes (any combination, default = --metadata --fixtures):
+Modes (any combination, default = --layout --metadata --fixtures):
 
+  --layout          the planned tree from 规划 §4 exists and is not empty
   --metadata        VERSION / CHANGELOG / Info.plist / governance files agree
   --fixtures        every recorded `svn --xml` fixture is well-formed and typed
   --bundle PATH     an assembled .app is internally consistent and shippable
-  --all             metadata + fixtures + bundle (requires --bundle)
+  --all             layout + metadata + fixtures + bundle (requires --bundle)
 
 Exit code is 0 only when every check passes. This script must stay
 dependency-free: it runs on a bare CI runner and locally before a release.
@@ -63,6 +64,69 @@ REQUIRED_FILES = [
     "docs/architecture/overview.md",
     "docs/development/toolchain.md",
     ".github/pull_request_template.md",
+]
+
+
+# The planned tree from 规划 §4, adjusted by ADR-0007 for the macOS SwiftPM
+# layout (Sources/ + Tests/ instead of a pure Xcode-native tree). Every entry here
+# must exist and carry at least one file: an empty directory is not tracked by git,
+# so "the folder exists" is only true if something inside it is committed.
+LAYOUT_DIRS = [
+    ".github/workflows",
+    ".github/ISSUE_TEMPLATE",
+    "apps/macos/Sources/OpenSVNCore",
+    "apps/macos/Sources/OpenSVN",
+    "apps/macos/Tests/OpenSVNCoreTests",
+    "apps/macos/Resources",
+    "apps/macos/OpenSVN.xcodeproj",
+    "apps/windows",
+    "apps/windows/OpenSVN",
+    "apps/windows/OpenSVN/Models",
+    "apps/windows/OpenSVN/Services",
+    "apps/windows/OpenSVN/Views",
+    "apps/windows/OpenSVN/Assets",
+    "apps/windows/OpenSVNTests",
+    "specifications",
+    "tests/fixtures",
+    "tests/scenarios",
+    "tests/integration",
+    "scripts",
+    "packaging/macos",
+    "packaging/windows",
+    "docs/architecture",
+    "docs/development/decisions",
+    "docs/user-guide",
+    "docs/releases",
+    "assets/icons",
+    "assets/branding",
+    "assets/screenshots",
+    "third_party",
+]
+
+# Files whose absence would mean a platform or a packaging path is only nominal.
+LAYOUT_FILES = [
+    "apps/windows/README.md",
+    "apps/windows/OpenSVN.sln",
+    "apps/windows/vcpkg.json",
+    "apps/windows/OpenSVN/OpenSVN.vcxproj",
+    "apps/windows/OpenSVN/Package.appxmanifest",
+    "apps/windows/OpenSVNTests/OpenSVNTests.vcxproj",
+    "apps/macos/Package.swift",
+    "scripts/bootstrap-macos.sh",
+    "scripts/bootstrap-windows.ps1",
+    "scripts/build-macos-app.sh",
+    "scripts/setup-test-repo.sh",
+    "scripts/capture-fixtures.sh",
+    "scripts/verify-release.py",
+    ".github/workflows/macos-ci.yml",
+    ".github/workflows/windows-ci.yml",
+    ".github/workflows/release.yml",
+    ".github/workflows/codeql.yml",
+    "packaging/macos/README.md",
+    "packaging/windows/README.md",
+    "docs/user-guide/README.md",
+    "docs/releases/README.md",
+    "assets/README.md",
 ]
 
 
@@ -218,6 +282,49 @@ def check_metadata(report: Report) -> None:
 
 
 # ---------------------------------------------------------------------------
+# layout
+# ---------------------------------------------------------------------------
+def check_layout(report: Report) -> None:
+    report.section("Repository layout (规划 §4, ADR-0007)")
+
+    missing_dirs = []
+    for relative in LAYOUT_DIRS:
+        directory = ROOT / relative
+        if not directory.is_dir():
+            missing_dirs.append(relative)
+            report.fail(f"missing directory: {relative}")
+        elif not any(directory.iterdir()):
+            # Git cannot track an empty directory, so this would vanish on clone.
+            missing_dirs.append(relative)
+            report.fail(f"directory is empty and would not survive a clone: {relative}")
+
+    missing_files = []
+    for relative in LAYOUT_FILES:
+        path = ROOT / relative
+        if path.is_file():
+            report.ok(relative)
+        else:
+            missing_files.append(relative)
+            report.fail(f"missing file: {relative}")
+
+    if not missing_dirs and not missing_files:
+        report.ok(f"{len(LAYOUT_DIRS)} planned directories and {len(LAYOUT_FILES)} anchor files present")
+
+    # Both platforms must state their own status; a silent empty port is how
+    # "Windows support" gets claimed without existing.
+    for platform in ("macos", "windows"):
+        readme = ROOT / "apps" / platform / "README.md"
+        if not readme.is_file():
+            report.fail(f"apps/{platform}/README.md is missing — the platform state must be written down")
+        else:
+            text = readme.read_text(encoding="utf-8").lower()
+            if "status" in text:
+                report.ok(f"apps/{platform}/README.md states its status")
+            else:
+                report.warn(f"apps/{platform}/README.md does not state a status")
+
+
+# ---------------------------------------------------------------------------
 # fixtures
 # ---------------------------------------------------------------------------
 def fixture_version() -> str | None:
@@ -369,15 +476,20 @@ def check_bundle(report: Report, bundle_arg: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="OpenSVN consistency checks")
     parser.add_argument("--metadata", action="store_true", help="VERSION/CHANGELOG/Info.plist/files")
+    parser.add_argument("--layout", action="store_true", help="planned directory tree is intact")
     parser.add_argument("--fixtures", action="store_true", help="recorded svn XML fixtures")
     parser.add_argument("--bundle", metavar="PATH", help="assembled .app to inspect")
     parser.add_argument("--all", action="store_true", help="everything (needs --bundle)")
     args = parser.parse_args()
 
-    run_metadata = args.metadata or args.all or (not args.fixtures and not args.bundle)
-    run_fixtures = args.fixtures or args.all or (not args.metadata and not args.bundle)
+    explicit = args.metadata or args.layout or args.fixtures or bool(args.bundle) or args.all
+    run_layout = args.layout or args.all or not explicit
+    run_metadata = args.metadata or args.all or not explicit
+    run_fixtures = args.fixtures or args.all or not explicit
 
     report = Report()
+    if run_layout:
+        check_layout(report)
     if run_metadata:
         check_metadata(report)
     if run_fixtures:
