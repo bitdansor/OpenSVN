@@ -31,7 +31,17 @@ final class AppState {
     var showingTaskCenter = false
     var showingSettings = false
 
+    /// Writes that were running when a previous launch died. Empty during a
+    /// healthy session; the banner only appears when this is non-empty.
+    private(set) var recoveryItems: [OperationJournal.Entry] = []
+    /// Set when the journal file could not be read and was moved aside.
+    private(set) var journalQuarantineURL: URL?
+    /// Last recovery action failure, shown inside the banner rather than in the
+    /// "SVN unavailable" alert (which would be the wrong story).
+    var recoveryError: String?
+
     let taskCenter = TaskCenter()
+    let journal = OperationJournal()
     private let repositoryStore = RepositoryStore()
     private var authContinuation: CheckedContinuation<SVNCredential?, Never>?
 
@@ -55,6 +65,13 @@ final class AppState {
         isStarting = true
         defer { isStarting = false }
         bookmarks = repositoryStore.load()
+
+        // Read the journal *before* building the service: a previous crash is the
+        // first thing the user needs to know about, and it is independent of
+        // whether svn can be found right now.
+        recoveryItems = await journal.unfinished()
+        journalQuarantineURL = await journal.quarantineURL()
+
         await buildService()
 
         if selectedBookmarkID == nil, let first = bookmarks.first {
@@ -73,11 +90,13 @@ final class AppState {
                     bundledCandidates: SVNServiceFactory.bundledCandidateURLs(),
                     credentialStore: KeychainCredentialStore(),
                     environment: ProcessInfo.processInfo.environment,
-                    timeout: settings.operationTimeout
+                    timeout: settings.operationTimeout,
+                    journal: journal
                 )
             )
             self.service = service
-            self.installation = await service.installation
+            // `installation` is a `nonisolated let` on the actor.
+            self.installation = service.installation
             self.startupError = nil
             for session in sessions.values {
                 session.attach(service: service, taskCenter: taskCenter)
@@ -214,6 +233,62 @@ final class AppState {
         } catch {
             startupError = SVNError(code: .unknown, message: error.localizedDescription)
         }
+    }
+
+    // MARK: - Interrupted operations
+
+    /// Runs `svn cleanup` for an operation that a previous launch left unfinished.
+    ///
+    /// Cleanup, not "retry": a half-finished commit must never be blindly
+    /// repeated, and a locked working copy is the usual symptom. Retrying is the
+    /// user's decision, made after the state is readable again.
+    func recover(_ entry: OperationJournal.Entry) async {
+        guard let service else {
+            recoveryError = "SVN 服务尚未就绪，暂时无法清理。"
+            return
+        }
+        let url = URL(fileURLWithPath: entry.workingCopy)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            recoveryError = "目录已不存在：\(entry.workingCopy)"
+            return
+        }
+        do {
+            _ = try await taskCenter.run("清理 \(url.lastPathComponent)") { _ in
+                try await service.cleanup(at: url)
+            }
+            await journal.discard(entry.id)
+            recoveryItems = await journal.unfinished()
+            recoveryError = nil
+
+            let standardized = url.standardizedFileURL.path
+            if let session = sessions.values.first(where: {
+                URL(fileURLWithPath: $0.bookmark.path).standardizedFileURL.path == standardized
+            }) {
+                await session.refresh()
+            }
+        } catch {
+            let svnError = (error as? SVNError)
+                ?? SVNError(code: .unknown, message: error.localizedDescription)
+            recoveryError = "清理失败：\(svnError.message)"
+        }
+    }
+
+    func dismissRecovery(_ entry: OperationJournal.Entry) async {
+        await journal.discard(entry.id)
+        recoveryItems = await journal.unfinished()
+        recoveryError = nil
+    }
+
+    func dismissAllRecovery() async {
+        await journal.discardAll()
+        recoveryItems = await journal.unfinished()
+        recoveryError = nil
+    }
+
+    /// Hides the "journal was unreadable" notice. The corrupt file itself stays
+    /// on disk (`journal.corrupt-*.json`); only the banner is dismissed.
+    func acknowledgeJournalCorruption() {
+        journalQuarantineURL = nil
     }
 
     // MARK: - Checkout

@@ -10,19 +10,25 @@ public struct SVNServiceConfiguration: Sendable {
     /// Where conflict backups go. `nil` uses `ConflictGuard.defaultRoot`
     /// (`~/Library/Application Support/OpenSVN/ConflictBackups`).
     public var conflictBackupRoot: URL?
+    /// Records write operations so an interrupted one can be found on the next
+    /// launch. `nil` disables recording (tests, and headless use where there is
+    /// no UI to act on a recovery prompt).
+    public var journal: OperationJournal?
 
     public init(
         installation: SVNInstallation,
         credentialStore: any CredentialStoring = KeychainCredentialStore(),
         environment: [String: String] = ProcessInfo.processInfo.environment,
         timeout: TimeInterval = 300,
-        conflictBackupRoot: URL? = nil
+        conflictBackupRoot: URL? = nil,
+        journal: OperationJournal? = nil
     ) {
         self.installation = installation
         self.credentialStore = credentialStore
         self.environment = environment
         self.timeout = timeout
         self.conflictBackupRoot = conflictBackupRoot
+        self.journal = journal
     }
 }
 
@@ -45,17 +51,40 @@ public actor SVNService {
     private let gate = WCWriteGate()
     private let defaultTimeout: TimeInterval
     private let conflictGuard: ConflictGuard
+    private let journal: OperationJournal?
 
     public init(configuration: SVNServiceConfiguration) {
         self.installation = configuration.installation
         self.credentials = configuration.credentialStore
         self.defaultTimeout = configuration.timeout
         self.conflictGuard = ConflictGuard(root: configuration.conflictBackupRoot)
+        self.journal = configuration.journal
         self.runner = SVNProcessRunner(
             executableURL: configuration.installation.executableURL,
             environment: configuration.environment,
             defaultTimeout: configuration.timeout
         )
+    }
+
+    // MARK: - Interruption journal
+
+    /// Starts recording a write. Returns `nil` when journaling is off or the
+    /// write to disk failed — neither may block the operation itself. A commit
+    /// must not be refused because `~/Library` is read-only.
+    private func beginJournal(
+        _ kind: OperationJournal.Entry.Kind,
+        workingCopy: URL,
+        summary: String
+    ) async -> UUID? {
+        guard let journal else { return nil }
+        return try? await journal.begin(kind, workingCopy: workingCopy, summary: summary)
+    }
+
+    /// Removes the entry on both paths. A failed operation is *not* an
+    /// interrupted one: its outcome is known, so the record must go.
+    private func finishJournal(_ ticket: UUID?) async {
+        guard let journal, let ticket else { return }
+        try? await journal.finish(ticket)
     }
 
     // MARK: - Reads
@@ -217,14 +246,25 @@ public actor SVNService {
         let checkoutArguments = arguments
 
         let key = destination.standardizedFileURL.path
-        try await gate.withLock(key) {
-            _ = try await self.invoke(
-                checkoutArguments,
-                workingDirectory: nil,
-                credential: credential,
-                repositoryURL: url,
-                progress: progress
-            )
+        let ticket = await beginJournal(
+            .checkout,
+            workingCopy: destination,
+            summary: "检出到 \(destination.lastPathComponent)"
+        )
+        do {
+            try await gate.withLock(key) {
+                _ = try await self.invoke(
+                    checkoutArguments,
+                    workingDirectory: nil,
+                    credential: credential,
+                    repositoryURL: url,
+                    progress: progress
+                )
+            }
+            await finishJournal(ticket)
+        } catch {
+            await finishJournal(ticket)
+            throw error
         }
     }
 
@@ -235,36 +275,48 @@ public actor SVNService {
         progress: SVNProgressHandler? = nil
     ) async throws -> UpdateSummary {
         let key = WorkingCopyLocator.serializationKey(for: target)
-        return try await gate.withLock(key) {
-            var args = ["update", "--accept", "postpone"]
-            if let revision {
-                args += ["-r", String(revision)]
-            }
-            args.append(target.standardizedFileURL.path)
+        let ticket = await beginJournal(
+            .update,
+            workingCopy: URL(fileURLWithPath: key),
+            summary: "更新 \(target.lastPathComponent)"
+        )
+        do {
+            let summary = try await gate.withLock(key) {
+                var args = ["update", "--accept", "postpone"]
+                if let revision {
+                    args += ["-r", String(revision)]
+                }
+                args.append(target.standardizedFileURL.path)
 
-            let repositoryURL = await self.repositoryURL(for: target.path)
-            let result = try await self.invoke(
-                args,
-                workingDirectory: nil,
-                credential: credential,
-                repositoryURL: repositoryURL,
-                progress: progress
-            )
+                let repositoryURL = await self.repositoryURL(for: target.path)
+                let result = try await self.invoke(
+                    args,
+                    workingDirectory: nil,
+                    credential: credential,
+                    repositoryURL: repositoryURL,
+                    progress: progress
+                )
 
-            let parsed = SVNOutputParser.parseUpdate(result.standardOutput)
-            var summary = UpdateSummary(
-                target: target.path,
-                toRevision: SVNOutputParser.parseUpdatedRevision(result.standardOutput),
-                updatedPaths: parsed.updated,
-                conflictedPaths: parsed.conflicted,
-                removedPaths: parsed.deleted,
-                rawOutput: LogRedactor.redact(result.standardOutput)
-            )
-            // Reading the revision from XML is more reliable than the text line.
-            if let report = try? await self.info(at: target.path) {
-                summary.toRevision = report.primary?.revision
+                let parsed = SVNOutputParser.parseUpdate(result.standardOutput)
+                var summary = UpdateSummary(
+                    target: target.path,
+                    toRevision: SVNOutputParser.parseUpdatedRevision(result.standardOutput),
+                    updatedPaths: parsed.updated,
+                    conflictedPaths: parsed.conflicted,
+                    removedPaths: parsed.deleted,
+                    rawOutput: LogRedactor.redact(result.standardOutput)
+                )
+                // Reading the revision from XML is more reliable than the text line.
+                if let report = try? await self.info(at: target.path) {
+                    summary.toRevision = report.primary?.revision
+                }
+                return summary
             }
+            await finishJournal(ticket)
             return summary
+        } catch {
+            await finishJournal(ticket)
+            throw error
         }
     }
 
@@ -277,12 +329,23 @@ public actor SVNService {
     ) async throws {
         guard let first = paths.first else { return }
         let key = WorkingCopyLocator.serializationKey(for: first)
-        try await gate.withLock(key) {
-            var args = ["add"]
-            if force { args.append("--force") }
-            if includeIgnored { args.append("--no-ignore") }
-            args += paths.map(\.standardizedFileURL.path)
-            _ = try await self.invoke(args, workingDirectory: nil, credential: nil, repositoryURL: nil)
+        let ticket = await beginJournal(
+            .add,
+            workingCopy: URL(fileURLWithPath: key),
+            summary: "添加 \(paths.count) 个路径"
+        )
+        do {
+            try await gate.withLock(key) {
+                var args = ["add"]
+                if force { args.append("--force") }
+                if includeIgnored { args.append("--no-ignore") }
+                args += paths.map(\.standardizedFileURL.path)
+                _ = try await self.invoke(args, workingDirectory: nil, credential: nil, repositoryURL: nil)
+            }
+            await finishJournal(ticket)
+        } catch {
+            await finishJournal(ticket)
+            throw error
         }
     }
 
@@ -322,11 +385,22 @@ public actor SVNService {
             )
         }
         let key = WorkingCopyLocator.serializationKey(for: paths[0])
-        try await gate.withLock(key) {
-            var args = ["delete"]
-            if force { args.append("--force") }
-            args += paths.map(\.standardizedFileURL.path)
-            _ = try await self.invoke(args, workingDirectory: nil, credential: nil, repositoryURL: nil)
+        let ticket = await beginJournal(
+            .delete,
+            workingCopy: URL(fileURLWithPath: key),
+            summary: "删除 \(paths.count) 个路径"
+        )
+        do {
+            try await gate.withLock(key) {
+                var args = ["delete"]
+                if force { args.append("--force") }
+                args += paths.map(\.standardizedFileURL.path)
+                _ = try await self.invoke(args, workingDirectory: nil, credential: nil, repositoryURL: nil)
+            }
+            await finishJournal(ticket)
+        } catch {
+            await finishJournal(ticket)
+            throw error
         }
     }
 
@@ -364,10 +438,21 @@ public actor SVNService {
             )
         }
         let key = WorkingCopyLocator.serializationKey(for: paths[0])
-        try await gate.withLock(key) {
-            var args = ["revert", "--depth", recursive ? "infinity" : "empty"]
-            args += paths.map(\.standardizedFileURL.path)
-            _ = try await self.invoke(args, workingDirectory: nil, credential: nil, repositoryURL: nil)
+        let ticket = await beginJournal(
+            .revert,
+            workingCopy: URL(fileURLWithPath: key),
+            summary: "还原 \(paths.count) 个路径"
+        )
+        do {
+            try await gate.withLock(key) {
+                var args = ["revert", "--depth", recursive ? "infinity" : "empty"]
+                args += paths.map(\.standardizedFileURL.path)
+                _ = try await self.invoke(args, workingDirectory: nil, credential: nil, repositoryURL: nil)
+            }
+            await finishJournal(ticket)
+        } catch {
+            await finishJournal(ticket)
+            throw error
         }
     }
 
@@ -388,36 +473,48 @@ public actor SVNService {
         }
 
         let key = WorkingCopyLocator.serializationKey(for: paths[0])
-        return try await gate.withLock(key) {
-            // Re-check the working copy before committing: a conflict discovered
-            // after the dialog opened must abort the commit, not be smuggled in.
-            for path in paths {
-                let snapshot = try await self.status(at: path)
-                if let conflicted = snapshot.conflicted.first {
-                    throw SVNError(
-                        code: .conflictRemains,
-                        message: "存在未解决的冲突：\(conflicted.path)",
-                        diagnosticOutput: "请先解决冲突并标记 resolve 后再提交。"
-                    )
+        let ticket = await beginJournal(
+            .commit,
+            workingCopy: URL(fileURLWithPath: key),
+            summary: "提交 \(paths.count) 个路径"
+        )
+        do {
+            let summary = try await gate.withLock(key) {
+                // Re-check the working copy before committing: a conflict discovered
+                // after the dialog opened must abort the commit, not be smuggled in.
+                for path in paths {
+                    let snapshot = try await self.status(at: path)
+                    if let conflicted = snapshot.conflicted.first {
+                        throw SVNError(
+                            code: .conflictRemains,
+                            message: "存在未解决的冲突：\(conflicted.path)",
+                            diagnosticOutput: "请先解决冲突并标记 resolve 后再提交。"
+                        )
+                    }
                 }
-            }
 
-            let repositoryURL = await self.repositoryURL(for: paths[0].path)
-            var args = ["commit", "-m", trimmed, "--encoding", "UTF-8"]
-            args += paths.map(\.standardizedFileURL.path)
-            let result = try await self.invoke(
-                args,
-                workingDirectory: nil,
-                credential: credential,
-                repositoryURL: repositoryURL,
-                progress: progress
-            )
-            let parsed = SVNOutputParser.parseCommit(result.standardOutput)
-            return CommitSummary(
-                revision: parsed.revision,
-                committedPaths: parsed.sending + parsed.adding + parsed.deleting + parsed.replacing,
-                rawOutput: LogRedactor.redact(result.standardOutput)
-            )
+                let repositoryURL = await self.repositoryURL(for: paths[0].path)
+                var args = ["commit", "-m", trimmed, "--encoding", "UTF-8"]
+                args += paths.map(\.standardizedFileURL.path)
+                let result = try await self.invoke(
+                    args,
+                    workingDirectory: nil,
+                    credential: credential,
+                    repositoryURL: repositoryURL,
+                    progress: progress
+                )
+                let parsed = SVNOutputParser.parseCommit(result.standardOutput)
+                return CommitSummary(
+                    revision: parsed.revision,
+                    committedPaths: parsed.sending + parsed.adding + parsed.deleting + parsed.replacing,
+                    rawOutput: LogRedactor.redact(result.standardOutput)
+                )
+            }
+            await finishJournal(ticket)
+            return summary
+        } catch {
+            await finishJournal(ticket)
+            throw error
         }
     }
 
@@ -425,13 +522,24 @@ public actor SVNService {
 
     public func cleanup(at target: URL) async throws {
         let key = WorkingCopyLocator.serializationKey(for: target)
-        try await gate.withLock(key) {
-            _ = try await self.invoke(
-                ["cleanup", target.standardizedFileURL.path],
-                workingDirectory: nil,
-                credential: nil,
-                repositoryURL: nil
-            )
+        let ticket = await beginJournal(
+            .cleanup,
+            workingCopy: URL(fileURLWithPath: key),
+            summary: "清理 \(target.lastPathComponent)"
+        )
+        do {
+            try await gate.withLock(key) {
+                _ = try await self.invoke(
+                    ["cleanup", target.standardizedFileURL.path],
+                    workingDirectory: nil,
+                    credential: nil,
+                    repositoryURL: nil
+                )
+            }
+            await finishJournal(ticket)
+        } catch {
+            await finishJournal(ticket)
+            throw error
         }
     }
 
@@ -466,24 +574,35 @@ public actor SVNService {
         }
 
         let key = WorkingCopyLocator.serializationKey(for: paths[0])
-        let outcome = try await gate.withLock(key) {
-            let record = backup
-                ? try self.conflictGuard.backup(paths: paths, reason: "resolve-\(strategy.rawValue)")
-                : nil
-            var args = ["resolve", "--accept=\(strategy.rawValue)"]
-            args += paths.map(\.standardizedFileURL.path)
-            _ = try await self.invoke(args, workingDirectory: nil, credential: nil, repositoryURL: nil)
-            return ResolveOutcome(
-                resolvedPaths: paths.map(\.standardizedFileURL.path),
-                backup: record,
-                scans: self.conflictGuard.scan(paths: paths)
-            )
-        }
+        let ticket = await beginJournal(
+            .resolve,
+            workingCopy: URL(fileURLWithPath: key),
+            summary: "解决 \(paths.count) 个冲突"
+        )
+        do {
+            let outcome = try await gate.withLock(key) {
+                let record = backup
+                    ? try self.conflictGuard.backup(paths: paths, reason: "resolve-\(strategy.rawValue)")
+                    : nil
+                var args = ["resolve", "--accept=\(strategy.rawValue)"]
+                args += paths.map(\.standardizedFileURL.path)
+                _ = try await self.invoke(args, workingDirectory: nil, credential: nil, repositoryURL: nil)
+                return ResolveOutcome(
+                    resolvedPaths: paths.map(\.standardizedFileURL.path),
+                    backup: record,
+                    scans: self.conflictGuard.scan(paths: paths)
+                )
+            }
+            await finishJournal(ticket)
 
-        // Retention runs outside the lock: deleting old backups must not hold up
-        // the next write, and failing to prune is not worth failing the resolve.
-        conflictGuard.prune()
-        return outcome
+            // Retention runs outside the lock: deleting old backups must not hold up
+            // the next write, and failing to prune is not worth failing the resolve.
+            conflictGuard.prune()
+            return outcome
+        } catch {
+            await finishJournal(ticket)
+            throw error
+        }
     }
 
     // MARK: - Credentials
@@ -613,19 +732,22 @@ public enum SVNServiceFactory {
         public var credentialStore: any CredentialStoring
         public var environment: [String: String]
         public var timeout: TimeInterval
+        public var journal: OperationJournal?
 
         public init(
             explicitExecutablePath: String? = nil,
             bundledCandidates: [URL] = [],
             credentialStore: any CredentialStoring = KeychainCredentialStore(),
             environment: [String: String] = ProcessInfo.processInfo.environment,
-            timeout: TimeInterval = 300
+            timeout: TimeInterval = 300,
+            journal: OperationJournal? = nil
         ) {
             self.explicitExecutablePath = explicitExecutablePath
             self.bundledCandidates = bundledCandidates
             self.credentialStore = credentialStore
             self.environment = environment
             self.timeout = timeout
+            self.journal = journal
         }
     }
 
@@ -641,7 +763,8 @@ public enum SVNServiceFactory {
                 installation: installation,
                 credentialStore: options.credentialStore,
                 environment: options.environment,
-                timeout: options.timeout
+                timeout: options.timeout,
+                journal: options.journal
             )
         )
     }

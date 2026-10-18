@@ -47,7 +47,7 @@ Rules that keep the harness honest:
 | F6 | Server rejects the user (authorised-but-forbidden) | Error is `authorizationFailed`, **not** a password prompt | untouched | ✅ `authentication failures are recognised` |
 | F7 | Working copy locked by another process | Cleanup is offered as the next action | untouched | ✅ `working copy lock maps to SVN-0004 with a Cleanup hint` |
 | F8 | Commit rejected because the working copy is out of date | User is told to update first; commit is not retried blindly | local changes preserved | ◻ |
-| F9 | Commit interrupted (SIGKILL mid-commit) | On next launch, "previous operation did not finish" with Cleanup + verify actions | `wc` recoverable by `svn cleanup` | ◻ (needs S5-4 operation log) |
+| F9 | Commit interrupted (SIGKILL mid-commit) | On next launch, a banner says "上次有 N 项操作没有正常结束" with Cleanup / 忽略 per entry, and never offers to retry the commit | `wc` recoverable by `svn cleanup` | ✅ `an entry written by one run is visible to the next` · `an in-flight write is visible in the journal until the process returns` · `a failed write also clears its entry` · ◻ real SIGKILL end-to-end |
 | F10 | Network drops during `update` | Partial update is explained; retry is offered | `wc` consistent, `svn status` still parseable | ◻ |
 | F11 | Disk or working copy is read-only | Write operations fail with a permissions error, not a generic failure | untouched | ◻ |
 | F12 | Repository requires upgrade / unknown format | Refuses and explains; **never** auto-upgrades (R5) | untouched | ◻ |
@@ -57,7 +57,8 @@ Rules that keep the harness honest:
 
 ## Why the gaps are acceptable right now
 
-F8–F12 need either an operation log (S5-4) or a controllable server process; both
-are stage 5 deliverables. F3–F7 already fail *safely* — the user is not shown a
+F8 and F10–F12 need a controllable server process (`svnserve` on a loopback port),
+which is stage 5 work. F9's operation log now exists; what is still missing is a
+harness that SIGKILLs the *app* mid-commit, which needs the same harness. F3–F7 already fail *safely* — the user is not shown a
 success and the working copy is not left in a worse state — so the missing work is
 explanation quality, not data safety.

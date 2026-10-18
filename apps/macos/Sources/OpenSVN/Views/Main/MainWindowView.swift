@@ -5,21 +5,37 @@ import OpenSVNCore
 struct MainWindowView: View {
     @Environment(AppState.self) private var appState
 
+    /// `safeAreaInset` on a `NavigationSplitView` does not reserve space here:
+    /// both columns keep their own scroll views and the inset view is painted
+    /// over them. The banner is a `VStack` row instead, so the split view starts
+    /// below it and the sidebar's first row stays clickable.
+    private var showsRecoveryBanner: Bool {
+        !appState.recoveryItems.isEmpty || appState.journalQuarantineURL != nil
+    }
+
     var body: some View {
         @Bindable var appState = appState
 
-        NavigationSplitView {
-            SidebarView()
-                .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 340)
-        } detail: {
-            if let session = appState.selectedSession {
-                RepositoryDetailView(session: session)
-                    .id(session.id)
-            } else {
-                WelcomeView()
+        VStack(spacing: 0) {
+            if showsRecoveryBanner {
+                RecoveryBanner()
+                    .transition(.move(edge: .top).combined(with: .opacity))
             }
+
+            NavigationSplitView {
+                SidebarView()
+                    .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 340)
+            } detail: {
+                if let session = appState.selectedSession {
+                    RepositoryDetailView(session: session)
+                        .id(session.id)
+                } else {
+                    WelcomeView()
+                }
+            }
+            .navigationTitle(appState.selectedBookmark?.name ?? "OpenSVN")
         }
-        .navigationTitle(appState.selectedBookmark?.name ?? "OpenSVN")
+        .animation(.easeOut(duration: 0.18), value: showsRecoveryBanner)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {

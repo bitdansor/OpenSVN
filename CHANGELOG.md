@@ -6,35 +6,23 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Removed
+### Added (interruption recovery — S5-4)
 
-- **The entire Windows skeleton** — `apps/windows/**`,
-  `.github/workflows/windows-ci.yml` and `scripts/bootstrap-windows.ps1`. The
-  C++/WinUI tree never compiled: its first real build showed a test project
-  missing `/std:c++20`, no GoogleTest installed from vcpkg, and a WinUI project
-  declaring a UWP target framework. An uncompiled port in the tree meant every
-  review had to rediscover that it proved nothing, so it is gone rather than
-  maintained as a claim. `apps/windows/` now holds a placeholder only; the
-  planning documents, `ADR-0005` and `packaging/windows/` are untouched.
-  Restarting the port means landing code + CI + bootstrap in one PR.
-
-### Fixed
-
-- macOS CI rejected the package on Swift 6.1.2 while the same code compiled on
-  Swift 6.4: `withAuthRetry` now takes an `@MainActor` closure and requires a
-  `Sendable` result. Swift 6.2 changed the default isolation of nonisolated
-  async functions (SE-0461), which hid the diagnosis locally rather than fixing
-  it. The CI toolchain assertion now compares major.minor instead of only the
-  major version, so a future runner image cannot silently move the baseline.
-- CodeQL failed after a 12-minute Swift build with "Code scanning is not enabled
-  for this repository": code scanning needs GitHub Advanced Security on private
-  repositories. The job is now skipped (not faked green) while the repository is
-  private, and starts automatically once it is public.
-- Windows CI failed before building anything: `Report toolchain` hardcoded
-  `vswhere.exe` under `%ProgramFiles%`, but the windows-2022 image installs the
-  Visual Studio Installer under `%ProgramFiles(x86)%`. The step now probes PATH
-  and both prefixes, never fails the job, and the whole job is non-blocking
-  until the port actually compiles.
+- `OperationJournal`: a durable record of in-flight writes, written before the
+  subprocess starts and deleted when it returns. An entry that survives a process
+  boundary is an operation with no recorded outcome.
+  - Atomic writes; a corrupt file is quarantined as `journal.corrupt-<ts>.json`
+    instead of deleted or crashing the app.
+  - A *failed* operation clears its entry: the outcome is known, and treating it
+    as residue would make every ordinary error look like a crash.
+  - Entries are keyed by a per-launch UUID, not a PID (PIDs are reused).
+  - Capped at 50 entries; no credentials, argv or commit messages are stored.
+- Startup banner with per-entry Cleanup / 忽略 actions, plus a one-time notice
+  when the journal file was unreadable. `commit` is never offered as "retry".
+- `SVNService` records checkout, update, commit, add, delete, revert, resolve and
+  cleanup; journaling failures never block the operation.
+- 12 new tests (69 total, 13 suites), including "visible while in flight",
+  "survives a process boundary" and "a failed write leaves nothing behind".
 
 ### Added (macOS core, `v0.1.x`)
 
@@ -125,6 +113,36 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   ADR-0005 (Windows packaging), ADR-0007 (macOS source layout).
 - `.github/workflows/{release,codeql}.yml`: release refuses to publish unsigned
   artifacts; CodeQL covers Swift until the C++ compiles.
+
+### Removed
+
+- **The entire Windows skeleton** — `apps/windows/**`,
+  `.github/workflows/windows-ci.yml` and `scripts/bootstrap-windows.ps1`. The
+  C++/WinUI tree never compiled: its first real build showed a test project
+  missing `/std:c++20`, no GoogleTest installed from vcpkg, and a WinUI project
+  declaring a UWP target framework. An uncompiled port in the tree meant every
+  review had to rediscover that it proved nothing, so it is gone rather than
+  maintained as a claim. `apps/windows/` now holds a placeholder only; the
+  planning documents, `ADR-0005` and `packaging/windows/` are untouched.
+  Restarting the port means landing code + CI + bootstrap in one PR.
+
+### Fixed
+
+- macOS CI rejected the package on Swift 6.1.2 while the same code compiled on
+  Swift 6.4: `withAuthRetry` now takes an `@MainActor` closure and requires a
+  `Sendable` result. Swift 6.2 changed the default isolation of nonisolated
+  async functions (SE-0461), which hid the diagnosis locally rather than fixing
+  it. The CI toolchain assertion now compares major.minor instead of only the
+  major version, so a future runner image cannot silently move the baseline.
+- CodeQL failed after a 12-minute Swift build with "Code scanning is not enabled
+  for this repository": code scanning needs GitHub Advanced Security on private
+  repositories. The job is now skipped (not faked green) while the repository is
+  private, and starts automatically once it is public.
+- Windows CI failed before building anything: `Report toolchain` hardcoded
+  `vswhere.exe` under `%ProgramFiles%`, but the windows-2022 image installs the
+  Visual Studio Installer under `%ProgramFiles(x86)%`. The step now probes PATH
+  and both prefixes, never fails the job, and the whole job is non-blocking
+  until the port actually compiles.
 
 ## [0.1.0-dev] - 2026-10-18
 
