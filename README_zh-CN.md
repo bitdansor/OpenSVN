@@ -1,0 +1,72 @@
+# OpenSVN
+
+现代化、免费、开源、原生的 Apache Subversion（SVN）图形客户端。
+
+macOS 端使用 Swift 6 + SwiftUI/AppKit；Windows 端（规划中）使用 C++20 + WinUI 3。
+不使用 Electron、Qt 或内嵌浏览器。
+
+> 当前状态：`v0.1.0-dev`，macOS 核心层与界面正在开发，Windows 端尚未开始。
+
+## 仓库结构
+
+```text
+apps/macos/            Swift Package（OpenSVNCore + SwiftUI 应用）与 Xcode 工程
+specifications/        跨平台行为契约（唯一事实来源）
+tests/fixtures/        采集的 `svn --xml` 输出，用于契约测试
+tests/integration/     端到端工作副本场景
+scripts/               测试仓库、环境引导与应用打包脚本
+docs/                  架构说明与 ADR
+```
+
+## 构建与运行（macOS）
+
+依赖：macOS 14+、Xcode 16+（Swift 6 工具链）、Apache Subversion CLI 1.8+。
+
+```bash
+scripts/bootstrap-macos.sh          # 检查工具链与 SVN
+cd apps/macos && swift build        # 构建核心层与应用
+cd apps/macos && swift test         # 单元测试 + 契约测试
+scripts/build-macos-app.sh          # 生成 build/OpenSVN.app
+open build/OpenSVN.app
+```
+
+签名与公证流水线尚未接入，产物为 ad-hoc 签名，仅供本机使用。
+
+### 自检
+
+```bash
+scripts/bootstrap-macos.sh              # 缺什么依赖
+cd apps/macos && swift test             # 49 个测试 / 11 个套件，需要真实 svn
+python3 scripts/verify-release.py       # VERSION / CHANGELOG / Info.plist / fixture 一致性
+python3 scripts/verify-release.py --bundle build/OpenSVN.app
+```
+
+`verify-release.py` 在不一致时以非零码退出，适合放进钩子或发布前手动执行。其中凭据扫描只是粗略的
+兜底：只在**明确泄露**（URL 里带账号密码）时判失败，其余形似代码的写法只报警告。
+
+### 受限环境
+
+`swift build` 会写 `~/.swiftpm` 与 `~/Library/Caches`。若环境拒绝访问这些路径（报错里出现
+`Invalid manifest` 或 `~/.swiftpm` 下的 security 目录），把 SwiftPM 的家目录指到可写位置即可，
+不要和沙盒权限硬碰：
+
+```bash
+HOME="$PWD/.build-home" swift build
+HOME="$PWD/.build-home" swift test
+```
+
+`.build-home` 已被 git 忽略。
+
+## 安全原则
+
+1. 子进程一律以独立参数数组启动，禁止拼接 Shell 字符串。
+2. 密码不出现在命令行参数、日志或设置中；通过 stdin 与 macOS Keychain 传递与保存。
+3. 危险操作（`revert`、`delete`、冲突解决）必须在**服务层**要求显式确认，不能只靠界面拦截。
+4. 同一工作副本上的写操作串行化。
+5. 所有长耗时任务异步执行、可取消、有进度。
+
+具体条文见 `specifications/`。
+
+## 许可证
+
+Apache-2.0，见 `LICENSE` 与 `NOTICE`。OpenSVN 与 Apache Software Foundation 无隶属关系。

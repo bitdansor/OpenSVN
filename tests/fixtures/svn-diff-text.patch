@@ -1,0 +1,10 @@
+Index: wc-a/src/main.swift
+===================================================================
+--- wc-a/src/main.swift	(revision 4)
++++ wc-a/src/main.swift	(working copy)
+@@ -1,3 +1,5 @@
+ func greet() {
+     print("hello")
+ }
++
++// local change A

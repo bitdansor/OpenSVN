@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<status>
+<target
+   path="wc-b">
+<entry
+   path="wc-b/docs/repo-locked.txt">
+<wc-status
+   item="normal"
+   revision="1"
+   props="none">
+<commit
+   revision="1">
+<author>wanyingfei</author>
+<date>2026-10-18T04:35:50.404833Z</date>
+</commit>
+<lock>
+<token>opaquelocktoken:cf99d351-0fd8-44d0-8b04-044483afd5b7</token>
+<owner>fixture</owner>
+<comment>fixture lock</comment>
+<created>2026-10-18T04:35:58.061739Z</created>
+</lock>
+</wc-status>
+</entry>
+</target>
+</status>

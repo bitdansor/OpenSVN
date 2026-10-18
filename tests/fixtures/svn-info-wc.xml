@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<info>
+<entry
+   kind="dir"
+   path="wc-a"
+   revision="4">
+<url>file:///Users/wanyingfei/Projects/OpenSVN/tests/.work/repo/trunk</url>
+<relative-url>^/trunk</relative-url>
+<repository>
+<root>file:///Users/wanyingfei/Projects/OpenSVN/tests/.work/repo</root>
+<uuid>5d4f961b-e3ad-4a89-b38a-eab026671c8f</uuid>
+</repository>
+<wc-info>
+<wcroot-abspath>/Users/wanyingfei/Projects/OpenSVN/tests/.work/wc-a</wcroot-abspath>
+<schedule>normal</schedule>
+<depth>infinity</depth>
+</wc-info>
+<commit
+   revision="4">
+<author>wanyingfei</author>
+<date>2026-10-18T04:35:56.116733Z</date>
+</commit>
+</entry>
+</info>

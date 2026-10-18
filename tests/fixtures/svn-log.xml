@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<log>
+<logentry
+   revision="4">
+<author>wanyingfei</author>
+<date>2026-10-18T04:35:56.116733Z</date>
+<paths>
+<path
+   text-mods="false"
+   kind="file"
+   action="D"
+   prop-mods="false">/trunk/docs/tree-conflict.txt</path>
+</paths>
+<msg>wc-b：删除 tree-conflict.txt</msg>
+</logentry>
+<logentry
+   revision="3">
+<author>wanyingfei</author>
+<date>2026-10-18T04:35:54.118748Z</date>
+<paths>
+<path
+   action="M"
+   prop-mods="false"
+   text-mods="true"
+   kind="file">/trunk/docs/locked.txt</path>
+</paths>
+<msg>wc-b：提交 locked.txt</msg>
+</logentry>
+<logentry
+   revision="2">
+<author>wanyingfei</author>
+<date>2026-10-18T04:35:52.167437Z</date>
+<paths>
+<path
+   text-mods="true"
+   kind="file"
+   action="M"
+   prop-mods="false">/trunk/src/util.swift</path>
+</paths>
+<msg>wc-b：修改 util.swift</msg>
+</logentry>
+<logentry
+   revision="1">
+<author>wanyingfei</author>
+<date>2026-10-18T04:35:50.404833Z</date>
+<paths>
+<path
+   action="A"
+   prop-mods="false"
+   text-mods="false"
+   kind="dir">/branches</path>
+<path
+   action="A"
+   prop-mods="false"
+   text-mods="false"
+   kind="dir">/tags</path>
+<path
+   kind="dir"
+   action="A"
+   prop-mods="false"
+   text-mods="false">/trunk</path>
+<path
+   kind="file"
+   action="A"
+   prop-mods="false"
+   text-mods="true">/trunk/README.md</path>
+<path
+   kind="dir"
+   action="A"
+   prop-mods="false"
+   text-mods="false">/trunk/docs</path>
+<path
+   action="A"
+   prop-mods="false"
+   text-mods="true"
+   kind="file">/trunk/docs/locked.txt</path>
+<path
+   action="A"
+   prop-mods="false"
+   text-mods="true"
+   kind="file">/trunk/docs/repo-locked.txt</path>
+<path
+   action="A"
+   prop-mods="false"
+   text-mods="false"
+   kind="dir">/trunk/docs/segment-01</path>
+<path
+   action="A"
+   prop-mods="false"
+   text-mods="false"
+   kind="dir">/trunk/docs/segment-01/segment-02</path>
+<path
+   action="A"
+   prop-mods="false"
+   text-mods="false"
+   kind="dir">/trunk/docs/segment-01/segment-02/segment-03</path>
+<path
+   action="A"
+   prop-mods="false"
+   text-mods="false"
+   kind="dir">/trunk/docs/segment-01/segment-02/segment-03/segment-04</path>
+<path
+   action="A"
+   prop-mods="false"
+   text-mods="false"
+   kind="dir">/trunk/docs/segment-01/segment-02/segment-03/segment-04/segment-05</path>
+<path
+   action="A"
+   prop-mods="false"
+   text-mods="false"
+   kind="dir">/trunk/docs/segment-01/segment-02/segment-03/segment-04/segment-05/segment-06</path>
+<path
+   action="A"
+   prop-mods="false"
+   text-mods="false"
+   kind="dir">/trunk/docs/segment-01/segment-02/segment-03/segment-04/segment-05/segment-06/segment-07</path>
+<path
+   action="A"
+   prop-mods="false"
+   text-mods="false"
+   kind="dir">/trunk/docs/segment-01/segment-02/segment-03/segment-04/segment-05/segment-06/segment-07/segment-08</path>
+<path
+   action="A"
+   prop-mods="false"
+   text-mods="true"
+   kind="file">/trunk/docs/segment-01/segment-02/segment-03/segment-04/segment-05/segment-06/segment-07/segment-08/deeply-nested-file-name.txt</path>
+<path
+   action="A"
+   prop-mods="false"
+   text-mods="true"
+   kind="file">/trunk/docs/to-delete.txt</path>
+<path
+   prop-mods="false"
+   text-mods="true"
+   kind="file"
+   action="A">/trunk/docs/tree-conflict.txt</path>
+<path
+   prop-mods="false"
+   text-mods="true"
+   kind="file"
+   action="A">/trunk/docs/中文 文档 (v1) &amp; notes.txt</path>
+<path
+   prop-mods="false"
+   text-mods="false"
+   kind="dir"
+   action="A">/trunk/src</path>
+<path
+   prop-mods="false"
+   text-mods="true"
+   kind="file"
+   action="A">/trunk/src/main.swift</path>
+<path
+   prop-mods="false"
+   text-mods="true"
+   kind="file"
+   action="A">/trunk/src/util.swift</path>
+</paths>
+<msg>初始导入：包含中文路径、空格与特殊字符</msg>
+</logentry>
+</log>

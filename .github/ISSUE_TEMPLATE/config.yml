@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/opensvn/opensvn/security/advisories/new
+    about: Report privately. Never open a public issue for a security problem.
+  - name: Question / usage help
+    url: https://github.com/opensvn/opensvn/discussions
+    about: Ask here when you are not sure something is a bug.
+  - name: Blank issue
+    url: https://github.com/opensvn/opensvn/issues/new
+    about: Only for work that genuinely fits neither template.

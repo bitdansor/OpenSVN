@@ -1,0 +1,58 @@
+name: Feature request
+description: Propose a capability or a behaviour change.
+title: "feat: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        OpenSVN's scope is a **native GUI over the official Subversion CLI**. It
+        is not a reimplementation of Subversion's storage layer, and it will not
+        become a general file-sync client. Proposals that fight those two
+        boundaries will be declined — but say so if you think a boundary should
+        move, that is a legitimate discussion.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you unable to do today? Describe the situation, not the fix.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behaviour
+      description: What should OpenSVN do? Mention what the user sees, not the implementation.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Working copy / status
+        - Commit
+        - Update
+        - History / log
+        - Diff
+        - Conflicts
+        - Credentials
+        - Settings / discovery of svn
+        - Packaging / distribution
+        - Cross-platform contract
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: Contract impact
+      description: >
+        Does this change behaviour that `specifications/` already defines? If yes,
+        which document, and what changes? Cross-platform features need the
+        contract updated before either platform implements them.
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Including "just use the command line" — explain why that is not enough.

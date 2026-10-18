@@ -1,0 +1,102 @@
+name: macOS CI
+
+# R8: `main` must always be buildable. This workflow is the gate that enforces it
+# for the macOS half of the tree. Windows CI lands with the Windows port (S1-6).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: macos-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Pinned toolchain baseline — see docs/development/toolchain.md.
+  # Bump deliberately in a dedicated PR; never let the runner float.
+  EXPECTED_SWIFT: "6.0"
+  EXPECTED_MACOS: "14.0"
+
+jobs:
+  package:
+    name: Swift package (build + tests)
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Report toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+          swift --version | grep -q "Swift version ${EXPECTED_SWIFT%%.*}" \
+            || echo "::warning::Swift version differs from the pinned ${EXPECTED_SWIFT} baseline"
+
+      - name: Ensure Subversion CLI
+        run: |
+          if ! command -v svn >/dev/null 2>&1; then
+            echo "svn not preinstalled on this image; installing via Homebrew"
+            brew install subversion
+          fi
+          svn --version --quiet
+          svnadmin --version --quiet
+
+      - name: Validate repository metadata
+        run: python3 scripts/verify-release.py --metadata
+
+      - name: Validate XML fixtures
+        run: python3 scripts/verify-release.py --fixtures
+
+      - name: Build
+        working-directory: apps/macos
+        run: swift build --build-tests
+
+      - name: Test
+        working-directory: apps/macos
+        run: swift test
+
+  app-bundle:
+    name: App bundle (SwiftPM assembly)
+    runs-on: macos-15
+    timeout-minutes: 30
+    needs: package
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Assemble build/OpenSVN.app
+        run: scripts/build-macos-app.sh
+
+      - name: Verify bundle
+        run: python3 scripts/verify-release.py --bundle build/OpenSVN.app
+
+  xcode-project:
+    name: Xcode project (signing disabled)
+    runs-on: macos-15
+    timeout-minutes: 40
+    needs: package
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: xcodebuild
+        run: |
+          xcodebuild \
+            -project apps/macos/OpenSVN.xcodeproj \
+            -scheme OpenSVN \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build

@@ -1,0 +1,51 @@
+# macOS / Xcode
+.DS_Store
+build/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.build-home/
+.swiftpm/
+Package.resolved
+
+# Windows / Visual Studio
+.vs/
+*.user
+*.suo
+Win32/
+x64/
+ARM64/
+[Bb]in/
+[Oo]bj/
+*.pdb
+*.ilk
+
+# Python (release tooling)
+__pycache__/
+*.pyc
+.venv/
+
+# Local test working copies and repositories
+tmp/
+.local-test/
+tests/.work/
+*.wc-backup
+
+# Credentials / secrets — never commit
+.env
+.env.*
+*.pem
+*.p12
+*.cer
+credentials.json
+
+# Assistant/agent scratch data for this repository
+.workbuddy/

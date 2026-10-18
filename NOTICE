@@ -1,0 +1,30 @@
+OpenSVN
+Copyright 2026 The OpenSVN Authors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+--------------------------------------------------------------------------------
+Third-party components
+
+OpenSVN bundles an Apache Subversion runtime on macOS (strategy: ADR-0003).
+The bundled binaries and libraries remain under their own licenses; the full
+text of each license must be shipped inside the application bundle under
+`Contents/Resources/licenses/` before any public release.
+
+Current inventory (recorded 2026-10-18, macOS arm64, Homebrew svn 1.14.5):
+
+  subversion, serf, apr, apr-util, openssl@3   Apache-2.0
+  lz4                                          BSD-2-Clause
+  utf8proc                                     MIT AND Unicode-DFS-2015
+  gettext (libintl)                            GPL-3.0-or-later AND LGPL-2.1-or-later
+
+NOTE: `libintl` is the one compliance-sensitive dependency. The preferred fix is
+to build the bundled runtime with `--disable-nls`, removing the dependency
+entirely (SVN's own message catalogues are not used by OpenSVN's UI).
+
+--------------------------------------------------------------------------------
+Trademarks
+
+"Subversion" and "Apache" are trademarks of the Apache Software Foundation.
+OpenSVN is an independent project and is not affiliated with, endorsed by, or
+sponsored by the Apache Software Foundation.

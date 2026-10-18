@@ -1,0 +1,85 @@
+name: Bug report
+description: Something in OpenSVN misbehaved — a wrong status, a failed operation, a crash.
+title: "bug: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Do not paste repository URLs containing
+        credentials, commit messages from private repositories, or anything from
+        your Keychain.** If you suspect a security issue, follow `SECURITY.md`
+        instead of opening a public issue.
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - macOS
+        - Windows (planned)
+    validations:
+      required: true
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: >
+        Output of `sw_vers -productVersion`, `svn --version --quiet`, and the
+        OpenSVN version from the About panel.
+      placeholder: "macOS 14.5 / svn 1.14.5 / OpenSVN 0.1.0-dev"
+    validations:
+      required: true
+  - type: dropdown
+    id: svn-source
+    attributes:
+      label: Which svn binary was used?
+      description: Shown in Settings → Subversion.
+      options:
+        - Bundled runtime
+        - System / Homebrew installation
+        - Not sure
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: >
+        Keep the working copy minimal if you can. A `svn status --xml` excerpt
+        (with paths renamed) is much more useful than a screenshot.
+      placeholder: |
+        1. Open a working copy at ...
+        2. Select the conflicted file ...
+        3. Click ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: >
+        Include the OpenSVN error code (for example `SVN-0004`) when the app
+        shows one, and any message from the task center detail view.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / task center output
+      description: >
+        OpenSVN redacts URLs' userinfo, `--password` and `Authorization` values
+        before display. Please re-read before pasting anyway.
+      render: text
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Confirmations
+      options:
+        - label: I removed credentials, tokens and private repository content from this report.
+          required: true
+        - label: I searched existing issues for the same symptom.
+          required: true

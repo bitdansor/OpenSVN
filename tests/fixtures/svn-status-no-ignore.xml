@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<status>
+<target
+   path="wc-a">
+<entry
+   path="wc-a">
+<wc-status
+   props="modified"
+   item="normal"
+   revision="4">
+<commit
+   revision="4">
+<author>wanyingfei</author>
+<date>2026-10-18T04:35:56.116733Z</date>
+</commit>
+</wc-status>
+</entry>
+<entry
+   path="wc-a/docs/locked.txt">
+<wc-status
+   props="none"
+   item="conflicted"
+   revision="4">
+<commit
+   revision="3">
+<author>wanyingfei</author>
+<date>2026-10-18T04:35:54.118748Z</date>
+</commit>
+</wc-status>
+</entry>
+<entry
+   path="wc-a/docs/locked.txt.mine">
+<wc-status
+   props="none"
+   item="unversioned">
+</wc-status>
+</entry>
+<entry
+   path="wc-a/docs/locked.txt.r2">
+<wc-status
+   item="unversioned"
+   props="none">
+</wc-status>
+</entry>
+<entry
+   path="wc-a/docs/locked.txt.r3">
+<wc-status
+   item="unversioned"
+   props="none">
+</wc-status>
+</entry>
+<entry
+   path="wc-a/docs/to-delete.txt">
+<wc-status
+   props="none"
+   item="deleted"
+   revision="4">
+<commit
+   revision="1">
+<author>wanyingfei</author>
+<date>2026-10-18T04:35:50.404833Z</date>
+</commit>
+</wc-status>
+</entry>
+<entry
+   path="wc-a/docs/tree-conflict.txt">
+<wc-status
+   tree-conflicted="true"
+   item="added"
+   props="none"
+   copied="true">
+<commit
+   revision="1">
+<author>wanyingfei</author>
+<date>2026-10-18T04:35:50.404833Z</date>
+</commit>
+</wc-status>
+</entry>
+<entry
+   path="wc-a/docs/新增文件.txt">
+<wc-status
+   item="added"
+   revision="-1"
+   props="none">
+</wc-status>
+</entry>
+<entry
+   path="wc-a/docs/未纳入版本控制.txt">
+<wc-status
+   item="unversioned"
+   props="none">
+</wc-status>
+</entry>
+<entry
+   path="wc-a/src/main.swift">
+<wc-status
+   item="modified"
+   revision="4"
+   props="none">
+<commit
+   revision="1">
+<author>wanyingfei</author>
+<date>2026-10-18T04:35:50.404833Z</date>
+</commit>
+</wc-status>
+</entry>
+<entry
+   path="wc-a/src/temp-copy.swift">
+<wc-status
+   props="none"
+   item="missing"
+   revision="-1">
+</wc-status>
+</entry>
+<entry
+   path="wc-a/src/util.swift">
+<wc-status
+   item="conflicted"
+   revision="4"
+   props="modified">
+<commit
+   revision="2">
+<author>wanyingfei</author>
+<date>2026-10-18T04:35:52.167437Z</date>
+</commit>
+</wc-status>
+</entry>
+<entry
+   path="wc-a/src/util.swift.mine">
+<wc-status
+   props="none"
+   item="unversioned">
+</wc-status>
+</entry>
+<entry
+   path="wc-a/src/util.swift.r1">
+<wc-status
+   props="none"
+   item="unversioned">
+</wc-status>
+</entry>
+<entry
+   path="wc-a/src/util.swift.r2">
+<wc-status
+   props="none"
+   item="unversioned">
+</wc-status>
+</entry>
+</target>
+</status>

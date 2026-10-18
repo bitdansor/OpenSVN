@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<info>
+<entry
+   kind="file"
+   size="36"
+   path="main.swift"
+   revision="4">
+<url>file:///Users/wanyingfei/Projects/OpenSVN/tests/.work/repo/trunk/src/main.swift</url>
+<relative-url>^/trunk/src/main.swift</relative-url>
+<repository>
+<root>file:///Users/wanyingfei/Projects/OpenSVN/tests/.work/repo</root>
+<uuid>5d4f961b-e3ad-4a89-b38a-eab026671c8f</uuid>
+</repository>
+<commit
+   revision="1">
+<author>wanyingfei</author>
+<date>2026-10-18T04:35:50.404833Z</date>
+</commit>
+</entry>
+</info>
