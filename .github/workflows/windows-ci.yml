@@ -1,11 +1,18 @@
 name: Windows CI
 
 # This workflow is the gate the Windows port must eventually pass. Right now the
-# C++ has never been compiled, so both jobs are non-blocking on purpose: a
-# workflow that is red from day one teaches people to ignore CI. Remove every
-# `continue-on-error` line in the PR that makes the build green — that PR is the
-# real "Windows exists" milestone. Until then the job still shows red in the
-# Actions tab (so the gap stays visible) while the run itself stays green.
+# C++ has never compiled successfully on a real machine, so the **job** is
+# non-blocking: `jobs.build.continue-on-error` keeps the run green so it does not
+# block macOS work, while every build step stays strict.
+#
+# That combination is deliberate: the job still shows *red* in the Actions tab and
+# the compiler errors stay visible, which is the truth. An earlier revision also
+# put `continue-on-error` on the Restore/Build/Test steps; the run went all-green
+# while the log was full of `error C1083` / `C2039`, which is worse than a red
+# build. Do not reintroduce step-level tolerance on build steps.
+#
+# Remove `jobs.build.continue-on-error` in the PR that makes the build green —
+# that PR is the real "Windows exists" milestone.
 
 on:
   push:
@@ -88,15 +95,12 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       - name: Restore
-        continue-on-error: true
         run: msbuild apps/windows/OpenSVN.sln /t:Restore /p:Configuration=Debug /p:Platform=x64
 
       - name: Build app
-        continue-on-error: true
         run: msbuild apps/windows/OpenSVN.sln /p:Configuration=Debug /p:Platform=x64 /m /verbosity:minimal
 
       - name: Run contract tests
-        continue-on-error: true
         run: |
           $test = Get-ChildItem -Recurse -Filter OpenSVNTests.exe | Select-Object -First 1
           if (-not $test) { Write-Error "OpenSVNTests.exe not produced"; exit 1 }

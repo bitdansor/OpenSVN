@@ -1,23 +1,47 @@
 # OpenSVN for Windows (WinUI 3 + C++/WinRT)
 
-**Status: skeleton. Nothing here has been compiled or run on Windows yet.**
+**Status: skeleton. A real compiler has now seen it, and it does not build.**
 That sentence is the most important thing on this page — read the table below
 before assuming anything works.
 
+On 2026-10-18 `windows-ci.yml` ran `msbuild` on `windows-2022` for the first time
+(workflow run 39106470743, then 391065…; see "First real build" below for the
+exact errors). Nothing in this tree has ever produced a binary or run a test.
+The workflow is non-blocking at the **job** level (`continue-on-error`), so the
+run stays green — but the job itself shows red and the compiler errors are in the
+log. Do not read a green run as "Windows works".
+
 | Part | State | Verified how |
 | --- | --- | --- |
-| `Models/SVNModels.*` | written, portable (no Windows headers) | compiled and asserted on macOS (clang 16, C++20); `SVNModelsTests.cpp` mirrors the checks in GoogleTest |
+| `Models/SVNModels.*` | written, portable (no Windows headers) | compiled and asserted on macOS (clang, C++20); `SVNModelsTests.cpp` mirrors the checks in GoogleTest |
 | `Services/SVNProcessRunner.*` | header compiles standalone; implementation unbuilt | code review only. Uses Job Objects, `PROC_THREAD_ATTRIBUTE_HANDLE_LIST`, two drain threads |
 | `Services/SVNXMLParser.*` | written, unbuilt | code review only. Uses `Windows.Data.Xml.Dom` |
 | `Services/CredentialStore.*` | written, unbuilt | code review only. Uses Credential Manager (`CredReadW`/`CredWriteW`) |
 | `Services/SVNService.*` | written, unbuilt | code review only |
 | WinUI shell (`App`, `MainWindow`) | written, unbuilt | code review only |
-| `OpenSVN.vcxproj`, `OpenSVN.sln` | written, never opened in Visual Studio | — |
-| `OpenSVNTests` | written, never run | — |
+| `OpenSVN.vcxproj`, `OpenSVN.sln` | opens and restores in MSBuild 17.14 | CI restore succeeds; compile fails (see below) |
+| `OpenSVNTests` | written, never run | CI: `gtest/gtest.h` not found |
 
-The first Windows machine that opens this solution should expect to fix
-`vcxproj` item lists and the Windows App SDK version, in that order. Those are
-mechanical fixes; the service layer is where a real bug would hide.
+## First real build (CI evidence, not speculation)
+
+The first `msbuild` run produced three distinct blockers. They are listed in the
+order they must be fixed, because each one hides the next:
+
+1. **`OpenSVNTests.vcxproj` has no `/std:c++20`.** MSVC falls back to C++14, so
+   `std::string_view` and `std::optional` "are not members of `std`" (`C2039`),
+   and `SVNModels.h` fails wholesale (`C7589`, `C2238`, …). The app project sets
+   `stdcpp20`; the test project does not.
+2. **GoogleTest is not available.** `error C1083: Cannot open include file:
+   'gtest/gtest.h'`. `vcpkg.json` exists but nothing runs `vcpkg install` in CI,
+   and the project does not reference the produced package.
+3. **The WinUI project restores but does not compile.** NuGet reports
+   `Your project does not reference "UAP,Version=v10.0" framework` — the project
+   mixes WinUI 3 (`Microsoft.WindowsAppSDK`) with a UWP-style target framework
+   declaration. This needs a correct `ApplicationType`/`WindowsPackageType` and
+   the `UseWinUI` property, not a version bump.
+
+Nothing below can be trusted until 1–3 are fixed; they are mechanical, and the
+service layer is where a real design bug would hide.
 
 ## What is deliberately *not* here
 
