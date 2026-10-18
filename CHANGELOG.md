@@ -6,6 +6,24 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (three-way merge editor — S5-2)
+
+- `ThreeWayMerge`: line-based three-way merge (base / mine / theirs) that yields
+  regions. A region only one side touched is applied without asking; only regions
+  both sides changed differently become a decision. Rendering throws instead of
+  writing a half-merged file while any decision is missing.
+- `ConflictArtifactParser`: reads the three versions from `svn info --xml`
+  (`prev-base-file`, `prev-wc-file`, and the `source-right` revision for the
+  incoming `.r<N>`). Guessing `*.r*` by name picks the wrong one after a second
+  update.
+- Side-by-side editor (`MergeEditorView`) opened from 变更 → 解决冲突 → 三方合并…,
+  with per-region 我的 / 服务器 / 两者 and a "全部用我的 / 全部用服务器" shortcut.
+- `SVNService.backupConflictArtifacts` + `conflictArtifacts`; the editor backs up
+  **before** writing and then resolves with `--accept=working`, so the backup
+  holds the original conflicted file, not the merge output.
+- 20 new tests (91 total, 15 suites), including a real-repository round trip:
+  conflict → merge → write → resolve → commit.
+
 ### Added (fault-injection scenarios — S5-5)
 
 - `tests/scenarios/failure/`: five `arrange/act/assert` scenarios that drive real

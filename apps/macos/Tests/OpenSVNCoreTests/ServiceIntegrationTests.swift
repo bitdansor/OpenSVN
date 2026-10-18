@@ -229,6 +229,67 @@ struct ServiceIntegrationTests {
         #expect(resolved.contains("from the server"))
         #expect(outcome.pathsWithResidualMarkers.isEmpty)
     }
+
+    @Test("three-way merge: decide per region, write, then mark resolved")
+    func mergeEditorRoundTrip() async throws {
+        let fixture = try await makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let service = fixture.service
+        let repoURL = "file://\(fixture.repository.path)/trunk"
+        try await service.checkout(url: repoURL, to: fixture.workingCopy)
+
+        // Build a conflict with two separate regions, so the test has to make
+        // more than one decision.
+        let readme = fixture.workingCopy.appendingPathComponent("README.md")
+        try "line1\nline2\nline3\nline4\nline5\n".write(to: readme, atomically: true, encoding: .utf8)
+        _ = try await service.commit([readme], message: "baseline for merge")
+
+        let other = fixture.root.appendingPathComponent("wc-other", isDirectory: true)
+        try await service.checkout(url: repoURL, to: other)
+        let otherReadme = other.appendingPathComponent("README.md")
+        try "line1\nSERVER2\nline3\nline4\nSERVER5\n".write(to: otherReadme, atomically: true, encoding: .utf8)
+        _ = try await service.commit([otherReadme], message: "server side")
+
+        try "line1\nLOCAL2\nline3\nline4\nLOCAL5\n".write(to: readme, atomically: true, encoding: .utf8)
+        _ = try await service.update(at: fixture.workingCopy)
+
+        // 1. The service can name the three versions without guessing.
+        let artifacts = try #require(try await service.conflictArtifacts(for: readme))
+        #expect(artifacts.supportsMerge)
+        let baseURL = try #require(artifacts.base)
+        let mineURL = try #require(artifacts.mine)
+        let theirsURL = try #require(artifacts.theirs)
+        #expect(try String(contentsOf: mineURL, encoding: .utf8).contains("LOCAL2"))
+        #expect(try String(contentsOf: theirsURL, encoding: .utf8).contains("SERVER2"))
+        #expect(try String(contentsOf: baseURL, encoding: .utf8).contains("line2"))
+
+        // 2. Merge and decide: mine for the first region, theirs for the second.
+        let result = ThreeWayMerge.merge(
+            base: try String(contentsOf: baseURL, encoding: .utf8),
+            mine: try String(contentsOf: mineURL, encoding: .utf8),
+            theirs: try String(contentsOf: theirsURL, encoding: .utf8)
+        )
+        #expect(result.conflicts.count == 2)
+        let merged = try result.render([0: .mine, 1: .theirs])
+        #expect(merged == "line1\nLOCAL2\nline3\nline4\nSERVER5\n")
+
+        // 3. Backup first, then write, then resolve with the file as the answer.
+        let backup = try await service.backupConflictArtifacts(for: [readme], reason: "test")
+        #expect(backup?.entries.contains { $0.sourcePath == readme.standardizedFileURL.path } == true)
+
+        try merged.write(to: readme, atomically: true, encoding: .utf8)
+        let outcome = try await service.resolve([readme], strategy: .working, confirmed: true)
+        #expect(outcome.pathsWithResidualMarkers.isEmpty)
+
+        // 4. The working copy is clean and the repository has the merged text.
+        let status = try await service.status(at: fixture.workingCopy)
+        #expect(status.conflicted.isEmpty)
+        #expect(status.entries.isEmpty == false)   // the local side still needs committing
+        _ = try await service.commit([readme], message: "merged")
+        let committed = try await service.update(at: fixture.workingCopy)
+        _ = committed
+        #expect(try String(contentsOf: readme, encoding: .utf8) == merged)
+    }
 }
 
 @Suite("write serialization")

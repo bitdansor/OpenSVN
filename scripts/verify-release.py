@@ -44,6 +44,7 @@ FIXTURE_ROOTS = {
     "svn-log.xml": "log",
     "svn-info-wc.xml": "info",
     "svn-info-url.xml": "info",
+    "svn-info-conflict.xml": "info",
     "svn-diff-text.patch": None,  # a patch, not XML: presence-checked only
 }
 

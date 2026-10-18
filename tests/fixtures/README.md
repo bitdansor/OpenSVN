@@ -18,6 +18,7 @@ All `.xml` files in this directory were recorded with:
 | `svn-log.xml` | `svn log --xml -l 10` | author, date, message, changed paths |
 | `svn-info-wc.xml` | `svn info --xml` in a working copy | wc-info, repository root/uuid, commit |
 | `svn-info-url.xml` | `svn info --xml` on a URL | no wc-info, remote last-changed fields |
+| `svn-info-conflict.xml` | `svn info --xml` on a text-conflicted file | `<conflict>` block: `prev-base-file`, `prev-wc-file`, `source-left` / `source-right` revisions — the three versions the merge editor needs |
 | `svn-diff-text.patch` | `svn diff` on one modified file | unified diff rendering |
 
 Re-record with `scripts/capture-fixtures.sh`. Do not hand-edit.

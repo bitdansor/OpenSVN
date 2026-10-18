@@ -64,6 +64,8 @@ final class RepositorySession: Identifiable {
     var presentedError: PresentedError?
     var confirmation: Confirmation?
     var resolveReport: ResolveReport?
+    /// Non-nil while the three-way merge editor is open.
+    var mergeEditor: MergeEditorState?
 
     init(
         bookmark: RepositoryBookmark,
@@ -356,6 +358,102 @@ final class RepositorySession: Identifiable {
 
     func dismissResolveReport() {
         resolveReport = nil
+    }
+
+    // MARK: - Three-way merge editor
+
+    /// Opens the merge editor for a text conflict.
+    ///
+    /// The three versions come from `svn info --xml`, not from guessing file
+    /// names: which `.r<N>` is the ancestor depends on the operation that
+    /// produced the conflict.
+    func beginMerge(_ entry: StatusEntry) {
+        guard let service else { return }
+        let url = entryURL(entry)
+        Task {
+            do {
+                guard let artifacts = try await service.conflictArtifacts(for: url) else {
+                    presentedError = PresentedError(error: SVNError(
+                        code: .conflictRemains,
+                        message: "该路径当前没有冲突副本，无法进行三方合并"
+                    ))
+                    return
+                }
+                guard artifacts.supportsMerge,
+                      let baseURL = artifacts.base,
+                      let mineURL = artifacts.mine,
+                      let theirsURL = artifacts.theirs else {
+                    presentedError = PresentedError(error: SVNError(
+                        code: .conflictRemains,
+                        message: artifacts.kind == "text"
+                            ? "冲突副本不完整（可能是树冲突或已被清理），请改用「解决冲突」菜单"
+                            : "只有文本冲突支持三方合并；这是\(artifacts.kind ?? "非文本")冲突"
+                    ))
+                    return
+                }
+
+                let base = try String(contentsOf: baseURL, encoding: .utf8)
+                let mine = try String(contentsOf: mineURL, encoding: .utf8)
+                let theirs = try String(contentsOf: theirsURL, encoding: .utf8)
+
+                mergeEditor = MergeEditorState(
+                    path: entry.path,
+                    url: url,
+                    artifacts: artifacts,
+                    result: ThreeWayMerge.merge(base: base, mine: mine, theirs: theirs),
+                    mineText: mine,
+                    theirsText: theirs
+                )
+            } catch {
+                handle(error)
+            }
+        }
+    }
+
+    func cancelMerge() {
+        mergeEditor = nil
+    }
+
+    /// Writes the merged result and marks the file resolved.
+    ///
+    /// Order matters. The backup is taken **before** the write, so it holds the
+    /// original conflicted file rather than the merge output; without that, a
+    /// wrong decision could only be undone by re-doing the update. The resolve
+    /// then uses `--accept=working`, which means "the file on disk is the
+    /// answer" — it does not overwrite what was just written.
+    func applyMerge() {
+        guard let service, let editor = mergeEditor, let taskCenter else { return }
+        guard let text = editor.renderedText else { return }
+        let url = editor.url
+        let path = editor.path
+
+        Task {
+            do {
+                let backup = try await service.backupConflictArtifacts(
+                    for: [url],
+                    reason: "merge-editor"
+                )
+                try text.write(to: url, atomically: true, encoding: .utf8)
+                let outcome = try await taskCenter.run("写入合并结果") { _ in
+                    try await service.resolve([url], strategy: .working, confirmed: true)
+                }
+                mergeEditor = nil
+                await refresh()
+                var report = makeReport(outcome, strategy: .working)
+                if let backup {
+                    report = ResolveReport(
+                        title: report.title,
+                        message: report.message + "\n\n合并前的内容已备份到：\n"
+                            + (backup.directory.path as NSString).abbreviatingWithTildeInPath,
+                        backupDirectory: backup.directory
+                    )
+                }
+                resolveReport = report
+                _ = path
+            } catch {
+                handle(error)
+            }
+        }
     }
 
     private func confirmationMessage(

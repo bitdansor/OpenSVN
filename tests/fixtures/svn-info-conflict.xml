@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<info>
+<entry
+   path="f.txt"
+   revision="2"
+   kind="file">
+<url>file:///tmp/mergeprobe/repo/trunk/f.txt</url>
+<relative-url>^/trunk/f.txt</relative-url>
+<repository>
+<root>file:///tmp/mergeprobe/repo</root>
+<uuid>e2dd5e15-9595-468e-bb80-970f768bfbef</uuid>
+</repository>
+<wc-info>
+<wcroot-abspath>/fixture/wc</wcroot-abspath>
+<schedule>normal</schedule>
+<depth>infinity</depth>
+<checksum>de5a586dd857a8246e2798f383c2e7996364fe43</checksum>
+</wc-info>
+<commit
+   revision="2">
+<author>wanyingfei</author>
+<date>2026-10-18T09:02:03.101517Z</date>
+</commit>
+<conflict
+   operation="update"
+   type="text">
+<version
+   side="source-left"
+   kind="file"
+   path-in-repos="trunk/f.txt"
+   repos-url="file:///tmp/mergeprobe/repo"
+   revision="1"/>
+<version
+   revision="2"
+   side="source-right"
+   kind="file"
+   path-in-repos="trunk/f.txt"
+   repos-url="file:///tmp/mergeprobe/repo"/>
+<prev-base-file>/fixture/wc/f.txt.r1</prev-base-file>
+<prev-wc-file>/fixture/wc/f.txt.mine</prev-wc-file>
+<cur-base-file>/fixture/wc/f.txt.r2</cur-base-file>
+</conflict>
+</entry>
+</info>

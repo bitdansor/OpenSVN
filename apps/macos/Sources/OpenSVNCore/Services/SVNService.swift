@@ -667,6 +667,30 @@ public actor SVNService {
         return result
     }
 
+    // MARK: - Conflict merge support
+
+    /// The three versions `svn` left behind for a text conflict, or nil when the
+    /// path is not in conflict. Read-only: no gate, no journal.
+    public func conflictArtifacts(for url: URL) async throws -> ConflictArtifacts? {
+        let result = try await runOnce(
+            ["info", "--xml", url.path],
+            workingDirectory: nil,
+            credential: nil,
+            progress: nil
+        )
+        return try ConflictArtifactParser.parse(infoXML: Data(result.standardOutput.utf8))
+    }
+
+    /// Takes the pre-resolve backup *without* resolving anything.
+    ///
+    /// The merge editor writes the merged file and then calls `resolve(.working)`,
+    /// which backs up again on its own — but by then the working file already
+    /// holds the merged text. The copy worth keeping is the original conflicted
+    /// one, so the editor asks for it before writing.
+    public func backupConflictArtifacts(for urls: [URL], reason: String) throws -> ConflictBackup? {
+        try conflictGuard.backup(paths: urls, reason: reason)
+    }
+
     private func runOnce(
         _ arguments: [String],
         workingDirectory: URL?,

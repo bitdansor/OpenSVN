@@ -24,6 +24,9 @@ struct ChangesView: View {
             Divider()
             actionBar
         }
+        .sheet(item: $session.mergeEditor) { editor in
+            MergeEditorView(session: session, editor: editor)
+        }
     }
 
     private var list: some View {
@@ -109,6 +112,15 @@ struct ChangesView: View {
         }
         if entry.hasConflicts {
             Menu("解决冲突") {
+                if entry.conflicts.contains(.text) {
+                    Button {
+                        session.beginMerge(entry)
+                    } label: {
+                        Label("三方合并…", systemImage: "arrow.triangle.branch")
+                    }
+                    .help("并排比较我的改动、基线和服务器改动，逐块选择")
+                    Divider()
+                }
                 ForEach(ResolveStrategy.allCases, id: \.self) { strategy in
                     Button {
                         session.resolve(entry, strategy: strategy)
