@@ -1,0 +1,24 @@
+{
+  "configurations": [
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:OpenSVN}/apps/macos",
+      "name": "Debug OpenSVN (apps/macos)",
+      "target": "OpenSVN",
+      "configuration": "debug",
+      "preLaunchTask": "swift: Build Debug OpenSVN (apps/macos)"
+    },
+    {
+      "type": "swift",
+      "request": "launch",
+      "args": [],
+      "cwd": "${workspaceFolder:OpenSVN}/apps/macos",
+      "name": "Release OpenSVN (apps/macos)",
+      "target": "OpenSVN",
+      "configuration": "release",
+      "preLaunchTask": "swift: Build Release OpenSVN (apps/macos)"
+    }
+  ]
+}
