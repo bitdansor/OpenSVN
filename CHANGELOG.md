@@ -6,6 +6,23 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed (CI: bundled-runtime job)
+
+- **The clean-machine check could never pass on a fresh checkout.**
+  `verify-clean-install.sh` built the probe with `--product OpenSVNProbe` — the
+  *target* name — while the product is `opensvn-probe`, so SwiftPM answered
+  `Could not find target named 'OpenSVNProbe-product'`. The error was redirected
+  to `/dev/null` and the section reported "probe unavailable", which reads like a
+  missing tool rather than a typo. Any developer machine hid it, because
+  `apps/macos/.build/debug/opensvn-probe` already existed there; the CI runner
+  builds only the app product, so the Bundled job failed on every run. The build
+  now uses the product name, reuses the configuration the bundle was built with,
+  and prints the compiler's output when it fails.
+- **The Subversion guard tested only `svn`.** The steps after it need `svnadmin`
+  (embedded in the bundle) and, for the scenario job, `svnserve`. An image that
+  ships Apple's CLI without those would skip `brew install` and then fail on the
+  next line, pointing at the runner instead of at the missing tool.
+
 ### Added (signing and notarisation pipeline)
 
 - **`scripts/sign-macos-app.sh`** signs inside-out (dylibs → `svn`/`svnadmin` →

@@ -53,8 +53,16 @@ jobs:
 
       - name: Ensure Subversion CLI
         run: |
-          if ! command -v svn >/dev/null 2>&1; then
-            echo "svn not preinstalled on this image; installing via Homebrew"
+          # These jobs need more than `svn`: the bundle embeds svnadmin, so a guard
+          # that only tests for `svn` skips the install on an image that ships
+          # Apple's CLI without svnadmin — and then fails on the next line for a
+          # reason that looks like a broken runner rather than a missing tool.
+          missing=""
+          for tool in svn svnadmin; do
+            command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+          done
+          if [[ -n "$missing" ]]; then
+            echo "missing:$missing — installing Subversion via Homebrew"
             brew install subversion
           fi
           svn --version --quiet
@@ -204,8 +212,16 @@ jobs:
 
       - name: Ensure Subversion CLI
         run: |
-          if ! command -v svn >/dev/null 2>&1; then
-            echo "svn not preinstalled on this image; installing via Homebrew"
+          # These jobs need more than `svn`: the bundle embeds svnadmin, so a guard
+          # that only tests for `svn` skips the install on an image that ships
+          # Apple's CLI without svnadmin — and then fails on the next line for a
+          # reason that looks like a broken runner rather than a missing tool.
+          missing=""
+          for tool in svn svnadmin svnserve; do
+            command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+          done
+          if [[ -n "$missing" ]]; then
+            echo "missing:$missing — installing Subversion via Homebrew"
             brew install subversion
           fi
           svn --version --quiet

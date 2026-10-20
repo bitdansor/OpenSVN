@@ -212,10 +212,24 @@ fi
 if [[ -z "$PROBE" ]]; then
   note "building opensvn-probe (one-off)"
   SWIFT_FLAGS="${SWIFT_FLAGS:-}"
-  if (cd "$ROOT/apps/macos" && swift build -c debug $SWIFT_FLAGS --product OpenSVNProbe >/dev/null 2>&1); then
-    BIN_PATH="$(cd "$ROOT/apps/macos" && swift build -c debug $SWIFT_FLAGS --show-bin-path 2>/dev/null)"
-    PROBE="$BIN_PATH/opensvn-probe"
-  fi
+  # `--product` takes the *product* name from Package.swift, which is
+  # `opensvn-probe`; the target is `OpenSVNProbe`. Passing the target name fails
+  # with "Could not find target named 'OpenSVNProbe-product'", and the first
+  # version of this script hid that in /dev/null: the check then reported
+  # "probe unavailable" instead of "probe failed to build", which reads like a
+  # missing feature rather than a typo. Prefer the configuration the bundle was
+  # built with, so no second full build is needed.
+  for config in release debug; do
+    if BUILD_LOG="$(cd "$ROOT/apps/macos" && swift build -c "$config" $SWIFT_FLAGS --product opensvn-probe 2>&1)"; then
+      BIN_PATH="$(cd "$ROOT/apps/macos" && swift build -c "$config" $SWIFT_FLAGS --show-bin-path 2>/dev/null)"
+      if [[ -x "$BIN_PATH/opensvn-probe" ]]; then
+        PROBE="$BIN_PATH/opensvn-probe"
+        break
+      fi
+    else
+      note "swift build -c $config --product opensvn-probe failed: $(tail -2 <<< "$BUILD_LOG" | tr '\n' ' ')"
+    fi
+  done
 fi
 
 if [[ -x "$PROBE" ]]; then
@@ -236,7 +250,7 @@ if [[ -x "$PROBE" ]]; then
     fail "resolved path is outside the bundle: $RESOLVED_PATH"
   fi
 else
-  fail "opensvn-probe unavailable; could not verify the app's own discovery"
+  fail "opensvn-probe could not be built or found; the app's own discovery is unverified (pass --probe <path> to reuse an existing build)"
 fi
 
 section "6. Uninstall leaves nothing behind"

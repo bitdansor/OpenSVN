@@ -51,8 +51,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Ensure Subversion CLI
         run: |
-          if ! command -v svn >/dev/null 2>&1; then
-            echo "svn not preinstalled on this image; installing via Homebrew"
+          # svnadmin is embedded in the bundle too, and an image can ship Apple's
+          # svn without it; test for both before deciding to skip the install.
+          missing=""
+          for tool in svn svnadmin; do
+            command -v "$tool" >/dev/null 2>&1 || missing="$missing $tool"
+          done
+          if [[ -n "$missing" ]]; then
+            echo "missing:$missing — installing Subversion via Homebrew"
             brew install subversion
           fi
           svn --version --quiet
