@@ -125,6 +125,18 @@ struct ChangesView: View {
             Button("添加到版本控制") {
                 Task { await session.add([entry.id]) }
             }
+            Button("忽略此文件") {
+                Task { await session.ignore([entry.id]) }
+            }
+            if !extensionOf(entry).isEmpty {
+                Button("忽略所有 .\(extensionOf(entry)) 文件") {
+                    Task { await session.ignoreExtension(of: entry) }
+                }
+            }
+            Divider()
+        }
+        Button("属性…") {
+            session.openProperties(for: entry)
         }
         if entry.hasConflicts {
             Menu("解决冲突") {
@@ -182,6 +194,14 @@ struct ChangesView: View {
             Menu {
                 Button("添加到版本控制") { Task { await session.add(unversionedSelection) } }
                     .disabled(unversionedSelection.isEmpty)
+                Button("忽略所选文件") { Task { await session.ignore(unversionedSelection) } }
+                    .disabled(unversionedSelection.isEmpty)
+                    .help("把所选文件加入各自目录的 svn:ignore")
+                Button("属性…") {
+                    guard let entry = selectedEntries.first, selectedEntries.count == 1 else { return }
+                    session.openProperties(for: entry)
+                }
+                .disabled(selectedEntries.count != 1)
                 Button("还原…") { session.requestRevert(Array(session.selectedPaths)) }
                     .disabled(session.selectedPaths.isEmpty)
                 Button("删除…") { session.requestDelete(Array(session.selectedPaths)) }
@@ -243,5 +263,9 @@ struct ChangesView: View {
 
     private var unversionedSelection: [String] {
         selectedEntries.filter { $0.item == .unversioned }.map(\.id)
+    }
+
+    private func extensionOf(_ entry: StatusEntry) -> String {
+        URL(fileURLWithPath: entry.path).pathExtension
     }
 }

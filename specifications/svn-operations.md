@@ -46,6 +46,10 @@
 | `info(at)` | 仓库/工作副本信息 | 否* | 否 | 否 | 是 |
 | `cleanup(at)` | 清理内部锁 | 否 | 是 | 否 | 是 |
 | `resolve(paths,strategy,confirmed)` | 解决冲突 | 否 | 是 | 视策略 | 否 |
+| `properties(at,recursive)` | 读取全部属性 | 否 | 否 | 否 | 是 |
+| `setProperty(name,value,targets)` | 设置属性 | 否 | 是 | 否 | 是 |
+| `deleteProperty(name,targets)` | 删除属性 | 否 | 是 | 否 | 是 |
+| `ignore(paths)` | 按文件名追加 `svn:ignore` | 否 | 是 | 否 | 是 |
 
 \* `info` 针对工作副本路径时只读本地 `.svn`；针对 URL 时访问网络。
 
@@ -140,9 +144,27 @@
 - 不删除用户文件；“清理”仅指 `.svn` 内部锁与未完成事务。
 - 若 `cleanup` 后仍报 `E155004`，错误映射必须提示“工作副本可能损坏，请备份后重新检出”，而不是反复重试。
 
+### 1.9 属性（properties / setProperty / deleteProperty / ignore）
+
+属性是版本化元数据，和文件内容一起提交。
+
+| 项 | 契约 |
+|---|---|
+| 读取 | `proplist --xml --verbose [--recursive]`。**不能用 `propget`**：它必须带一个属性名，问的是另一个问题 |
+| 无属性 | `svn` 输出空的 `<properties>`（没有 `<target>`），解析结果为 0 个目标，不是错误 |
+| 写入值 | 值经**临时文件 + `-F`** 传入，不作为 argv：以 `-` 开头的值会被当成选项，多行值（`svn:ignore`）是常态 |
+| 参数边界 | 属性名之后加 `--`，再列路径。路径本身以 `-` 开头时仍然安全 |
+| 确认 | **不需要 `confirmed`**。这是本地可还原的修改（`revert` 可撤销），提交前不影响仓库；删除路径/覆盖式解决冲突才算危险操作 |
+| 串行 | 仍走 R4 写锁：两个 `propset` 会争用同一个 `.svn/wc.db` |
+| 尾换行 | `svn` 会把 `svn:ignore` 规范化成以换行结尾。**比较必须按条目**，不能比原始字符串 |
+| 名称校验 | 只允许 `[A-Za-z0-9:._-]`；自定义属性必须带命名空间（`custom:owner`）；`svn:entry:` / `svn:wc:` 前缀拒绝写入。校验在启动子进程**之前**完成 |
+| `ignore(paths)` | 读该目录现有 `svn:ignore`，追加文件名后一次写回；已存在则**不写**（无意义写入也会让目录变成属性已修改，混进下次提交） |
+| 通配符转义 | `svn:ignore` 是 glob 列表。文件名里的 `*` `?` `[` `]` 必须转义为 `[*]` `[?]` `[[]` `[]]`，否则 `report*.txt` 会忽略掉一整类文件 |
+| 删除 | 只对确实拥有该属性的路径执行 `propdel`；全部不存在时返回 0，不报错 |
+
 ## 2. 中断恢复（操作日志）
 
-写操作（checkout / update / commit / add / delete / revert / resolve / cleanup）在**启动子进程之前**落一条记录，在子进程返回后删除。启动时仍然存在的记录，按定义就是"上次没有结果的操作"。
+写操作（checkout / update / commit / add / delete / revert / resolve / cleanup / property）在**启动子进程之前**落一条记录，在子进程返回后删除。启动时仍然存在的记录，按定义就是"上次没有结果的操作"。
 
 | 项 | 契约 |
 |---|---|

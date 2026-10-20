@@ -149,6 +149,7 @@ struct RecoveryBanner: View {
         case .revert: return "arrow.uturn.backward.circle"
         case .resolve: return "checkmark.circle"
         case .cleanup: return "wand.and.stars"
+        case .property: return "tag.circle"
         }
     }
 }

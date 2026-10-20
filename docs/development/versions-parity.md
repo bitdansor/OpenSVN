@@ -11,7 +11,7 @@ OpenSVN 已覆盖 Versions 的日常闭环——检出 → 修改 → 查看差�
 失败恢复、进程与凭据处理上更严格。差距集中在三块：
 
 1. **浏览与检索**：仓库浏览器、单文件历史、blame、时间线搜索；
-2. **高级 SVN**：属性/ignore、文件锁、externals、远程 copy/tag；
+2. **高级 SVN**：文件锁、externals、远程 copy/tag；
 3. **平台集成**：Finder 扩展、外部 diff 工具、通知、自动刷新、证书/代理 UI。
 
 Versions 不是超集：它不做分支间 merge、不支持 Git；这两点 OpenSVN 也未实现（后者不在规划内）。
@@ -29,7 +29,7 @@ Versions 不是超集：它不做分支间 merge、不支持 Git；这两点 Ope
 | 工作副本按文件名过滤 | ✅ | ❌ | |
 | 自动刷新（文件变化监听） | ✅ | ❌ | 仅手动刷新 |
 | 更新前查看远端变更 | ✅ | ❌ | |
-| 属性编辑（`svn:ignore` 等） | ✅ | ❌ | OpenSVN 只显示属性变更状态 |
+| 属性编辑（`svn:ignore` 等） | ✅ | ✅ | 属性面板可增删改；`svn:ignore` 有「忽略此文件 / 所有 .ext」快捷入口 |
 | 文件锁 lock / unlock | ✅ | ❌ | OpenSVN 只显示锁状态 |
 | `svn:externals` | ✅ | ❌ | |
 | changelist 管理 | — | ❌ | OpenSVN 只显示 changelist 名称 |
@@ -121,7 +121,6 @@ Versions 不是超集：它不做分支间 merge、不支持 Git；这两点 Ope
 
 **P0：补齐 SVN 日常可用性**
 
-- 属性编辑与 `svn:ignore`（目前 GUI 完全做不了，是硬缺口）。
 - lock / unlock（二进制资产、设计团队常用）。
 - 提交体验：说明复用、失败保留说明与勾选、面板内查看 diff。
 - 工作副本过滤 + 更新前远端变更预检。

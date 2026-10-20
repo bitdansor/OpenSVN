@@ -42,6 +42,21 @@ final class RepositorySession: Identifiable {
         let backupDirectory: URL?
     }
 
+    /// Properties of one path, plus whether they are still loading.
+    ///
+    /// A snapshot rather than a live query: `svn` is a process, and a view that
+    /// re-reads properties on every redraw would spawn one per keystroke.
+    struct PropertyEditorState: Identifiable {
+        let id = UUID()
+        let url: URL
+        let displayPath: String
+        var targets: [PropertyTarget] = []
+        var isLoading = false
+        var loadError: String?
+
+        var properties: [SVNProperty] { targets.first?.properties ?? [] }
+    }
+
     nonisolated let bookmark: RepositoryBookmark
     private(set) var service: SVNService?
     private var taskCenter: TaskCenter?
@@ -66,6 +81,8 @@ final class RepositorySession: Identifiable {
     var resolveReport: ResolveReport?
     /// Non-nil while the three-way merge editor is open.
     var mergeEditor: MergeEditorState?
+    /// Non-nil while the property sheet is open.
+    var propertyEditor: PropertyEditorState?
 
     init(
         bookmark: RepositoryBookmark,
@@ -533,6 +550,111 @@ final class RepositorySession: Identifiable {
             message: lines.joined(separator: "\n\n"),
             backupDirectory: outcome.backup?.directory
         )
+    }
+
+    // MARK: - Properties
+
+    func openProperties(for path: String) {
+        propertyEditor = PropertyEditorState(
+            url: URL(fileURLWithPath: path),
+            displayPath: relativePath(path)
+        )
+        Task { await reloadProperties() }
+    }
+
+    func openProperties(for entry: StatusEntry) {
+        openProperties(for: entry.path)
+    }
+
+    func closeProperties() {
+        propertyEditor = nil
+    }
+
+    /// Reads the property list again, keeping the sheet's identity so the UI does
+    /// not flicker while a write is in flight.
+    func reloadProperties() async {
+        guard let service, let editor = propertyEditor else { return }
+        propertyEditor?.isLoading = true
+        do {
+            let targets = try await service.properties(at: editor.url)
+            guard var current = propertyEditor, current.id == editor.id else { return }
+            current.targets = targets
+            current.isLoading = false
+            current.loadError = nil
+            propertyEditor = current
+        } catch {
+            guard var current = propertyEditor, current.id == editor.id else { return }
+            current.isLoading = false
+            current.loadError = (error as? SVNError)?.message ?? error.localizedDescription
+            propertyEditor = current
+        }
+    }
+
+    func setProperty(name: String, value: String) async {
+        guard let service, let editor = propertyEditor else { return }
+        let url = editor.url
+        await runPropertyWrite("设置属性 \(name)") {
+            try await service.setProperty(name: name, value: value, on: [url])
+        }
+    }
+
+    func deleteProperty(name: String) async {
+        guard let service, let editor = propertyEditor else { return }
+        let url = editor.url
+        await runPropertyWrite("删除属性 \(name)") {
+            _ = try await service.deleteProperty(name: name, on: [url])
+        }
+    }
+
+    /// Ignores files by name, each in its own directory (`svn:ignore`).
+    func ignore(_ paths: [String]) async {
+        guard let service, !paths.isEmpty else { return }
+        let urls = paths.map { URL(fileURLWithPath: $0) }
+        let title = urls.count == 1
+            ? "忽略「\(urls[0].lastPathComponent)」"
+            : "忽略 \(urls.count) 项"
+        await runPropertyWrite(title) {
+            _ = try await service.ignore(urls)
+        }
+    }
+
+    /// Ignores every file with the same extension.
+    ///
+    /// After ignoring one `*.log`, people almost always want the rest of them
+    /// too: the alternative is a context-menu trip per file.
+    func ignoreExtension(of entry: StatusEntry) async {
+        guard let service else { return }
+        let url = URL(fileURLWithPath: entry.path)
+        let ext = url.pathExtension
+        guard !ext.isEmpty else {
+            await ignore([entry.path])
+            return
+        }
+        let pattern = "*.\(ext)"
+        let directory = url.deletingLastPathComponent()
+        await runPropertyWrite("忽略 \(pattern)") {
+            _ = try await service.addIgnorePattern(pattern, in: directory)
+        }
+    }
+
+    /// Property writes refresh the status *and* the open sheet: the badge in the
+    /// file list and the list in the sheet would otherwise disagree the moment
+    /// the write lands.
+    private func runPropertyWrite(
+        _ title: String,
+        _ operation: @escaping @Sendable () async throws -> Void
+    ) async {
+        do {
+            if let taskCenter {
+                _ = try await taskCenter.run(title) { _ in try await operation() }
+            } else {
+                try await operation()
+            }
+            await refresh()
+            await reloadProperties()
+        } catch {
+            handle(error)
+        }
     }
 
     // MARK: - Plumbing

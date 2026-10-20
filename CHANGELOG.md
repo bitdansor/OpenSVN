@@ -6,6 +6,35 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (property editing and svn:ignore)
+
+- **The GUI can finally read and write versioned properties.** Until now the
+  file list showed a "属性" badge with no way to see what it meant, and setting
+  `svn:ignore` required a terminal — the single most common reason to keep one
+  open next to the app. `SVNService` gained `properties`, `setProperty`,
+  `deleteProperty`, `addIgnorePattern` and `ignore`.
+- **Reads use `proplist --xml --verbose`, not `propget`.** `propget` takes a
+  property *name*; passing a path answers "not a valid Subversion property name",
+  which is what the first version of the test run reported.
+- **Values travel through a temp file, and operands come after `--`.** A value
+  starting with `-` would otherwise be parsed as an option, and multi-line
+  `svn:ignore` lists are ordinary. Both have regression tests.
+- **Property writes need no confirmation, and that is deliberate.** `propset` is
+  local and `svn revert` undoes it, so a dialog would only train the user to
+  click through dialogs. Recorded in `specifications/ui-behavior.md` §1.5 so the
+  omission reads as a decision rather than an oversight. They still hold the
+  per-working-copy write lock and are journalled as `.property`.
+- **`svn:ignore` is treated as what it is: a list of glob patterns.** Appending a
+  file named `report*.txt` literally would ignore an entire class of files, so
+  `*`, `?`, `[`, `]` are escaped to `[*]`, `[?]`, `[[]`, `[]]`. Appending
+  something already covered writes nothing — a redundant `propset` still marks
+  the directory as property-modified and would end up in the next commit.
+- **UI**: "忽略此文件" and "忽略所有 .ext 文件" on unversioned entries, "属性…" in
+  the row menu and the toolbar, and a property sheet that edits values in place
+  and adds namespaced properties with validation ahead of the process spawn.
+- `svn` normalises `svn:ignore` to end with a newline; comparisons in the service
+  and the tests go through the decoded entry list rather than the raw string.
+
 ### Fixed (CI: bundled-runtime job)
 
 - **The clean-machine check could never pass on a fresh checkout.**

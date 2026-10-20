@@ -134,6 +134,11 @@ struct RepositoryDetailView: View {
         } message: { confirmation in
             Text(confirmation.message)
         }
+        // Attached here rather than in one tab: properties belong to a path, not
+        // to a page, and opening the sheet must not depend on which tab is up.
+        .sheet(item: $session.propertyEditor) { _ in
+            PropertyEditorView(session: session)
+        }
         .task {
             if session.status == nil {
                 await session.refresh()
