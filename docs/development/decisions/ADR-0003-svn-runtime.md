@@ -1,7 +1,7 @@
 # ADR-0003：SVN 运行时分发策略
 
-> 状态：**草案 — macOS 可行性已验证，Windows 待验证，发行签名待验证**
-> 日期：2026-10-18
+> 状态：**macOS 已实现并接入 CI（S6-1 / S6-6 完成）；发行签名与公证（S6-2）仍未验证；Windows 待验证**
+> 日期：2026-10-18（决策）/ 2026-10-20（实施进展）
 > 关联：`OpenSVN_开发执行计划.md` S0-3 / Gate A / K1
 > 影响阶段：阶段 1（CI）、阶段 3（进程调用）、阶段 6（打包签名公证）、阶段 7（合规）
 
@@ -72,6 +72,29 @@
 - 发现顺序：显式设置 → 包内内置 → `PATH` 探测 → 报错并给出可执行建议（不得静默失败）。
 - 启动时校验内置 `svn --version --quiet` 与 `compatibility.md` 的支持区间，不匹配时明确提示而非静默降级。
 - macOS 上**不得**依赖 `PATH` 查找 `svn`：从 Finder/Dock 启动的进程 `PATH` 不含 Homebrew 路径。
+
+### 实施进展（2026-10-20）
+
+S6-1 与 S6-6 已落地，结论与当初摸底一致（22 个 dylib、11 MB），但补上了三个摸底阶段没暴露的问题：
+
+1. **只打包 `svn` 不够。** 应用内「试一次三方合并」会用 `svnadmin create` 建仓库，
+   `DemoWorkspace.adminTool()` 是在 `svn` 同目录找 `svnadmin`。只带 `svn` 的话，这个功能
+   恰好在「没有装 Subversion 的机器」上坏掉——而那正是内置运行时存在的理由。现在两个都打包。
+2. **许可证文本不能指望 Cellar。** 新版 Homebrew 的 bottle 里常常没有 `LICENSE` 文件。
+   改为从 `brew info --json=v2` 取 SPDX 标识、文本能取到就取，取不到的**按名字记录**在
+   `runtime-manifest.json` 的 `textsMissing` 里。清单同时记录每个打包文件的来源与 SHA-256，
+   S7-2 审计有据可查，而不是一个掩盖缺口的绿勾。
+3. **「干净机器」不能靠嘴上说。** `scripts/verify-clean-install.sh` 以
+   `PATH=/usr/bin:/bin`、空 `HOME`、不继承任何环境变量运行内置工具，再执行
+   checkout / add（中文名带空格）/ commit（中文说明）/ update / status --xml / log --xml，
+   然后把整个 bundle 拷到另一个目录重跑一遍（验证 `@rpath` 是相对路径），
+   最后让应用自己的发现逻辑在 `PATH=/nonexistent` 下解析，断言 `source=bundled` 且路径在包内。
+
+该脚本**不覆盖** Gatekeeper 与公证——那需要一个 Developer ID 和一台全新的 macOS。
+它会把自己的适用范围写进 `build/clean-install-report.txt`，不假装发布已通过验证。
+
+`macos-ci.yml` 新增 `runtime` 作业，在每次 PR 上做完整打包 + 校验 + 干净机检查；
+`release.yml` 的 macOS 作业同时要求 `--require-bundled-svn`。
 
 ### 未决项（阻塞 Gate A 的剩余部分）
 

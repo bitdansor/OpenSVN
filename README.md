@@ -67,7 +67,7 @@ three ways — the guide explains the difference instead of asserting it.
 
 ```bash
 scripts/bootstrap-macos.sh              # what is missing in this environment?
-cd apps/macos && swift test             # 112 tests across 19 suites; real svn required
+cd apps/macos && swift test             # 113 tests across 19 suites; real svn required
 python3 scripts/verify-release.py       # VERSION / CHANGELOG / Info.plist / fixtures agree
 python3 scripts/verify-release.py --bundle build/OpenSVN.app
 ```

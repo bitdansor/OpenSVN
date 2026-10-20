@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 # Builds build/OpenSVN.app from the SwiftPM executable target.
 #
-#   scripts/build-macos-app.sh              # debug
+#   scripts/build-macos-app.sh              # debug, no bundled runtime
 #   CONFIG=release scripts/build-macos-app.sh
-#   BUNDLE_SVN=1 scripts/build-macos-app.sh # also embed a bundled svn runtime
+#   BUNDLE_SVN=1 scripts/build-macos-app.sh # embed a bundled svn runtime
+#   BUNDLE_SVN=0 CONFIG=release ...         # release build that still needs a host svn
+#
+# The bundled runtime defaults ON for release and OFF for debug. A release that
+# depends on the build host having svn violates the rule ADR-0003 settled, so the
+# opt-out is explicit and the build says so out loud.
 #
 # The produced bundle is ad-hoc signed. Developer ID signing and notarisation are
 # stage 6 work (see docs/development/decisions/ADR-0003-svn-runtime.md).
@@ -44,9 +49,20 @@ SHORT_VERSION="${VERSION%%-*}"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $SHORT_VERSION" "$APP/Contents/Info.plist" >/dev/null
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${BUILD_NUMBER:-1}" "$APP/Contents/Info.plist" >/dev/null
 
-if [[ "${BUNDLE_SVN:-0}" == "1" ]]; then
+if [[ "$CONFIG" == "release" ]]; then
+  BUNDLE_SVN="${BUNDLE_SVN:-1}"
+else
+  BUNDLE_SVN="${BUNDLE_SVN:-0}"
+fi
+
+if [[ "$BUNDLE_SVN" == "1" ]]; then
   echo "== bundling svn runtime =="
   "$ROOT/scripts/bundle-svn-runtime.sh" "$APP"
+else
+  echo "== no bundled svn runtime: this build needs svn on PATH =="
+  if [[ "$CONFIG" == "release" ]]; then
+    echo "   (a release build without the runtime is not shippable — see ADR-0003)"
+  fi
 fi
 
 printf 'APPL????' > "$APP/Contents/PkgInfo"

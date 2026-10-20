@@ -857,11 +857,20 @@ public enum SVNServiceFactory {
 
     /// Bundled-runtime locations inside an .app produced by packaging/macos.
     public static func bundledCandidateURLs(bundle: Bundle = .main) -> [URL] {
-        let resources = bundle.resourceURL ?? bundle.bundleURL.appendingPathComponent("Contents/Resources")
+        bundledCandidateURLs(appBundleURL: bundle.bundleURL, resources: bundle.resourceURL)
+    }
+
+    /// Same list, for an arbitrary .app on disk.
+    ///
+    /// `--app`-style verification tools (opensvn-probe discover) drive this so a
+    /// release check exercises the shipping path instead of re-deriving it. A
+    /// second copy of these three paths would drift the moment one of them moves.
+    public static func bundledCandidateURLs(appBundleURL: URL, resources: URL? = nil) -> [URL] {
+        let resourcesURL = resources ?? appBundleURL.appendingPathComponent("Contents/Resources")
         return [
-            resources.appendingPathComponent("svn/bin/svn"),
-            resources.appendingPathComponent("svn/svn"),
-            bundle.bundleURL.appendingPathComponent("Contents/Frameworks/svn")
+            resourcesURL.appendingPathComponent("svn/bin/svn"),
+            resourcesURL.appendingPathComponent("svn/svn"),
+            appBundleURL.appendingPathComponent("Contents/Frameworks/svn")
         ]
     }
 }

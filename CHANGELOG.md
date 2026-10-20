@@ -6,6 +6,39 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (bundled runtime, clean-machine verification)
+
+- **The release build now embeds its own Subversion.** `BUNDLE_SVN` defaults to 1
+  for `CONFIG=release`, so a release artifact no longer depends on the build
+  machine having `svn` installed. Debug builds stay fast and unbundled; the
+  explicit `BUNDLE_SVN=0 CONFIG=release` opt-out prints a warning, because a
+  release without the runtime contradicts ADR-0003.
+- **`svnadmin` is bundled too.** The in-app "try a three-way merge" demo creates
+  a repository, and `DemoWorkspace.adminTool()` looks for `svnadmin` next to
+  `svn`. Shipping only `svn` would have broken that feature on exactly the
+  machine the bundle exists for — one without Subversion installed.
+- **`licenses/runtime-manifest.json`** records every bundled file with its
+  origin, size and SHA-256, plus the SPDX licences of the Homebrew formulae that
+  contributed them. Bottles often ship no `LICENSE` file, so texts that cannot be
+  copied are listed by name under `textsMissing` instead of being glossed over.
+  `verify-release.py` now checks the manifest against the bytes on disk, so a
+  stale provenance claim fails the build.
+- **`scripts/verify-clean-install.sh` (S6-6)** answers the question the whole
+  runtime decision exists for: does this bundle work with no Subversion
+  installed? It runs the bundled tools with `PATH=/usr/bin:/bin`, an empty
+  `HOME` and no inherited environment; performs checkout / add (non-ASCII name
+  with a space) / commit (non-ASCII message) / update / `status --xml` /
+  `log --xml`; relocates the bundle and runs it again; and asks the app's own
+  discovery to resolve `svn` with `PATH=/nonexistent`, asserting the result is
+  inside the bundle. Writes `build/clean-install-report.txt`, including what it
+  does **not** cover (Gatekeeper and notarisation need S6-2).
+- **`verify-release.py --require-bundled-svn`** turns "no runtime embedded" from
+  a warning into a failure. `release.yml` and the new `runtime` CI job both use
+  it, so the runtime is exercised on every PR rather than at release time.
+- `opensvn-probe discover --app <path> --path <PATH>` exposes the production
+  discovery logic for the clean-machine check; a second copy of the candidate
+  paths would drift the moment one of them moved.
+
 ### Added (task retry, log file, write concurrency)
 
 - **Retry for failed tasks.** A failed entry in the task centre now offers

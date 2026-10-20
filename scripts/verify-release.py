@@ -17,6 +17,8 @@ dependency-free: it runs on a bare CI runner and locally before a release.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import os
 import plistlib
 import re
@@ -387,7 +389,7 @@ def check_fixtures(report: Report) -> None:
 # ---------------------------------------------------------------------------
 # bundle
 # ---------------------------------------------------------------------------
-def check_bundle(report: Report, bundle_arg: str) -> None:
+def check_bundle(report: Report, bundle_arg: str, require_bundled_svn: bool = False) -> None:
     report.section(f"App bundle: {bundle_arg}")
     bundle = Path(bundle_arg).resolve()
     if not bundle.is_dir():
@@ -442,6 +444,17 @@ def check_bundle(report: Report, bundle_arg: str) -> None:
         else:
             report.fail("Contents/Resources/svn exists but bin/svn is missing or not executable")
 
+        # The in-app merge demo creates a repository through svnadmin. Shipping
+        # only svn would leave that feature broken on exactly the machine the
+        # bundle is for — one without a system Subversion.
+        svnadmin_bin = svn_root / "bin" / "svnadmin"
+        if svnadmin_bin.is_file() and os.access(svnadmin_bin, os.X_OK):
+            report.ok("bundled svnadmin present (needed by the in-app merge demo)")
+        else:
+            report.fail(
+                "bundled runtime has no bin/svnadmin — the merge demo would fail on a clean machine"
+            )
+
         licenses = bundle / "Contents" / "Resources" / "licenses"
         if licenses.is_dir() and any(licenses.iterdir()):
             report.ok("Contents/Resources/licenses is populated")
@@ -451,9 +464,19 @@ def check_bundle(report: Report, bundle_arg: str) -> None:
                 "shipping this violates NOTICE / third_party/README.md"
             )
 
+        manifest_path = licenses / "runtime-manifest.json"
+        if manifest_path.is_file():
+            check_runtime_manifest(report, svn_root, manifest_path)
+        else:
+            report.fail("licenses/runtime-manifest.json is missing — provenance is unrecorded")
+
         if shutil.which("otool"):
             host_prefixes = ("/opt/homebrew", "/usr/local", "/Users/")
-            binaries = [svn_bin, *sorted((svn_root / "lib").glob("*.dylib"))]
+            binaries = [
+                path
+                for path in sorted(svn_root.rglob("*"))
+                if path.is_file() and not path.is_symlink()
+            ]
             offending: list[str] = []
             for binary in binaries:
                 if not binary.is_file():
@@ -473,10 +496,80 @@ def check_bundle(report: Report, bundle_arg: str) -> None:
             else:
                 report.ok(f"bundled binaries ({len(binaries)}) have no host-prefix dependencies")
     else:
-        report.warn(
+        message = (
             "no bundled svn runtime — the app relies on a system installation "
             "(allowed for local builds, not for a public release: ADR-0003)"
         )
+        if require_bundled_svn:
+            report.fail(message + "; --require-bundled-svn was requested")
+        else:
+            report.warn(message)
+
+
+def check_runtime_manifest(report: Report, svn_root: Path, manifest_path: Path) -> None:
+    """The manifest must describe the runtime that is actually in the bundle.
+
+    A stale manifest is worse than none: it is a provenance claim that no longer
+    matches the bytes being shipped, which is the one thing a compliance audit
+    cannot tolerate.
+    """
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        report.fail(f"runtime-manifest.json is unreadable: {error}")
+        return
+
+    if manifest.get("schemaVersion") != 1:
+        report.fail(f"runtime-manifest.json has unexpected schemaVersion {manifest.get('schemaVersion')!r}")
+        return
+
+    recorded = {entry["path"]: entry for entry in manifest.get("files", [])}
+    actual = {
+        str(path.relative_to(svn_root))
+        for path in svn_root.rglob("*")
+        if path.is_file() and not path.is_symlink()
+    }
+
+    missing = sorted(actual - set(recorded))
+    extra = sorted(set(recorded) - actual)
+    if missing:
+        report.fail(f"runtime-manifest.json does not list {len(missing)} bundled file(s): {missing[:5]}")
+    if extra:
+        report.fail(f"runtime-manifest.json lists {len(extra)} file(s) not in the bundle: {extra[:5]}")
+    if not missing and not extra:
+        report.ok(f"runtime-manifest.json covers all {len(actual)} bundled file(s)")
+
+    mismatched = []
+    for relative in sorted(actual & set(recorded)):
+        digest = hashlib.sha256((svn_root / relative).read_bytes()).hexdigest()
+        if digest != recorded[relative].get("sha256"):
+            mismatched.append(relative)
+    if mismatched:
+        report.fail(f"runtime-manifest.json hashes are stale for: {mismatched[:5]}")
+    elif actual:
+        report.ok("runtime-manifest.json hashes match the bundled bytes")
+
+    licenses = manifest.get("licenses", {})
+    identifiers = licenses.get("formulae") or {}
+    if not identifiers:
+        report.fail("runtime-manifest.json records no licence identifiers")
+    else:
+        without_id = licenses.get("identifiersMissing") or []
+        if without_id:
+            report.fail(
+                "bundled component(s) with no licence identifier: " + ", ".join(without_id)
+            )
+        else:
+            report.ok(f"licence identifiers recorded for {len(identifiers)} component(s)")
+
+    missing_text = licenses.get("textsMissing") or []
+    if missing_text:
+        report.warn(
+            f"no licence text copied for {len(missing_text)} component(s) "
+            "(recorded in the manifest; resolved by the S7-2 audit)"
+        )
+    else:
+        report.ok("licence texts collected for every component")
 
 
 # ---------------------------------------------------------------------------
@@ -546,6 +639,11 @@ def main() -> int:
     parser.add_argument("--fixtures", action="store_true", help="recorded svn XML fixtures")
     parser.add_argument("--scenarios", action="store_true", help="fault-injection scenarios are complete")
     parser.add_argument("--bundle", metavar="PATH", help="assembled .app to inspect")
+    parser.add_argument(
+        "--require-bundled-svn",
+        action="store_true",
+        help="a bundle without the embedded svn runtime fails (use for release artifacts)",
+    )
     parser.add_argument("--all", action="store_true", help="everything (needs --bundle)")
     args = parser.parse_args()
 
@@ -568,7 +666,7 @@ def main() -> int:
     if run_scenarios:
         check_scenarios(report)
     if args.bundle:
-        check_bundle(report, args.bundle)
+        check_bundle(report, args.bundle, require_bundled_svn=args.require_bundled_svn)
 
     print()
     if report.failures:

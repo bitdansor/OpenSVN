@@ -44,10 +44,28 @@ jobs:
     needs: version
     steps:
       - uses: actions/checkout@v4
+      - name: Ensure Subversion CLI
+        run: |
+          if ! command -v svn >/dev/null 2>&1; then
+            echo "svn not preinstalled on this image; installing via Homebrew"
+            brew install subversion
+          fi
+          svn --version --quiet
+          svnadmin --version --quiet
       - name: Build
-        run: CONFIG=release scripts/build-macos-app.sh
+        run: CONFIG=release BUNDLE_SVN=1 scripts/build-macos-app.sh
       - name: Verify bundle
-        run: python3 scripts/verify-release.py --bundle build/OpenSVN.app
+        run: python3 scripts/verify-release.py --bundle build/OpenSVN.app --require-bundled-svn
+      # The release must not be the first time anyone asks whether the embedded
+      # runtime works without a system Subversion (S6-6).
+      - name: Clean-machine check
+        run: scripts/verify-clean-install.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clean-install-report
+          path: build/clean-install-report.txt
+          if-no-files-found: ignore
+          retention-days: 90
       - name: Package
         run: |
           ditto -c -k --keepParent build/OpenSVN.app "OpenSVN-${{ needs.version.outputs.version }}-macos-arm64-UNSIGNED.zip"

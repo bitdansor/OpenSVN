@@ -27,6 +27,18 @@ struct DiscoveryTests {
         #expect(Set(candidates.map(\.path)).count == candidates.count)
     }
 
+    @Test("the bundled candidate is derived from wherever the app was installed")
+    func bundledCandidatesFollowTheApp() {
+        // scripts/verify-clean-install.sh asks this exact question of a real
+        // bundle. Keeping the shape under test means a path change breaks here
+        // first, not on someone's clean machine.
+        let candidates = SVNServiceFactory.bundledCandidateURLs(
+            appBundleURL: URL(fileURLWithPath: "/Applications/OpenSVN.app")
+        )
+        #expect(candidates.first?.path == "/Applications/OpenSVN.app/Contents/Resources/svn/bin/svn")
+        #expect(candidates.count == 3)
+    }
+
     @Test("resolves the developer's real svn and validates its version", .enabled(if: TestEnvironment.svnExecutable != nil))
     func resolveRealSVN() async throws {
         let installation = try await SVNDiscovery(environment: ProcessInfo.processInfo.environment).resolve()

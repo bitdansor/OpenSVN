@@ -89,6 +89,55 @@ jobs:
       - name: Verify bundle
         run: python3 scripts/verify-release.py --bundle build/OpenSVN.app
 
+  # S6-1 + S6-6. The previous job proves the shell of the app assembles; this one
+  # proves the thing we actually ship can run on a Mac that has never seen
+  # Subversion. Those are different claims, and only the second one satisfies the
+  # rule in §2 of the specification.
+  #
+  # It runs on every PR on purpose: a forgotten dylib or a Homebrew path left in a
+  # binary is invisible on a developer machine and impossible to notice at release
+  # time without this job.
+  runtime:
+    name: Bundled runtime + clean-machine check (S6-1, S6-6)
+    runs-on: macos-15
+    timeout-minutes: 40
+    needs: package
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Ensure Subversion CLI
+        run: |
+          if ! command -v svn >/dev/null 2>&1; then
+            echo "svn not preinstalled on this image; installing via Homebrew"
+            brew install subversion
+          fi
+          # Both tools are embedded in the app, so both must exist to build it.
+          svn --version --quiet
+          svnadmin --version --quiet
+
+      - name: Assemble with the embedded runtime
+        run: CONFIG=release BUNDLE_SVN=1 scripts/build-macos-app.sh
+
+      - name: Verify bundle and runtime manifest
+        run: |
+          python3 scripts/verify-release.py \
+            --bundle build/OpenSVN.app \
+            --require-bundled-svn
+
+      - name: Clean-machine check
+        run: scripts/verify-clean-install.sh
+
+      - name: Upload clean-machine report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clean-install-report
+          path: build/clean-install-report.txt
+          if-no-files-found: ignore
+          retention-days: 14
+
   xcode-project:
     name: Xcode project (signing disabled)
     runs-on: macos-15

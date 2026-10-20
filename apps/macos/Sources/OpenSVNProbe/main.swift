@@ -25,9 +25,11 @@ import OpenSVNCore
 private let usage = """
 usage: opensvn-probe map-error --exit <code> [--stdout <file>] < stderr
        opensvn-probe demo [--path <dir>] [--svn <path>] [--svnadmin <path>]
+       opensvn-probe discover --app <OpenSVN.app> [--path <PATH>]
 
 map-error  Reads svn's stderr from stdin and prints the application error it maps to.
 demo       Builds the local "try a three-way merge" sample and prints its paths.
+discover   Resolves svn the way the app does at launch, for a given .app and PATH.
 """
 
 private func fail(_ reason: String) -> Never {
@@ -83,8 +85,54 @@ private func runDemo(_ arguments: [String]) async throws {
     }
 }
 
-private func resolveTool(_ flag: String, in arguments: [String], name: String) throws -> URL {
-    if let explicit = value(after: flag, in: arguments) {
+/// Resolves `svn` the way the app does at launch.
+///
+/// S6-6 asks whether the bundle works on a machine with no Subversion installed.
+/// A GUI cannot be asked that question non-interactively, but the *decision* the
+/// app makes at launch can be: given an empty PATH, which candidate wins? This
+/// command answers it with the production discovery code and the production
+/// candidate list, so the claim "the app does not need a host svn" is checked
+/// rather than asserted.
+///
+///     opensvn-probe discover --app build/OpenSVN.app --path /nonexistent
+///     source=bundled
+///     path=/.../OpenSVN.app/Contents/Resources/svn/bin/svn
+///     version=1.14.5
+private func runDiscover(_ arguments: [String]) async throws {
+    guard let appPath = value(after: "--app", in: arguments) else {
+        failUsage("discover requires --app <OpenSVN.app>")
+    }
+    let appURL = URL(fileURLWithPath: (appPath as NSString).expandingTildeInPath).standardizedFileURL
+    guard FileManager.default.fileExists(atPath: appURL.path) else {
+        fail("no app bundle at \(appURL.path)")
+    }
+
+    // An explicitly empty PATH is the interesting case: the app must not depend
+    // on finding svn in the environment, because a Finder launch never has
+    // Homebrew on PATH.
+    let searchPath = value(after: "--path", in: arguments) ?? "/usr/bin:/bin"
+
+    let discovery = SVNDiscovery(
+        bundledCandidates: SVNServiceFactory.bundledCandidateURLs(appBundleURL: appURL),
+        environment: ["PATH": searchPath],
+        probeTimeout: 30
+    )
+
+    do {
+        let installation = try await discovery.resolve()
+        emit("source", installation.source.rawValue)
+        emit("path", installation.executableURL.path)
+        emit("version", installation.version.description)
+        emit("searched", discovery.candidates().map(\.path).joined(separator: ":"))
+    } catch let error as SVNError {
+        emit("source", "none")
+        emit("error", error.message)
+        emit("searched", error.diagnosticOutput ?? "")
+        exit(1)
+    }
+}
+
+private func resolveTool(_ flag: String, in arguments: [String], name: String) throws -> URL {    if let explicit = value(after: flag, in: arguments) {
         return URL(fileURLWithPath: (explicit as NSString).expandingTildeInPath)
     }
     let candidates = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
@@ -118,6 +166,9 @@ case "map-error":
 
 case "demo":
     try await runDemo(arguments)
+
+case "discover":
+    try await runDiscover(arguments)
 
 default:
     failUsage("unknown command")
