@@ -190,6 +190,33 @@ public enum SVNXMLParser {
         )
     }
 
+    // MARK: - properties
+
+    /// `svn proplist --xml --verbose [--recursive] <path>`.
+    ///
+    /// A path with no properties produces an empty `<properties>` element — no
+    /// `<target>` at all — so an empty array means "nothing is set". A `<target>`
+    /// with no children does not occur from svn itself but is accepted, because a
+    /// future version emitting it would otherwise break the read path silently.
+    public static func parseProperties(_ data: Data) throws -> [PropertyTarget] {
+        let document = try loadDocument(data, kind: "propget")
+        guard let root = document.rootElement(), root.name == "properties" else {
+            throw parseError("根元素不是 <properties>", data)
+        }
+
+        return root.elements(forName: "target").map { element in
+            let path = element.attribute(forName: "path")?.stringValue ?? ""
+            let properties = element.elements(forName: "property").compactMap { property -> SVNProperty? in
+                guard let name = property.attribute(forName: "name")?.stringValue else { return nil }
+                // The value is the element's text, which may be empty: `svn
+                // propset name "" path` is legal and means "present but empty",
+                // which is different from "absent".
+                return SVNProperty(name: name, value: property.stringValue ?? "")
+            }
+            return PropertyTarget(path: path, properties: properties)
+        }
+    }
+
     // MARK: - helpers
 
     private static func loadDocument(_ data: Data, kind: String) throws -> XMLDocument {

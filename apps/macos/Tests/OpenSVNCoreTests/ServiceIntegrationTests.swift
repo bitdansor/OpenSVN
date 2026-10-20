@@ -290,6 +290,68 @@ struct ServiceIntegrationTests {
         _ = committed
         #expect(try String(contentsOf: readme, encoding: .utf8) == merged)
     }
+
+    @Test("properties: ignore a file, round-trip a custom property, delete it")
+    func propertiesRoundTrip() async throws {
+        let fixture = try await makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let service = fixture.service
+        try await service.checkout(
+            url: "file://\(fixture.repository.path)/trunk",
+            to: fixture.workingCopy
+        )
+
+        // An untracked artefact starts out as `?`, which is exactly the state the
+        // ignore action is meant to fix.
+        let artefact = fixture.workingCopy.appendingPathComponent("build.log")
+        try "noise\n".write(to: artefact, atomically: true, encoding: .utf8)
+        var snapshot = try await service.status(at: fixture.workingCopy)
+        #expect(snapshot.entries.contains { $0.path.hasSuffix("build.log") && $0.item == .unversioned })
+
+        let first = try await service.ignore([artefact])
+        #expect(first.added == ["build.log"])
+        #expect(first.already.isEmpty)
+
+        // Default `svn status` hides ignored paths, so absence is the assertion.
+        snapshot = try await service.status(at: fixture.workingCopy)
+        #expect(!snapshot.entries.contains { $0.path.hasSuffix("build.log") })
+        let ignoreValue = try await service.propertyValue(of: "svn:ignore", at: fixture.workingCopy)
+        // svn normalises the value to end with a newline, so compare the decoded
+        // entry list rather than the raw string.
+        #expect(IgnoreList.entries(ignoreValue) == ["build.log"])
+
+        // Doing it twice must not rewrite the property: an unchanged propset
+        // still marks the directory modified.
+        let second = try await service.ignore([artefact])
+        #expect(second.added.isEmpty)
+        #expect(second.already == ["build.log"])
+
+        // Multi-line and leading-dash values travel through a file, not argv.
+        let readme = fixture.workingCopy.appendingPathComponent("README.md")
+        try await service.setProperty(
+            name: "custom:owner",
+            value: "平台组\n--not-an-option",
+            on: [readme]
+        )
+        let owner = try await service.propertyValue(of: "custom:owner", at: readme)
+        #expect(owner == "平台组\n--not-an-option")
+
+        let removed = try await service.deleteProperty(name: "custom:owner", on: [readme])
+        #expect(removed == 1)
+        let gone = try await service.propertyValue(of: "custom:owner", at: readme)
+        #expect(gone == nil)
+
+        // Deleting something that is not there is a no-op, not a failure: the
+        // UI deletes from a selection that may only partly have the property.
+        let again = try await service.deleteProperty(name: "custom:owner", on: [readme])
+        #expect(again == 0)
+
+        // Invalid names fail before an svn process is spawned.
+        await #expect(throws: SVNError.self) {
+            try await service.setProperty(name: "owner", value: "x", on: [readme])
+        }
+    }
+
 }
 
 @Suite("write serialization")

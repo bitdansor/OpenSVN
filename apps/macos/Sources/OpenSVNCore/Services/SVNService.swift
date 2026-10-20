@@ -605,6 +605,185 @@ public actor SVNService {
         }
     }
 
+    // MARK: - Properties
+
+    /// Every property on `target`, or on it and its children when `recursive`.
+    ///
+    /// Read-only: no gate, no journal. `proplist --verbose` is what carries the
+    /// values; `propget` takes a single property name and answers a different
+    /// question.
+    public func properties(at target: URL, recursive: Bool = false) async throws -> [PropertyTarget] {
+        var args = ["proplist", "--xml", "--verbose"]
+        if recursive { args.append("--recursive") }
+        args.append(target.standardizedFileURL.path)
+        let result = try await invoke(args, workingDirectory: nil, credential: nil, repositoryURL: nil)
+        return try SVNXMLParser.parseProperties(Data(result.standardOutput.utf8))
+    }
+
+    /// The value of one property, or `nil` when it is not set.
+    public func propertyValue(of name: String, at target: URL) async throws -> String? {
+        try await properties(at: target).first?.value(of: name)
+    }
+
+    /// Sets `name` to `value` on every path, creating the property if absent.
+    ///
+    /// Deliberately not behind a `confirmed` flag. Unlike deleting files or an
+    /// overwriting resolve, this is a local and revertible change: `svn revert`
+    /// restores the previous value, and nothing reaches the repository until a
+    /// commit. It still holds the write lock, because two `propset` runs on one
+    /// working copy race on the same `.svn/wc.db`.
+    public func setProperty(name: String, value: String, on targets: [URL]) async throws {
+        guard !targets.isEmpty else { return }
+        try SVNPropertyName.validate(name)
+        try await writeProperty(
+            ["propset", name],
+            value: value,
+            on: targets,
+            summary: "设置属性 \(name)"
+        )
+    }
+
+    /// Removes `name` from every path that has it, and reports how many did.
+    ///
+    /// `svn propdel` fails on a path that does not have the property, which
+    /// would make "delete this from the selection" fail whenever part of the
+    /// selection never had it. The existence check turns that into a no-op for
+    /// the paths that do not.
+    @discardableResult
+    public func deleteProperty(name: String, on targets: [URL]) async throws -> Int {
+        guard !targets.isEmpty else { return 0 }
+        try SVNPropertyName.validate(name)
+        var holders: [URL] = []
+        for target in targets {
+            let target = target.standardizedFileURL
+            do {
+                if try await propertyValue(of: name, at: target) != nil {
+                    holders.append(target)
+                }
+            } catch {
+                // A path that cannot be read (deleted on disk, outside the
+                // working copy) simply has nothing to delete.
+                continue
+            }
+        }
+        guard !holders.isEmpty else { return 0 }
+        try await writeProperty(
+            ["propdel", name],
+            value: nil,
+            on: holders,
+            summary: "删除属性 \(name)"
+        )
+        return holders.count
+    }
+
+    /// Appends `pattern` to the directory's `svn:ignore`, if not already there.
+    ///
+    /// - Returns: whether a write happened. A no-op returns `false` instead of
+    ///   running `propset` with an identical value, which would still mark the
+    ///   directory as property-modified and end up in the next commit.
+    @discardableResult
+    public func addIgnorePattern(_ pattern: String, in directory: URL) async throws -> Bool {
+        let trimmed = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw SVNError(code: .invalidInvocation, message: "忽略规则不能为空")
+        }
+        let directory = directory.standardizedFileURL
+        let existing = try await propertyValue(of: "svn:ignore", at: directory)
+        if IgnoreList.entries(existing).contains(trimmed) { return false }
+        let updated = (IgnoreList.entries(existing) + [trimmed]).joined(separator: "\n")
+        try await setProperty(name: "svn:ignore", value: updated, on: [directory])
+        return true
+    }
+
+    /// Ignores each path by name, in its own parent directory.
+    ///
+    /// Grouping by directory matters: a single `propset` per directory is one
+    /// `.svn/wc.db` write instead of one per file, and it computes the merged
+    /// list from the value that was actually there.
+    public func ignore(_ paths: [URL]) async throws -> IgnoreOutcome {
+        var outcome = IgnoreOutcome()
+        guard !paths.isEmpty else { return outcome }
+
+        let groups = Dictionary(grouping: paths) { $0.deletingLastPathComponent().standardizedFileURL }
+        for directory in groups.keys.sorted(by: { $0.path < $1.path }) {
+            let files = (groups[directory] ?? []).sorted { $0.lastPathComponent < $1.lastPathComponent }
+            var value = try await propertyValue(of: "svn:ignore", at: directory)
+            var addedHere: [String] = []
+
+            for file in files {
+                let name = file.lastPathComponent
+                if let updated = IgnoreList.adding(name, to: value) {
+                    value = updated
+                    addedHere.append(name)
+                } else {
+                    outcome.already.append(name)
+                }
+            }
+
+            guard !addedHere.isEmpty, let value else { continue }
+            try await setProperty(name: "svn:ignore", value: value, on: [directory])
+            outcome.added.append(contentsOf: addedHere)
+        }
+        return outcome
+    }
+
+    /// Shared tail of `propset` / `propdel`.
+    ///
+    /// The value travels through a temp file rather than argv on purpose: a
+    /// value beginning with `-` would be read as an option, and multi-line
+    /// values (`svn:ignore`) are ordinary. `--` then separates the operands from
+    /// the options, so a path that looks like a flag is still a path.
+    private func writeProperty(
+        _ arguments: [String],
+        value: String?,
+        on targets: [URL],
+        summary: String
+    ) async throws {
+        let key = WorkingCopyLocator.serializationKey(for: targets[0])
+        let ticket = await beginJournal(
+            .property,
+            workingCopy: URL(fileURLWithPath: key),
+            summary: summary
+        )
+        do {
+            try await gate.withLock(key) {
+                var valueFile: URL?
+                defer {
+                    if let valueFile { try? FileManager.default.removeItem(at: valueFile) }
+                }
+                var args = arguments
+                if let value {
+                    let temporary = try Self.writeTemporaryValue(value)
+                    valueFile = temporary
+                    args += ["-F", temporary.path]
+                }
+                args.append("--")
+                args += targets.map(\.standardizedFileURL.path)
+                _ = try await self.invoke(args, workingDirectory: nil, credential: nil, repositoryURL: nil)
+            }
+            await finishJournal(ticket)
+        } catch {
+            await finishJournal(ticket)
+            throw error
+        }
+    }
+
+    /// Writes a property value where `svn` can read it back byte for byte.
+    /// The file name is random and says nothing about the contents.
+    private nonisolated static func writeTemporaryValue(_ value: String) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("opensvn-property-\(UUID().uuidString)")
+        do {
+            try value.write(to: url, atomically: true, encoding: .utf8)
+        } catch {
+            throw SVNError(
+                code: .permissionDenied,
+                message: "无法写入临时文件来传递属性值：\(error.localizedDescription)"
+            )
+        }
+        return url
+    }
+
     // MARK: - Credentials
 
     public func storedCredential(for host: String) -> SVNCredential? {
