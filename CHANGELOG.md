@@ -6,6 +6,40 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (signing and notarisation pipeline)
+
+- **`scripts/sign-macos-app.sh`** signs inside-out (dylibs → `svn`/`svnadmin` →
+  app) with `--options runtime` on every nested binary. `codesign --deep` is not
+  used for signing: a parent signed before its children ends up covering bytes
+  that later changed, which on Apple Silicon is a SIGKILL at launch instead of an
+  error. The script refuses to run without `SIGN_IDENTITY`, and when given a
+  development certificate it says out loud that the result cannot be notarised.
+- **`packaging/macos/entitlements.plist`** is deliberately empty, with the
+  reasoning written down: no sandbox (working copies live anywhere on disk), and
+  no third-party code loaded into the process (the bundled `svn` is a child
+  process signed by the same identity). An exception added later has to be a
+  reviewable diff rather than a flag on a command line.
+- **`packaging/macos/notarize.sh`**: `notarytool submit --wait`, fetch the
+  rejection log on failure, `stapler staple`, `stapler validate`,
+  `spctl --assess`. Credentials come from a keychain profile or environment
+  secrets — never from a file in the repository. A non-Developer-ID signature is
+  rejected before the upload, not after it.
+- **The runtime manifest is re-measured after signing.** A signature is embedded
+  in the Mach-O, so hashes taken before signing describe bytes that no longer
+  exist; and because the app signature covers the manifest, the rewrite has to
+  happen before the app is sealed. `bundle-svn-runtime.sh --refresh-manifest`
+  does that and remains the only writer of the manifest format.
+- **`verify-release.py --require-signed` / `--require-notarized`** gate a release
+  on a Developer ID signature with hardened runtime, a stapled ticket and a
+  Gatekeeper pass. `release.yml` imports the certificate, signs, notarises,
+  re-verifies, and packages `OpenSVN-<ver>-macos-arm64.zip` plus `SHA256SUMS.txt`;
+  a tag build without the signing secrets fails at the end of the job instead of
+  publishing something Gatekeeper would block. Publication itself stays blocked
+  until the Windows artifacts and the final regression exist (S6-3, S7-1, S7-6).
+- CI now asserts the **refusal** paths that a signing pipeline can get wrong:
+  signing without an identity must fail, notarisation of an ad-hoc signature must
+  fail, and an ad-hoc bundle must fail `--require-signed`.
+
 ### Added (bundled runtime, clean-machine verification)
 
 - **The release build now embeds its own Subversion.** `BUNDLE_SVN` defaults to 1

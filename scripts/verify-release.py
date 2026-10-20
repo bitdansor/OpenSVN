@@ -67,6 +67,10 @@ REQUIRED_FILES = [
     "specifications/ui-behavior.md",
     "docs/architecture/overview.md",
     "docs/development/toolchain.md",
+    "packaging/macos/entitlements.plist",
+    "packaging/macos/notarize.sh",
+    "scripts/sign-macos-app.sh",
+    "scripts/verify-clean-install.sh",
     ".github/pull_request_template.md",
 ]
 
@@ -389,7 +393,8 @@ def check_fixtures(report: Report) -> None:
 # ---------------------------------------------------------------------------
 # bundle
 # ---------------------------------------------------------------------------
-def check_bundle(report: Report, bundle_arg: str, require_bundled_svn: bool = False) -> None:
+def check_bundle(report: Report, bundle_arg: str, require_bundled_svn: bool = False,
+                 require_signed: bool = False, require_notarized: bool = False) -> None:
     report.section(f"App bundle: {bundle_arg}")
     bundle = Path(bundle_arg).resolve()
     if not bundle.is_dir():
@@ -424,16 +429,13 @@ def check_bundle(report: Report, bundle_arg: str, require_bundled_svn: bool = Fa
     else:
         report.warn(f"LSMinimumSystemVersion is {plist.get('LSMinimumSystemVersion')!r}")
 
-    # Signature: ad-hoc is expected until stage 6; only flag "unsigned".
-    if shutil.which("codesign"):
-        result = subprocess.run(
-            ["codesign", "-dv", str(bundle)], capture_output=True, text=True, check=False
-        )
-        combined = result.stdout + result.stderr
-        if "code object is not signed at all" in combined:
-            report.warn("bundle is unsigned (ad-hoc signing normally applied by the build script)")
-        else:
-            report.ok("bundle carries a signature (ad-hoc until stage 6)")
+    # Signature: ad-hoc is fine for a local build, never for a release.
+    check_signature(
+        report,
+        bundle,
+        require_signed=require_signed,
+        require_notarized=require_notarized,
+    )
 
     # Bundled svn runtime: when present, it must be self-contained and licensed.
     svn_root = bundle / "Contents" / "Resources" / "svn"
@@ -504,6 +506,101 @@ def check_bundle(report: Report, bundle_arg: str, require_bundled_svn: bool = Fa
             report.fail(message + "; --require-bundled-svn was requested")
         else:
             report.warn(message)
+
+
+def check_signature(report: Report, bundle: Path, require_signed: bool = False,
+                    require_notarized: bool = False) -> None:
+    """Ad-hoc is fine for a local build; it is never fine for a release.
+
+    The two release claims are checked separately because they fail
+    independently: a Developer ID signature with no hardened runtime cannot be
+    notarised, and a stapled ticket does not survive re-signing.
+    """
+    if not shutil.which("codesign"):
+        message = "codesign unavailable — signature not checked"
+        report.fail(message + " (required)") if require_signed else report.warn(message)
+        return
+
+    details = subprocess.run(
+        ["codesign", "-d", "--verbose=4", str(bundle)],
+        capture_output=True, text=True, check=False,
+    )
+    combined = details.stdout + details.stderr
+
+    if "code object is not signed at all" in combined:
+        message = "bundle is unsigned"
+        if require_signed:
+            report.fail(message)
+        else:
+            report.warn(message + " (the build script applies an ad-hoc signature)")
+        return
+
+    authority = next(
+        (line.split("=", 1)[1] for line in combined.splitlines() if line.startswith("Authority=")),
+        "",
+    )
+    # The flags sit inside the CodeDirectory line, not at the start of it:
+    # "CodeDirectory v=20400 size=... flags=0x10002(adhoc,runtime) hashes=..."
+    flags_match = re.search(r"flags=0x[0-9a-fA-F]+\(([^)]*)\)", combined)
+    flags = flags_match.group(1) if flags_match else ""
+    is_developer_id = authority.startswith("Developer ID Application:")
+    has_runtime = "runtime" in flags.split(",")
+
+    verify = subprocess.run(
+        ["codesign", "--verify", "--deep", "--strict", str(bundle)],
+        capture_output=True, text=True, check=False,
+    )
+    if verify.returncode == 0:
+        report.ok("signature verifies (codesign --verify --deep --strict)")
+    else:
+        report.fail("codesign --verify failed: " + (verify.stderr.strip() or "no output"))
+
+    if is_developer_id and has_runtime:
+        report.ok(f"Developer ID signature with hardened runtime ({authority})")
+    elif require_signed:
+        reasons = []
+        if not is_developer_id:
+            reasons.append(f"authority is {authority or 'missing'}")
+        if not has_runtime:
+            reasons.append("hardened runtime flag missing")
+        report.fail("not a shippable signature: " + "; ".join(reasons))
+    else:
+        report.warn(
+            "ad-hoc or development signature "
+            f"(authority={authority or 'none'}, runtime={'yes' if has_runtime else 'no'}) "
+            "— fine for a local build, not shippable"
+        )
+
+    if not require_notarized:
+        return
+
+    if not is_developer_id:
+        report.fail("notarisation requires a Developer ID signature")
+        return
+    if not shutil.which("xcrun"):
+        report.fail("xcrun unavailable — cannot confirm notarisation")
+        return
+
+    staple = subprocess.run(
+        ["xcrun", "stapler", "validate", str(bundle)],
+        capture_output=True, text=True, check=False,
+    )
+    if staple.returncode == 0:
+        report.ok("notarisation ticket is stapled")
+    else:
+        report.fail(
+            "no stapled notarisation ticket: "
+            + (staple.stdout + staple.stderr).strip()[:200]
+        )
+
+    assess = subprocess.run(
+        ["spctl", "--assess", "--type", "execute", str(bundle)],
+        capture_output=True, text=True, check=False,
+    )
+    if assess.returncode == 0:
+        report.ok("Gatekeeper accepts the app")
+    else:
+        report.fail("Gatekeeper rejects the app: " + (assess.stderr.strip() or "no output"))
 
 
 def check_runtime_manifest(report: Report, svn_root: Path, manifest_path: Path) -> None:
@@ -644,6 +741,16 @@ def main() -> int:
         action="store_true",
         help="a bundle without the embedded svn runtime fails (use for release artifacts)",
     )
+    parser.add_argument(
+        "--require-signed",
+        action="store_true",
+        help="require a Developer ID signature with the hardened runtime",
+    )
+    parser.add_argument(
+        "--require-notarized",
+        action="store_true",
+        help="also require a stapled notarisation ticket and a Gatekeeper pass",
+    )
     parser.add_argument("--all", action="store_true", help="everything (needs --bundle)")
     args = parser.parse_args()
 
@@ -666,7 +773,13 @@ def main() -> int:
     if run_scenarios:
         check_scenarios(report)
     if args.bundle:
-        check_bundle(report, args.bundle, require_bundled_svn=args.require_bundled_svn)
+        check_bundle(
+            report,
+            args.bundle,
+            require_bundled_svn=args.require_bundled_svn,
+            require_signed=args.require_signed,
+            require_notarized=args.require_notarized,
+        )
 
     print()
     if report.failures:

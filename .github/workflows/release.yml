@@ -1,10 +1,15 @@
 name: Release
 
-# Stage 6 work, sketched here so the shape is agreed before it is built:
-#   tag v* -> build both platforms -> sign -> notarise/verify -> publish assets.
-# Until then this workflow produces an UNSIGNED local artifact and stops. It must
-# never publish something unverified, so the release job refuses to run without
-# the signing secrets.
+# Stage 6: tag v* -> build -> sign -> notarise -> staple -> verify -> package.
+#
+# Signing and notarisation are wired up but gated on secrets. With
+# MACOS_CERTIFICATE_P12 / MACOS_SIGN_IDENTITY present the build is signed with a
+# Developer ID and notarised; without them it produces an `-UNSIGNED` artifact and
+# a tag build fails loudly at the end of the job rather than publishing something
+# Gatekeeper would block.
+#
+# Publication itself stays blocked: the release needs the Windows artifacts
+# (S6-3) and the final regression report (S7-1/S7-6).
 
 on:
   push:
@@ -39,7 +44,7 @@ jobs:
           case "$tag" in "$version"|"$version"-*) ;; *) echo "::error::tag v$tag does not match VERSION $version"; exit 1;; esac
 
   macos:
-    name: macOS bundle (unsigned)
+    name: macOS bundle (signed + notarised when credentials exist)
     runs-on: macos-15
     needs: version
     steps:
@@ -52,27 +57,136 @@ jobs:
           fi
           svn --version --quiet
           svnadmin --version --quiet
+
+      # Credentials are optional for a dry run and mandatory for a real tag.
+      # Deciding that in one shell step keeps the `if:` conditions below readable
+      # and, more importantly, keeps the failure message at the end of the job
+      # instead of a silently unsigned artifact.
+      - name: Detect signing credentials
+        env:
+          CERT: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+          NOTARY_ID: ${{ secrets.NOTARY_APPLE_ID }}
+        run: |
+          if [[ -n "$CERT" && -n "$IDENTITY" ]]; then
+            echo "SIGNING_AVAILABLE=1" >> "$GITHUB_ENV"
+            echo "signing identity: $IDENTITY"
+          else
+            echo "SIGNING_AVAILABLE=0" >> "$GITHUB_ENV"
+            echo "::warning::no signing credentials; this run produces an unsigned build"
+          fi
+          if [[ -n "$NOTARY_ID" ]]; then
+            echo "NOTARY_AVAILABLE=1" >> "$GITHUB_ENV"
+          else
+            echo "NOTARY_AVAILABLE=0" >> "$GITHUB_ENV"
+          fi
+
+      - name: Import signing certificate
+        if: env.SIGNING_AVAILABLE == '1'
+        env:
+          CERT: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          CERT_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN="$RUNNER_TEMP/opensvn-signing.keychain-db"
+          echo -n "$CERT" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          # Without this, codesign blocks on a GUI prompt that never appears.
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm -f "$RUNNER_TEMP/cert.p12"
+          security find-identity -v -p codesigning "$KEYCHAIN"
+
       - name: Build
-        run: CONFIG=release BUNDLE_SVN=1 scripts/build-macos-app.sh
+        env:
+          IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          if [[ "${SIGNING_AVAILABLE}" == "1" ]]; then
+            SIGN_IDENTITY="$IDENTITY" CONFIG=release BUNDLE_SVN=1 scripts/build-macos-app.sh
+          else
+            CONFIG=release BUNDLE_SVN=1 scripts/build-macos-app.sh
+          fi
+
       - name: Verify bundle
-        run: python3 scripts/verify-release.py --bundle build/OpenSVN.app --require-bundled-svn
+        run: |
+          ARGS=(--bundle build/OpenSVN.app --require-bundled-svn)
+          if [[ "${SIGNING_AVAILABLE}" == "1" ]]; then
+            ARGS+=(--require-signed)
+          fi
+          python3 scripts/verify-release.py "${ARGS[@]}"
+
       # The release must not be the first time anyone asks whether the embedded
       # runtime works without a system Subversion (S6-6).
       - name: Clean-machine check
         run: scripts/verify-clean-install.sh
+
+      - name: Notarise and staple
+        if: env.SIGNING_AVAILABLE == '1' && env.NOTARY_AVAILABLE == '1'
+        env:
+          NOTARY_APPLE_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARY_TEAM_ID }}
+          NOTARY_PASSWORD: ${{ secrets.NOTARY_PASSWORD }}
+          NOTARY_SUMMARY: build/notarization.json
+        run: packaging/macos/notarize.sh build/OpenSVN.app
+
+      - name: Re-verify the stapled bundle
+        if: env.SIGNING_AVAILABLE == '1' && env.NOTARY_AVAILABLE == '1'
+        run: |
+          python3 scripts/verify-release.py \
+            --bundle build/OpenSVN.app \
+            --require-bundled-svn --require-signed --require-notarized
+
+      - name: Package
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          SUFFIX=""
+          if [[ "${SIGNING_AVAILABLE}" != "1" ]]; then
+            SUFFIX="-UNSIGNED"
+          fi
+          NAME="OpenSVN-${VERSION}-macos-arm64${SUFFIX}.zip"
+          ditto -c -k --keepParent build/OpenSVN.app "$NAME"
+          shasum -a 256 "$NAME" > SHA256SUMS.txt
+          echo "ARTIFACT=$NAME" >> "$GITHUB_ENV"
+
+      - name: Upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: |
+            OpenSVN-*-macos-*.zip
+            SHA256SUMS.txt
+            build/notarization.json
+          if-no-files-found: warn
+
       - uses: actions/upload-artifact@v4
         with:
           name: clean-install-report
           path: build/clean-install-report.txt
           if-no-files-found: ignore
           retention-days: 90
-      - name: Package
+
+      # A tag build that cannot be signed is a configuration mistake, and the
+      # right place to say so is here — not in the publish job, after the
+      # artifact has already been uploaded.
+      - name: Require a signed artifact for a tag
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          ditto -c -k --keepParent build/OpenSVN.app "OpenSVN-${{ needs.version.outputs.version }}-macos-arm64-UNSIGNED.zip"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macos-unsigned
-          path: OpenSVN-*-UNSIGNED.zip
+          if [[ "${SIGNING_AVAILABLE}" != "1" ]]; then
+            echo "::error::tag build without MACOS_CERTIFICATE_P12 / MACOS_SIGN_IDENTITY"
+            exit 1
+          fi
+          if [[ "${NOTARY_AVAILABLE}" != "1" ]]; then
+            echo "::error::tag build without NOTARY_APPLE_ID / NOTARY_TEAM_ID / NOTARY_PASSWORD"
+            exit 1
+          fi
 
   publish:
     name: Publish release
@@ -81,8 +195,18 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') && (inputs.dry_run == false || inputs.dry_run == null)
     steps:
       - uses: actions/download-artifact@v4
-      - name: Refuse to publish unsigned builds
+      - name: Refuse to publish without a signed, notarised artifact
         run: |
-          echo "::error::Signing and notarisation are not wired up yet (stage 6)."
-          echo "Publishing now would ship an unsigned app that Gatekeeper blocks."
+          if compgen -G "macos/*UNSIGNED*" >/dev/null; then
+            echo "::error::the only artifact is unsigned; Gatekeeper would block it"
+            exit 1
+          fi
+          if ! compgen -G "macos/OpenSVN-*-macos-*.zip" >/dev/null; then
+            echo "::error::no macOS artifact found"
+            exit 1
+          fi
+          echo "signed artifact present:" && ls -l macos/
+          # Creating the GitHub release itself is S7-6: it needs the Windows
+          # artifacts and release notes from the final regression pass.
+          echo "::error::release publication is not implemented yet (S6-3 Windows, S7-6)"
           exit 1

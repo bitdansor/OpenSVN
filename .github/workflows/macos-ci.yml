@@ -89,6 +89,35 @@ jobs:
       - name: Verify bundle
         run: python3 scripts/verify-release.py --bundle build/OpenSVN.app
 
+      # The signing path cannot be exercised without a Developer ID, but its
+      # refusal paths can: a script that silently succeeds without credentials is
+      # how an unsigned build ends up in a release.
+      - name: Signing inputs are valid
+        run: |
+          plutil -lint packaging/macos/entitlements.plist
+          bash -n scripts/sign-macos-app.sh packaging/macos/notarize.sh
+
+      - name: Signing refuses to run without an identity
+        run: |
+          if env -u SIGN_IDENTITY scripts/sign-macos-app.sh build/OpenSVN.app; then
+            echo "::error::sign-macos-app.sh succeeded without SIGN_IDENTITY"
+            exit 1
+          fi
+
+      - name: Notarisation refuses a non-notarisable signature
+        run: |
+          if packaging/macos/notarize.sh build/OpenSVN.app; then
+            echo "::error::notarize.sh accepted an ad-hoc signature"
+            exit 1
+          fi
+
+      - name: An unsigned bundle fails the release gate
+        run: |
+          if python3 scripts/verify-release.py --bundle build/OpenSVN.app --require-signed; then
+            echo "::error::--require-signed accepted an ad-hoc bundle"
+            exit 1
+          fi
+
   # S6-1 + S6-6. The previous job proves the shell of the app assembles; this one
   # proves the thing we actually ship can run on a Mac that has never seen
   # Subversion. Those are different claims, and only the second one satisfies the

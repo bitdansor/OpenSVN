@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  OpenSVN deliberately requests no hardened-runtime exceptions.
+
+	  The two things that usually force an entitlement here do not apply:
+
+	  1. The app is not sandboxed (ADR-0003). It has to reach working copies
+	     the user picks anywhere on disk, and a sandbox would turn every
+	     checkout into a security-scoped bookmark problem without adding
+	     protection to a tool whose job is running svn on user files.
+
+	  2. It launches a child process rather than loading third-party code into
+	     its own address space. The bundled svn and svnadmin are signed by the
+	     same identity as the app, and they load their own dylibs from
+	     Contents/Resources/svn/lib — library validation is satisfied because
+	     those are our signatures too. No disable-library-validation, no
+	     allow-unsigned-executable-memory, no allow-dyld-environment-variables.
+
+	  Keeping the file empty and explicit means that if this ever changes, the
+	  change lands in review as a diff to a security-relevant file instead of
+	  as a flag on a build command line.
+	-->
+</dict>
+</plist>

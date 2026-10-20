@@ -1,6 +1,6 @@
 # ADR-0003：SVN 运行时分发策略
 
-> 状态：**macOS 已实现并接入 CI（S6-1 / S6-6 完成）；发行签名与公证（S6-2）仍未验证；Windows 待验证**
+> 状态：**macOS 运行时已实现并接入 CI（S6-1 / S6-6）；签名与公证流水线已完成但缺证书，未做真实公证（S6-2）；Windows 待验证**
 > 日期：2026-10-18（决策）/ 2026-10-20（实施进展）
 > 关联：`OpenSVN_开发执行计划.md` S0-3 / Gate A / K1
 > 影响阶段：阶段 1（CI）、阶段 3（进程调用）、阶段 6（打包签名公证）、阶段 7（合规）
@@ -96,11 +96,40 @@ S6-1 与 S6-6 已落地，结论与当初摸底一致（22 个 dylib、11 MB）�
 `macos-ci.yml` 新增 `runtime` 作业，在每次 PR 上做完整打包 + 校验 + 干净机检查；
 `release.yml` 的 macOS 作业同时要求 `--require-bundled-svn`。
 
+### S6-2 签名与公证（2026-10-20）
+
+流水线已写完，但只在「Apple Development」证书上验证过签名与清单刷新这一段：本机没有
+Developer ID Application 证书，`notarytool` 也没有凭据，所以**真实公证从未跑过**。
+
+已落地的部分：
+
+- `packaging/macos/entitlements.plist` **刻意为空**。不加沙盒（要访问用户任意工作副本），
+  也不加载第三方代码到自身地址空间（`svn` 是子进程，且包内 dylib 与我们同签名），
+  所以不需要 disable-library-validation 之类的例外。把文件留着是为了让「以后要加例外」
+  变成一次可评审的 diff，而不是命令行上的一个开关。
+- `scripts/sign-macos-app.sh` 由内向外签名（dylib → svn/svnadmin → app），
+  每个嵌套二进制都带 `--options runtime`。`--deep` 不用于签名：父级先签会导致签名
+  覆盖到后来变化的字节，在 Apple Silicon 上表现为启动即 SIGKILL。开发证书缺时间戳时
+  只对开发证书回退 `--timestamp=none`，Developer ID 绝不做此回退。
+- **签名会改变二进制字节**，所以 `runtime-manifest.json` 的哈希必须在签名后重算；
+  而 manifest 本身又被 app 签名覆盖，所以重算只能发生在**签署 app 之前**。
+  `bundle-svn-runtime.sh --refresh-manifest` 由签名脚本调用，manifest 格式只由该脚本写。
+- `packaging/macos/notarize.sh`：`notarytool submit --wait` → 失败时取 `notarytool log`
+  → `stapler staple` → `stapler validate` → `spctl --assess`。凭据只能来自 keychain
+  profile 或环境变量，不读仓库内文件。
+- `verify-release.py` 新增 `--require-signed`（Developer ID + hardened runtime）与
+  `--require-notarized`（票已装订 + Gatekeeper 放行）。CI 上还测了三条**拒绝路径**：
+  无身份时签名脚本必须失败、非 Developer ID 时公证脚本必须失败、ad-hoc 包必须过不了
+  `--require-signed`。一个在缺凭据时静默成功的脚本，就是未签名包流进发布的路径。
+
+仍未完成：真实公证。需要 Apple Developer Program 的 Developer ID 证书与 app-specific
+password（见下方未决项 1）。
+
 ### 未决项（阻塞 Gate A 的剩余部分）
 
 | # | 未决项 | 影响 | 建议动作 |
 |---|---|---|---|
-| 1 | 缺少 **Developer ID Application** 证书（本机仅有 2 张 Apple Development），且 `notarytool` 无凭据 | 阶段 6 的发行签名、公证、Gatekeeper 验证**无法在本机完成**，只能验证到 ad-hoc 层 | 确认是否加入 Apple Developer Program；在此之前阶段 6 只能产出未签名包 |
+| 1 | 缺少 **Developer ID Application** 证书（本机仅有 2 张 Apple Development），且 `notarytool` 无凭据 | 阶段 6 的发行签名、公证、Gatekeeper 验证**无法在本机完成**，只能验证到「签名 + 清单刷新」这一层 | 流水线与拒绝路径已就绪（见上）；确认是否加入 Apple Developer Program，拿到证书后只需注入 6 个 CI secret 并跑一次 tag |
 | 2 | 内置运行时的**构建来源**未定：直接用 Homebrew 预编译闭包，还是自建 svn | 前者带 LGPL gettext、仅 arm64、依赖 Cellar 布局；后者可 `--disable-nls`、可出通用二进制、可控 | 建议自建：一次配置换来合规简化 + arm64/x64 双架构 |
 | 3 | Intel x86_64 与通用二进制策略 | 规范列为首期 arm64、后续 x64 | 若自建，建议直接产出 universal2，避免二次打包 |
 | 4 | Windows 侧完全未验证 | 阶段 6 的 Windows 打包仍是空白 | 需在 Windows 环境跑同等级摸底（依赖收集方式完全不同） |

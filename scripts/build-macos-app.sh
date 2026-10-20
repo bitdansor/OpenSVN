@@ -67,10 +67,20 @@ fi
 
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 
-# Ad-hoc signature: required so the bundle can run locally on Apple Silicon.
-codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || {
-  echo "warning: ad-hoc codesign failed; the app may not launch on Apple Silicon" >&2
-}
+# Signature: ad-hoc by default so the bundle runs locally on Apple Silicon.
+# A real identity switches to the hardened runtime and an inside-out signature;
+# `release.yml` never builds without one.
+if [[ -n "${SIGN_IDENTITY:-}" && "${SIGN_IDENTITY}" != "-" ]]; then
+  echo "== signing with '$SIGN_IDENTITY'"
+  "$ROOT/scripts/sign-macos-app.sh" "$APP"
+else
+  codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || {
+    echo "warning: ad-hoc codesign failed; the app may not launch on Apple Silicon" >&2
+  }
+  if [[ "$CONFIG" == "release" ]]; then
+    echo "   warning: release build is ad-hoc signed — set SIGN_IDENTITY for a shippable artifact"
+  fi
+fi
 
 echo "== built $APP (OpenSVN $SHORT_VERSION, $CONFIG)"
 echo "   open \"$APP\""

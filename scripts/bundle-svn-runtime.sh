@@ -23,6 +23,51 @@
 # invalid signature means SIGKILL at launch.
 set -euo pipefail
 
+# Signing rewrites the Mach-O files (the signature is embedded in them), so any
+# hash recorded before signing is wrong afterwards. Rather than let the manifest
+# describe bytes that no longer exist, signing calls back into this script to
+# re-measure. One file owns the manifest format; nothing else writes it.
+if [[ "${1:-}" == "--refresh-manifest" ]]; then
+  TARGET="${2:-}"
+  [[ -n "$TARGET" && -d "$TARGET/Contents/Resources/svn" ]] || {
+    echo "usage: $0 --refresh-manifest /path/to/OpenSVN.app" >&2
+    exit 1
+  }
+  /usr/bin/python3 - "$TARGET/Contents/Resources/svn" \
+    "$TARGET/Contents/Resources/licenses/runtime-manifest.json" <<'PY'
+import datetime, hashlib, json, os, sys
+
+runtime, manifest_path = sys.argv[1:3]
+with open(manifest_path, encoding="utf-8") as handle:
+    manifest = json.load(handle)
+
+for entry in manifest.get("files", []):
+    absolute = os.path.join(runtime, entry["path"])
+    if not os.path.isfile(absolute):
+        sys.exit(f"error: {entry['path']} listed in the manifest but missing from the bundle")
+    with open(absolute, "rb") as handle:
+        entry["sha256"] = hashlib.sha256(handle.read()).hexdigest()
+    entry["bytes"] = os.path.getsize(absolute)
+
+present = {
+    os.path.relpath(os.path.join(root, name), runtime)
+    for root, _dirs, names in os.walk(runtime)
+    for name in names
+}
+listed = {entry["path"] for entry in manifest.get("files", [])}
+if present != listed:
+    sys.exit(f"error: manifest and bundle disagree: only-bundled={sorted(present - listed)} "
+             f"only-listed={sorted(listed - present)}")
+
+manifest["generatedAt"] = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+with open(manifest_path, "w", encoding="utf-8") as handle:
+    json.dump(manifest, handle, indent=2, sort_keys=False)
+    handle.write("\n")
+print(f"== re-measured {len(listed)} bundled file(s) after signing")
+PY
+  exit 0
+fi
+
 APP="${1:-}"
 [[ -n "$APP" && -d "$APP/Contents" ]] || { echo "usage: $0 /path/to/OpenSVN.app" >&2; exit 1; }
 
