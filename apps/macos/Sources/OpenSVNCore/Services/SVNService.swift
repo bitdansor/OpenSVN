@@ -725,7 +725,69 @@ public actor SVNService {
                 progress(.running(line))
             }
         }
-        return try await runner.run(invocation, onOutputLine: lineHandler)
+
+        // The single place every command passes through, so the log answers
+        // "what did the app actually run, and what came back" for all of them.
+        let summary = Self.describe(arguments)
+        let started = Date()
+        do {
+            let result = try await runner.run(invocation, onOutputLine: lineHandler)
+            let elapsed = Int(Date().timeIntervalSince(started) * 1000)
+            AppLog.shared.record(.debug, "svn \(summary) → exit \(result.exitCode)（\(elapsed) ms）", category: "svn")
+            if result.exitCode != 0 {
+                AppLog.shared.record(
+                    .warning,
+                    "svn \(summary) 退出码 \(result.exitCode)：\(Self.excerpt(result.standardError))",
+                    category: "svn"
+                )
+            }
+            return result
+        } catch {
+            let elapsed = Int(Date().timeIntervalSince(started) * 1000)
+            let message = (error as? SVNError)?.message ?? error.localizedDescription
+            AppLog.shared.record(
+                .error,
+                "svn \(summary) 抛出错误（\(elapsed) ms）：\(message)",
+                category: "svn"
+            )
+            throw error
+        }
+    }
+
+    /// A log-safe rendering of the command line.
+    ///
+    /// Commit messages are dropped on purpose: they are the user's content, not
+    /// diagnostics, and a log that quotes them becomes a privacy problem the
+    /// moment someone attaches it to a bug report. Passwords never reach argv
+    /// in the first place (`--password-from-stdin`), but URLs may carry userinfo
+    /// and still go through the redactor.
+    private static func describe(_ arguments: [String]) -> String {
+        var parts: [String] = []
+        var index = 0
+        while index < arguments.count {
+            let argument = arguments[index]
+            if argument == "-m" || argument == "--message" || argument == "-F" || argument == "--file" {
+                parts.append(argument)
+                parts.append("<\(argument == "-F" || argument == "--file" ? "file" : "message")>")
+                index += 2
+                continue
+            }
+            parts.append(argument)
+            index += 1
+        }
+        let redacted = LogRedactor.redact(parts.joined(separator: " "))
+        return redacted.count > 300 ? String(redacted.prefix(300)) + "…" : redacted
+    }
+
+    private static func excerpt(_ text: String, limit: Int = 1200) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count > limit else { return trimmed }
+        return String(trimmed.prefix(limit)) + "…"
+    }
+
+    /// Applies the user's "concurrent write operations" setting.
+    public func setMaxConcurrentWrites(_ value: Int) async {
+        await gate.setMaxConcurrent(value)
     }
 
     /// Best-effort repository URL for a working-copy path, used to scope

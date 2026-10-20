@@ -50,31 +50,51 @@ public struct AppSettings: Sendable {
     public var explicitSVNPath: String?
     public var operationTimeout: TimeInterval
     public var confirmBeforeDestructiveAction: Bool
+    /// How much to write to `~/Library/Logs/OpenSVN/opensvn.log`.
+    public var logLevel: LogLevel
+    /// How many write operations may run at once across *different* working
+    /// copies. Writes on one working copy are always serialised regardless.
+    public var maxConcurrentWrites: Int
 
     public static let defaultTimeout: TimeInterval = 300
+    public static let defaultMaxConcurrentWrites = 4
+    public static let maxConcurrentWritesRange = 1...8
 
     public init(
         explicitSVNPath: String? = nil,
         operationTimeout: TimeInterval = AppSettings.defaultTimeout,
-        confirmBeforeDestructiveAction: Bool = true
+        confirmBeforeDestructiveAction: Bool = true,
+        logLevel: LogLevel = .info,
+        maxConcurrentWrites: Int = AppSettings.defaultMaxConcurrentWrites
     ) {
         self.explicitSVNPath = explicitSVNPath
         self.operationTimeout = operationTimeout
         self.confirmBeforeDestructiveAction = confirmBeforeDestructiveAction
+        self.logLevel = logLevel
+        self.maxConcurrentWrites = maxConcurrentWrites
     }
 
     private static let pathKey = "cn.opensvn.svnPath"
     private static let timeoutKey = "cn.opensvn.operationTimeout"
     private static let confirmKey = "cn.opensvn.confirmDestructive"
+    private static let logLevelKey = "cn.opensvn.logLevel"
+    private static let maxWritesKey = "cn.opensvn.maxConcurrentWrites"
 
     public static func load(from defaults: UserDefaults = .standard) -> AppSettings {
         let path = defaults.string(forKey: pathKey)
         let timeout = defaults.double(forKey: timeoutKey)
         let confirm = defaults.object(forKey: confirmKey) as? Bool ?? true
+        let level = defaults.string(forKey: logLevelKey).flatMap(LogLevel.init(rawValue:)) ?? .info
+        let writes = defaults.object(forKey: maxWritesKey) as? Int ?? defaultMaxConcurrentWrites
         return AppSettings(
             explicitSVNPath: (path?.isEmpty ?? true) ? nil : path,
             operationTimeout: timeout > 0 ? timeout : defaultTimeout,
-            confirmBeforeDestructiveAction: confirm
+            confirmBeforeDestructiveAction: confirm,
+            logLevel: level,
+            maxConcurrentWrites: min(
+                max(maxConcurrentWritesRange.lowerBound, writes),
+                maxConcurrentWritesRange.upperBound
+            )
         )
     }
 
@@ -82,5 +102,7 @@ public struct AppSettings: Sendable {
         defaults.set(explicitSVNPath, forKey: Self.pathKey)
         defaults.set(operationTimeout, forKey: Self.timeoutKey)
         defaults.set(confirmBeforeDestructiveAction, forKey: Self.confirmKey)
+        defaults.set(logLevel.rawValue, forKey: Self.logLevelKey)
+        defaults.set(maxConcurrentWrites, forKey: Self.maxWritesKey)
     }
 }

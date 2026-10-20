@@ -41,8 +41,15 @@ struct TaskCenterView: View {
             icon(for: item)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(item.title)
-                    .font(.callout.weight(.medium))
+                HStack(spacing: 6) {
+                    Text(item.title)
+                        .font(.callout.weight(.medium))
+                    if item.attempts > 1 {
+                        Text("第 \(item.attempts) 次尝试")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
                 if !item.detail.isEmpty {
                     Text(item.detail)
                         .font(.caption2)
@@ -62,6 +69,12 @@ struct TaskCenterView: View {
             if item.isRunning {
                 Button("取消") { appState.taskCenter.cancel(item.id) }
                     .buttonStyle(.borderless)
+            } else if item.canRetry {
+                Button("重试") {
+                    Task { await appState.retryTask(item.id) }
+                }
+                .buttonStyle(.borderless)
+                .help("重新执行同一项请求。不会跳过任何确认，也不改变第一次失败时的参数。")
             }
         }
         .padding(.vertical, 3)

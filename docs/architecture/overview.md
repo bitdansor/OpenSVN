@@ -4,19 +4,26 @@
 SwiftUI Views
    │  (只读状态 + 触发动作)
    ▼
-AppState / RepositorySession / TaskCenter      @MainActor, Observation
+AppState / RepositorySession                   @MainActor, Observation
    │  (无 shell 拼接、无凭据持久化)
    ▼
+TaskCenter (core)                              任务、取消、失败重试
+   │
+   ▼
 SVNService (actor)                             ← 唯一 svn 入口
-   ├── WCWriteGate     每工作副本写串行化
+   ├── WCWriteGate     写串行化 + 全局并发上限
    ├── CredentialStore Keychain / InMemory
    ├── SVNProcessRunner 参数数组 / 双管道 / 取消 / 超时
    ├── SVNXMLParser     status / log / info
+   ├── AppLog           脱敏日志（默认关闭）
    └── SVNDiscovery     内置 → 显式 → PATH → 常见位置
    │
    ▼
 svn CLI (child process)
 ```
+
+`TaskCenter` sits in the core rather than the app target so retry semantics can
+be tested without a window; it is `@MainActor` and has no SwiftUI dependency.
 
 ## 分层职责
 
@@ -33,9 +40,10 @@ svn CLI (child process)
 
 1. **视图不碰 `SVNService` 之外的层**。视图里出现 `Process` 或 `svn` 字符串即为设计违规。
 2. **`SVNService` 是 actor**：所有 svn 调用天然串行进入，但 `await` 期间可重入，因此读操作不会被写操作永久阻塞；写操作的互斥由 `WCWriteGate` 单独保证（actor 本身不保证跨调用互斥）。
-3. **`TaskCenter` 是唯一的取消入口**：界面不持有 `Task`，取消通过任务条目进行，避免“视图销毁导致任务泄漏”。
+3. **`TaskCenter` 是唯一的取消与重试入口**：界面不持有 `Task`，取消通过任务条目进行，避免"视图销毁导致任务泄漏"；失败条目保留执行闭包，重试即重跑同一请求，成功后闭包被释放。
 4. **`RepositorySession` 不引用 `AppState`**：通过 `onCredentialRequired` 闭包反向请求凭据，避免双向持有。
 5. **进度回调是结构体而非闭包**：`SVNProgressReporter` 可自由跨层传递，避免 `@escaping` 污染整条调用链。
+6. **日志不参与控制流**：`AppLog` 的每个失败路径都被吞掉，写不了日志不能变成操作失败；共享实例默认 `.off`，只有 `AppState.start()` 按用户设置打开。
 
 ## 数据流（一次提交）
 

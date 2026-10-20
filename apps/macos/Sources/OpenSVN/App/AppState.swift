@@ -78,6 +78,15 @@ final class AppState {
     func start() async {
         isStarting = true
         defer { isStarting = false }
+
+        // Configure logging before anything that can fail. A support request
+        // without a log turns every diagnosis into guesswork.
+        await AppLog.shared.configure(
+            directory: AppLog.defaultDirectory,
+            level: settings.logLevel
+        )
+        AppLog.shared.record(.info, "启动 OpenSVN，日志级别 \(settings.logLevel.rawValue)，日志位置 \(AppLog.defaultDirectory.path)")
+
         bookmarks = repositoryStore.load()
 
         // Read the journal *before* building the service: a previous crash is the
@@ -85,6 +94,9 @@ final class AppState {
         // whether svn can be found right now.
         recoveryItems = await journal.unfinished()
         journalQuarantineURL = await journal.quarantineURL()
+        if !recoveryItems.isEmpty {
+            AppLog.shared.record(.warning, "发现 \(recoveryItems.count) 项上次未正常结束的写操作", category: "recovery")
+        }
 
         await buildService()
 
@@ -112,6 +124,12 @@ final class AppState {
             // `installation` is a `nonisolated let` on the actor.
             self.installation = service.installation
             self.startupError = nil
+            await service.setMaxConcurrentWrites(settings.maxConcurrentWrites)
+            AppLog.shared.record(
+                .info,
+                "使用 svn \(service.installation.version.description)（\(service.installation.source.displayName)）：\(service.installation.executableURL.path)",
+                category: "svn"
+            )
             for session in sessions.values {
                 session.attach(service: service, taskCenter: taskCenter)
             }
@@ -119,20 +137,39 @@ final class AppState {
             self.service = nil
             self.installation = nil
             self.startupError = error
+            AppLog.shared.record(.error, "无法初始化 SVN：\(error.message)", category: "svn")
         } catch {
             self.service = nil
             self.installation = nil
             self.startupError = SVNError(code: .unknown, message: error.localizedDescription)
+            AppLog.shared.record(.error, "无法初始化 SVN：\(error.localizedDescription)", category: "svn")
         }
     }
 
     func apply(settings newValue: AppSettings) async {
         settings = newValue
         newValue.save()
+        await AppLog.shared.configure(level: newValue.logLevel)
+        AppLog.shared.record(.info, "设置已更新：日志级别 \(newValue.logLevel.rawValue)，写操作并发上限 \(newValue.maxConcurrentWrites)")
         for session in sessions.values {
             session.updateTimeout(newValue.operationTimeout)
         }
         await buildService()
+    }
+
+    // MARK: - Tasks
+
+    /// Re-runs a failed task, then refreshes every open session.
+    ///
+    /// The refresh is not optional: the retry bypasses the per-view code path
+    /// that normally refreshes after an operation, so without this the sidebar
+    /// and file list would still show the state from the failure.
+    func retryTask(_ id: UUID) async {
+        let succeeded = await taskCenter.retry(id)
+        guard succeeded else { return }
+        for session in sessions.values {
+            await session.refresh()
+        }
     }
 
     // MARK: - Bookmarks

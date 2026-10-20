@@ -35,11 +35,29 @@ public enum WorkingCopyLocator {
 ///
 /// Reads are not serialised: `svn status` on a busy working copy is safe and
 /// blocking the UI on a write would be worse than a slightly stale scan.
+///
+/// On top of the per-working-copy lock there is a global cap. It exists for the
+/// user's machine, not for correctness: ten working copies updating at once
+/// saturates the disk and makes every one of them look hung. The cap never
+/// relaxes R4 — two writes on one working copy wait for each other no matter
+/// how high the cap is.
 public actor WCWriteGate {
     private var busy: Set<String> = []
     private var waiters: [String: [CheckedContinuation<Void, Never>]] = [:]
 
-    public init() {}
+    private var active = 0
+    private var slotWaiters: [CheckedContinuation<Void, Never>] = []
+    private var limit: Int
+
+    /// The upper bound is arbitrary but deliberate: an accidental 1000 would
+    /// defeat the point, and a stuck 0 would deadlock every write.
+    public static let limitRange = 1...32
+    /// Must match `AppSettings.defaultMaxConcurrentWrites`; a test asserts it.
+    public static let defaultMaxConcurrent = 4
+
+    public init(maxConcurrent: Int = WCWriteGate.defaultMaxConcurrent) {
+        self.limit = min(max(Self.limitRange.lowerBound, maxConcurrent), Self.limitRange.upperBound)
+    }
 
     public func isBusy(_ key: String) -> Bool {
         busy.contains(key)
@@ -47,7 +65,22 @@ public actor WCWriteGate {
 
     public var busyKeys: [String] { Array(busy) }
 
+    public var maxConcurrentWrites: Int { limit }
+    public var activeCount: Int { active }
+
+    /// Changing the cap takes effect immediately for queued work; operations
+    /// already running are never interrupted.
+    public func setMaxConcurrent(_ value: Int) {
+        limit = min(max(Self.limitRange.lowerBound, value), Self.limitRange.upperBound)
+        let pending = slotWaiters
+        slotWaiters.removeAll()
+        for continuation in pending {
+            continuation.resume()
+        }
+    }
+
     public func acquire(_ key: String) async {
+        await takeSlot()
         while busy.contains(key) {
             await withCheckedContinuation { continuation in
                 waiters[key, default: []].append(continuation)
@@ -63,6 +96,11 @@ public actor WCWriteGate {
             waiters[key] = list.isEmpty ? nil : list
             next.resume()
         }
+
+        active -= 1
+        if active < limit, !slotWaiters.isEmpty {
+            slotWaiters.removeFirst().resume()
+        }
     }
 
     /// Runs `operation` while holding the key; always releases, including on
@@ -74,5 +112,12 @@ public actor WCWriteGate {
         await acquire(key)
         defer { release(key) }
         return try await operation()
+    }
+
+    private func takeSlot() async {
+        while active >= limit {
+            await withCheckedContinuation { slotWaiters.append($0) }
+        }
+        active += 1
     }
 }

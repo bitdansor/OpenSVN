@@ -6,6 +6,32 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (task retry, log file, write concurrency)
+
+- **Retry for failed tasks.** A failed entry in the task centre now offers
+  **重试**, which re-runs the same request with the same arguments instead of
+  sending the user back to the previous screen. `TaskCenter.Item` keeps the
+  closure that ran the operation, drops it on success (nothing left to replay),
+  and counts attempts so the row reads "第 2 次尝试". A retry never skips the
+  service-layer confirmation flags the first attempt was made with.
+  `TaskCenter` moved to `OpenSVNCore` so this behaviour is covered by tests
+  rather than by clicking.
+- **Log file** (`AppLog`): `~/Library/Logs/OpenSVN/opensvn.log`, rotated at
+  2 MB with two backups. Every line goes through `LogRedactor` first; commit
+  messages are replaced by `<message>` because they are user content, not
+  diagnostics. The shared logger starts at `.off`, so unit tests and
+  `opensvn-probe` never append to the user's real log — only `AppState.start()`
+  turns it on.
+- **Settings**: log level (关闭 / 仅错误 / 错误与警告 / 常规 / 调试), a button that
+  opens the log directory, and a cap on concurrent write operations across
+  different working copies (1–8, default 4). The cap does **not** relax R4:
+  two writes on one working copy still queue behind each other.
+- `WCWriteGate` gained the global slot limit. Slots are taken before the
+  per-working-copy lock and released after it, so a running operation cannot
+  deadlock a queued one; a thrown error releases both.
+- Tests: 6 for the gate (serialisation, cap, raising the cap, clamping, release
+  on throw), 6 for log filtering/redaction/rotation, 6 for retry semantics.
+
 ### Added (merge demo and in-app guidance)
 
 - `DemoWorkspace` (+ `opensvn-probe demo`): builds a local `file://` repository and

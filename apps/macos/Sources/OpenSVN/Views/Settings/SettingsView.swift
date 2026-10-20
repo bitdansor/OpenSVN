@@ -9,6 +9,8 @@ struct SettingsView: View {
     @State private var explicitPath = ""
     @State private var timeoutSeconds = AppSettings.defaultTimeout
     @State private var confirmDestructive = true
+    @State private var logLevel: LogLevel = .info
+    @State private var maxConcurrentWrites = AppSettings.defaultMaxConcurrentWrites
     @State private var statusMessage: String?
     @State private var showingClearConfirmation = false
 
@@ -59,6 +61,47 @@ struct SettingsView: View {
                 Text("确认在服务层强制执行，界面开关只决定是否提前展示预览。")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+
+                LabeledContent("同时进行的写操作") {
+                    HStack {
+                        Stepper(
+                            value: $maxConcurrentWrites,
+                            in: AppSettings.maxConcurrentWritesRange
+                        ) {
+                            Text("\(maxConcurrentWrites) 个")
+                                .monospacedDigit()
+                        }
+                    }
+                }
+                Text("限制的是不同工作副本之间的并行度。同一个工作副本上的两个写操作始终排队执行，这与上限无关。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section("日志") {
+                Picker("记录级别", selection: $logLevel) {
+                    ForEach(LogLevel.allCases) { level in
+                        Text(level.displayName).tag(level)
+                    }
+                }
+                Text(logLevel.explanation)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(AppLog.defaultDirectory.path)
+                            .font(.caption.monospaced())
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .textSelection(.enabled)
+                        Text("超过 2 MB 自动轮转，最多保留 2 个旧文件。凭据在写入前统一脱敏。")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("打开日志文件夹") { openLogFolder() }
+                }
             }
 
             Section("凭据") {
@@ -91,7 +134,7 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(width: 560, height: 560)
+        .frame(width: 580, height: 660)
         .onAppear(perform: loadSettings)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
@@ -129,6 +172,14 @@ struct SettingsView: View {
         explicitPath = settings.explicitSVNPath ?? ""
         timeoutSeconds = settings.operationTimeout
         confirmDestructive = settings.confirmBeforeDestructiveAction
+        logLevel = settings.logLevel
+        maxConcurrentWrites = settings.maxConcurrentWrites
+    }
+
+    private func openLogFolder() {
+        let directory = AppLog.defaultDirectory
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(directory)
     }
 
     private func chooseExecutable() {
@@ -149,6 +200,11 @@ struct SettingsView: View {
             : explicitPath.trimmingCharacters(in: .whitespaces)
         settings.operationTimeout = max(30, timeoutSeconds)
         settings.confirmBeforeDestructiveAction = confirmDestructive
+        settings.logLevel = logLevel
+        settings.maxConcurrentWrites = min(
+            max(AppSettings.maxConcurrentWritesRange.lowerBound, maxConcurrentWrites),
+            AppSettings.maxConcurrentWritesRange.upperBound
+        )
         await appState.apply(settings: settings)
         if let error = appState.startupError {
             statusMessage = "保存失败：\(error.message)"
