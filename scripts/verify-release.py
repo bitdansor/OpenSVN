@@ -67,6 +67,7 @@ REQUIRED_FILES = [
     "specifications/ui-behavior.md",
     "docs/architecture/overview.md",
     "docs/development/toolchain.md",
+    "docs/releases/app-store-readiness.md",
     "packaging/macos/entitlements.plist",
     "packaging/macos/notarize.sh",
     "scripts/sign-macos-app.sh",
