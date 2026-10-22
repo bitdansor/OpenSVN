@@ -6,6 +6,34 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (filtering, auto-refresh, update preview, per-host credentials)
+
+- **The change list can be filtered.** A system search field (⌘F) matches the
+  relative path, all whitespace-separated terms at once, so `src retry` means
+  "inside src, named retry". The action bar reports "显示 N / M 项" — the number
+  that stops a filter from looking like lost work.
+- **The open working copy refreshes itself.** An FSEvents stream notices edits
+  made by other applications and re-reads the status after a short debounce.
+  `.svn` is excluded on purpose: `svn status` writes its stat cache there, and
+  reacting to that path would make every refresh schedule the next one.
+- **Update shows what is coming before it arrives.** `status --show-updates` is
+  read first and shown as a sheet: target revision, incoming paths grouped by
+  add/modify/delete, and how many local edits the update may collide with.
+  `svn update` has no dry run, so this is the only place that question can be
+  asked. A failed preview does not block updating — the sheet keeps "仍然更新".
+- **Credentials are managed per host.** Settings lists every scope in the
+  Keychain (host plus realm, metadata only, no secret read) and deletes one at a
+  time. Deleting also drops the in-memory copy, so a session cannot keep
+  committing with the password that was just removed.
+- **A connection indicator that only claims what it knows.** It is set by the
+  result of an operation that actually went to the server, never guessed: a grey
+  dot means "not checked", and the two failures are separate — "不可达" and
+  "需要认证" need different actions.
+- `RemotePreview` distinguishes `remoteItem == nil` ("unchanged on the server")
+  from "unknown". Collapsing them would list the whole working copy as incoming.
+  The working-copy root entry is dropped (svn emits it whenever any child
+  changed), and so is a directory whose only change is a changed child.
+
 ### Added (repository locks)
 
 - **`svn lock` / `svn unlock` are part of the app.** Files can be locked from the

@@ -53,6 +53,7 @@
 | `lock(paths,comment,steal)` | 取仓库锁 | 是 | 是（写 lock token） | 仅 `steal` | 否（重复锁报错） |
 | `unlock(paths,breakLock)` | 释放仓库锁 | 是 | 是 | 仅 `breakLock` | 否（无锁报错） |
 | `locks(at)` | 读取仓库锁（含他人持有） | 是 | 否 | 否 | 是 |
+| `remotePreview(at)` | 更新预检：远端有哪些变更 | 是 | 否 | 否 | 是 |
 
 \* `info` 针对工作副本路径时只读本地 `.svn`；针对 URL 时访问网络。
 
@@ -66,6 +67,7 @@
 ### 1.2 update
 
 - 前置：目标在工作副本内。
+- **没有 dry run**。`svn update` 一旦运行就会改文件，因此"更新前看看会拉下什么"必须由 `remotePreview` 提供，而不是给 `update` 加参数。
 - 成功判据：退出码 0；新修订号通过随后一次 `svn info --xml` 读取，而不是解析 “Updated to” 文本。
 - 摘要：从输出行提取 `A/D/U/C/G` 首列，仅用于展示。
 - 冲突：`update` 不解决冲突，只报告。冲突详情以 `status --xml` 为准。
@@ -75,7 +77,7 @@
 
 - `--xml`；`includeIgnored: false` 时不加 `--no-ignore`。
 - 返回的路径可能是绝对路径（传入绝对路径时）或相对路径（传入相对目标时），调用方不得假设。
-- 不访问网络（`-u` 不在 MVP 内）。
+- 默认不访问网络。`checkRepository: true` 时加 `--show-updates`（即 `-u`），此时**会**联网，并额外得到两样东西：`<repos-status>`（远端变更与他人持有的锁）和 `<against revision="N">`（服务器最新修订号）。
 
 ### 1.4 add
 
@@ -187,6 +189,22 @@ SVN 里有两套完全不同的"锁"，从错误码到补救动作都不一样�
 | 串行 | lock / unlock 会写 `.svn/wc.db`（记录 token），因此走 R4 写锁，并记 journal（`.lock` / `.unlock`） |
 | 提交后 | `svn commit` 默认释放该路径的锁（除非 `--keep-locks`），所以界面不需要"提交后自动解锁"选项 |
 | 只读操作 | `locks(at)` 不加锁、不记 journal（与 `status` 同类） |
+
+### 1.11 更新预检（remotePreview）
+
+`svn update` 没有 dry run，所以在执行之前，唯一能回答"会拉下什么"的命令是 `status --show-updates`。本方法就是它的读取端。
+
+| 项 | 契约 |
+|---|---|
+| 命令 | `svn status --xml --show-updates -- <path>`，与 `locks(at)` 完全相同的命令，不同的读法 |
+| 只读 | 不写工作副本、不记 journal、不取写锁。读取前后工作副本状态必须一致（集成测试断言这一点） |
+| `nil` 的含义 | `<repos-status>` 只在该路径与基准修订不同时出现。因此 `remoteItem == nil` 表示"服务器上没变"，**不是**"未知"。把两者混为一谈会让预览把整个工作副本列成待更新 |
+| 修订号 | `<against revision="N"/>` 是服务器当前的最新修订号，也就是 `update` 会落到的地方。没有 `revision` 属性时保持 `nil`，不能当作 0 |
+| 根条目 | svn 会为工作副本根 `"."` 报一条 `modified`，只要任意子项变了。**必须过滤掉**，否则 3 个文件的变化会显示成 4 条。唯一的例外是根目录自身的属性变更（`item` 为 `none`/`normal` 而 `props` 为 `modified`），它保留为单独一行 |
+| 目录去重 | 目录会因某个子项变化而被报为 `modified`。当它同时(1) 有变化的后代、(2) 自身属性未变时，从列表中移除——一条变化不该被计两次 |
+| 冲突风险 | **启发式，不是判定**。远端 `modified`/`deleted` 与本地 `modified`/`added`/`deleted`/`conflicted`/`missing` 在同一路径上相遇时标记为"可能冲突"；远端 `added` 遇到本地 `unversioned` 同理（会 `obstructed`）。是否真冲突取决于内容，只有 `update` 之后才知道，所以界面文案必须写"可能" |
+| 网络失败 | 预检失败**不阻止**更新。界面在失败态里保留"仍然更新"按钮：`--show-updates` 失败可能只是这台服务器不支持或代理拦了，而 `update` 未必同样失败 |
+| 与 `locks(at)` 的关系 | 两者共用 `status -u`，但不合并入口：一个问归属，一个问内容。合并会迫使锁刷新解析它从不显示的数据 |
 
 ## 2. 中断恢复（操作日志）
 
