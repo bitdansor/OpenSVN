@@ -48,6 +48,11 @@ FIXTURE_ROOTS = {
     "svn-status-conflicted.xml": "status",
     "svn-status-locked.xml": "status",
     "svn-status-no-ignore.xml": "status",
+    # `-u` answers a different question from plain status, and these two were
+    # unregistered for a while — which left the check blind to exactly the files
+    # nothing else validates.
+    "svn-status-remote-changes.xml": "status",
+    "svn-status-remote-lock.xml": "status",
     "svn-log.xml": "log",
     "svn-info-wc.xml": "info",
     "svn-info-url.xml": "info",

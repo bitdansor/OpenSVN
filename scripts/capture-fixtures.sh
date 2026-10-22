@@ -39,7 +39,7 @@ VERSION="$("$SVN" --version --quiet)"
 cat > "$FIXTURES/README.md" <<EOF
 # Recorded SVN fixtures
 
-All \`.xml\` files in this directory were recorded with:
+The recorded \`.xml\` fixtures in this directory share one environment:
 
 - \`svn --version --quiet\` = \`$VERSION\`
 - macOS, locale pinned to \`LC_ALL=en_US.UTF-8\` / \`LANG=en_US.UTF-8\`, matching the
@@ -54,12 +54,25 @@ All \`.xml\` files in this directory were recorded with:
 | \`svn-status-conflicted.xml\` | \`svn status --xml\` on wc-a | modified / added / deleted / unversioned / missing / text conflict / property change / tree conflict |
 | \`svn-status-locked.xml\` | \`svn status --xml\` on wc-b | repository file lock (\`<lock>\`) |
 | \`svn-status-no-ignore.xml\` | \`svn status --no-ignore --xml\` | ignored files surfaced explicitly |
+| \`svn-status-remote-changes.xml\` | \`svn status --xml -u\` | incoming add / modify / delete, with the revision they are compared against (\`<against>\`) |
+| \`svn-status-remote-lock.xml\` | hand-written | own lock, another user's lock and no lock in one snapshot — \`<lock>\` under \`wc-status\` is mine, under \`repos-status\` is theirs |
 | \`svn-log.xml\` | \`svn log --xml -l 10\` | author, date, message, changed paths |
 | \`svn-info-wc.xml\` | \`svn info --xml\` in a working copy | wc-info, repository root/uuid, commit |
 | \`svn-info-url.xml\` | \`svn info --xml\` on a URL | no wc-info, remote last-changed fields |
+| \`svn-info-conflict.xml\` | \`svn info --xml\` on a text-conflicted file | \`<conflict>\` block: \`prev-base-file\`, \`prev-wc-file\`, \`source-left\` / \`source-right\` revisions — the three versions the merge editor needs |
 | \`svn-diff-text.patch\` | \`svn diff\` on one modified file | unified diff rendering |
 
-Re-record with \`scripts/capture-fixtures.sh\`. Do not hand-edit.
+Re-record with \`scripts/capture-fixtures.sh\`. Do not hand-edit otherwise: a
+fixture and the tests that read it have to agree, and a quiet edit breaks that
+agreement without breaking the build.
+
+\`svn-status-remote-changes.xml\`, \`svn-status-remote-lock.xml\` and
+\`svn-info-conflict.xml\` are not produced by that script — an inbound commit, a
+lock held by another user and a conflicted merge each need a second working copy
+or a second identity, which it does not set up. They are edited by hand when the
+contract changes. Keep their rows in the script's template too: it rewrites this
+file from a heredoc, so a row that only lives here disappears on the next
+recording.
 EOF
 
 echo "== fixtures written to $FIXTURES (svn $VERSION)"

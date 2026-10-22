@@ -24,6 +24,18 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and one forced add publishes a planning note that this repository elsewhere
   states it does not publish.
 
+### Fixed (fixture manifest)
+
+- **Two fixtures were invisible to `--fixtures`.** `svn-status-remote-changes.xml`
+  and `svn-status-remote-lock.xml` are read by `RemotePreviewTests` and
+  `LockTests`, but neither was in `FIXTURE_ROOTS`, so the check never looked at
+  their contents and reported them as stray files on every run. Both are
+  registered now. `tests/fixtures/README.md` also documents which fixtures
+  `capture-fixtures.sh` cannot record — an inbound commit, a foreign lock and a
+  conflicted merge each need a second working copy or a second identity — and the
+  script's README template carries the same rows, because it regenerates that
+  file and a row living only in the file would vanish on the next recording.
+
 ### Added (filtering, auto-refresh, update preview, per-host credentials)
 
 - **The change list can be filtered.** A system search field (⌘F) matches the
