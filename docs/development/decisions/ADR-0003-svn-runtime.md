@@ -2,7 +2,7 @@
 
 > 状态：**macOS 运行时已实现并接入 CI（S6-1 / S6-6）；签名与公证流水线已完成但缺证书，未做真实公证（S6-2）；Windows 待验证**
 > 日期：2026-10-18（决策）/ 2026-10-20（实施进展）
-> 关联：`OpenSVN_开发执行计划.md` S0-3 / Gate A / K1
+> 关联：`packaging/macos/README.md`、`scripts/bundle-svn-runtime.sh`、`scripts/spike-bundle-svn-macos.sh`（可行性验证）
 > 影响阶段：阶段 1（CI）、阶段 3（进程调用）、阶段 6（打包签名公证）、阶段 7（合规）
 
 ## 背景

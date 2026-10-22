@@ -3,7 +3,7 @@
 
 Modes (any combination, default = --layout --metadata --fixtures --scenarios):
 
-  --layout          the planned tree from 规划 §4 exists and is not empty
+  --layout          the planned tree recorded in ADR-0007 exists and is not empty
   --metadata        VERSION / CHANGELOG / Info.plist / governance files agree
   --fixtures        every recorded `svn --xml` fixture is well-formed and typed
   --scenarios       every fault-injection scenario has its four files and is runnable
@@ -76,7 +76,7 @@ REQUIRED_FILES = [
 ]
 
 
-# The planned tree from 规划 §4, adjusted by ADR-0007 for the macOS SwiftPM
+# The planned tree, adjusted by ADR-0007 for the macOS SwiftPM
 # layout (Sources/ + Tests/ instead of a pure Xcode-native tree). Every entry here
 # must exist and carry at least one file: an empty directory is not tracked by git,
 # so "the folder exists" is only true if something inside it is committed.
@@ -284,7 +284,7 @@ def check_metadata(report: Report) -> None:
 # layout
 # ---------------------------------------------------------------------------
 def check_layout(report: Report) -> None:
-    report.section("Repository layout (规划 §4, ADR-0007)")
+    report.section("Repository layout (ADR-0007)")
 
     missing_dirs = []
     for relative in LAYOUT_DIRS:

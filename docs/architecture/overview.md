@@ -96,24 +96,24 @@ be tested without a window; it is `@MainActor` and has no SwiftUI dependency.
 不如整体删掉，重做时从零开始。`windows-ci.yml` 与 `bootstrap-windows.ps1` 也已删除；
 **代码、CI、引导脚本必须在同一次提交里出现**。
 
-共享的是 `specifications/` 的行为契约（规划 §3），不是代码。重做时值得先读的三条差异：
+共享的是 `specifications/` 的行为契约，不是代码。重做时值得先读的三条差异：
 
 1. **参数传递**：Win32 只接受一整条命令行字符串。R1 在这里的含义是"由参数数组**拼**出命令行并逐项加引号"，绝不经过 `cmd.exe`。
 2. **取消**：macOS 用 SIGTERM → SIGKILL；Windows 必须用 Job Object + `TerminateJobObject`，否则 `svn` 的子进程会变成孤儿并占住工作副本锁。
 3. **路径编码**：`path.string()` 会走当前代码页并毁掉中文路径，必须走 `u8string()`；同时 `app.manifest` 需声明 UTF-8 活动代码页与 `longPathAware`。
 
-## 目录映射（规划 §4 ↔ 实际）
+## 目录映射（ADR-0007 记录的原定结构 ↔ 实际）
 
-规划 §4 假定 macOS 是纯 Xcode 工程；实际以 SwiftPM 为主，原因见 ADR-0007。对照关系：
+原定结构假定 macOS 是纯 Xcode 工程；实际以 SwiftPM 为主，原因见 ADR-0007。对照关系：
 
-| 规划 §4 | 实际 | 说明 |
+| 原定结构 | 实际 | 说明 |
 |---|---|---|
 | `apps/macos/OpenSVN/Services/` | `apps/macos/Sources/OpenSVNCore/{Process,Parsing,Discovery,Services,Support}/` | 核心层拆成可独立测试的 target |
 | `apps/macos/OpenSVN/Models/` | `apps/macos/Sources/OpenSVNCore/Models/` | 同上 |
 | `apps/macos/OpenSVN/{App,Views,ViewModels}/` | `apps/macos/Sources/OpenSVN/{App,Views,ViewModels,Models}/` | 界面层 |
 | `apps/macos/OpenSVNTests/` | `apps/macos/Tests/OpenSVNCoreTests/` | Swift Testing |
 | `apps/macos/OpenSVNUITests/` | 暂无 | 界面测试要等打包稳定（阶段 6） |
-| `apps/windows/**` | 暂无（2026-10-18 清空） | 重做时按规划 §4 布局；不要为了对齐目录而提前建空壳 |
+| `apps/windows/**` | 暂无（2026-10-18 清空） | 重做时按 ADR-0007 记录的原定布局；不要为了对齐目录而提前建空壳 |
 
 `python3 scripts/verify-release.py --layout` 会逐项检查这张表对应的目录与锚点文件是否真的存在（空目录会被判失败，因为 git 不跟踪空目录）。
 

@@ -2,7 +2,7 @@
 
 > 状态：**已采纳**
 > 日期：2026-10-18
-> 关联：执行计划 S0-5 / S1-4 / K12
+> 关联：`apps/macos/Package.swift`、`apps/macos/OpenSVN.xcodeproj`、`docs/development/toolchain.md`
 > 影响阶段：阶段 1（工程配置）、阶段 6（打包签名）、阶段 7（文档）
 
 ## 背景

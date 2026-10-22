@@ -2,7 +2,7 @@
 
 > 状态：**暂定**（倾向 MSIX，未在干净系统上实测）
 > 日期：2026-10-18
-> 关联：规划 §2、§8，执行计划 S0-6、S6-x
+> 关联：`packaging/windows/README.md`、`docs/releases/README.md`
 >
 > **2026-10-18 注**：ADR 保留，但 `apps/windows/` 已清空、Windows 端尚未开始，
 > 本文所有结论都没有对应的可执行物。重做 Windows 端时先复核本文，不要默认它仍然成立。

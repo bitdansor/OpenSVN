@@ -1,7 +1,7 @@
 # SVN 操作契约
 
 > 状态：v0.1（macOS 已实现，Windows 待实现）
-> 关联：`OpenSVN_开发规划.md` §6、`OpenSVN_开发执行计划.md` S2-1 / S3-1
+> 关联：`specifications/data-models.md`（输出模型）、`specifications/error-codes.md`（失败语义）
 > 实现：`apps/macos/Sources/OpenSVNCore/Services/SVNService.swift`
 
 本文是**行为契约**，不是某个平台的实现说明。两端的接口语义、前置条件、副作用、失败后状态必须一致；实现可以是 Swift、C++ 或任何语言。

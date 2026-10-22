@@ -364,7 +364,7 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - `assets/{branding,icons,screenshots}`, `packaging/windows`, `docs/user-guide`,
   `docs/releases`, `apps/{macos,windows}/README.md`, `tests/integration/README.md`
-  — the planned tree from 规划 §4, with the macOS deviation recorded in ADR-0007.
+  — the planned tree, with the macOS deviation recorded in ADR-0007.
 - `verify-release.py --layout` checks every planned directory carries a committed
   file (an empty directory does not survive a clone) and that both platform
   READMEs state their status.

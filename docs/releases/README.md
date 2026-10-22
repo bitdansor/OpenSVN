@@ -11,7 +11,7 @@ must answer, in this order:
 4. **Verification** — SHA-256 of each asset, and the command used to install on a
    clean machine.
 
-Release assets follow the naming in 规划 §8:
+Release assets follow this naming:
 
 ```text
 OpenSVN-<version>-macos-arm64.dmg

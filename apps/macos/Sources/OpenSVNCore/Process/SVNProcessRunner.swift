@@ -3,7 +3,7 @@ import Foundation
 /// A fully-resolved process invocation.
 ///
 /// Arguments are always an array: nothing in this type can be interpreted by a
-/// shell. See red line R1 in `OpenSVN_开发执行计划.md`.
+/// shell. That is the hard rule this type exists to enforce.
 public struct SVNInvocation: Sendable, Hashable {
     public var executableURL: URL
     public var arguments: [String]

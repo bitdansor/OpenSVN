@@ -144,7 +144,7 @@ public enum ResolveStrategy: String, Sendable, Hashable, CaseIterable {
     }
 
     /// Menu title. Never expose `rawValue` in the UI: `--accept` tokens are
-    /// implementation details and, per 执行计划 §7, each option must state its
+    /// implementation details, and each option must state its
     /// consequence in plain language.
     public var title: String {
         switch self {

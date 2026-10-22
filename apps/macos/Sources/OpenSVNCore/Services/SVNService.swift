@@ -686,7 +686,7 @@ public actor SVNService {
 
     /// Marks conflicts resolved with `svn resolve --accept=<strategy>`.
     ///
-    /// Two things happen around the svn call, both required by 执行计划 S5-3:
+    /// Two things happen around the svn call, and both matter for safety:
     /// 1. the conflict artifacts are copied aside **before** anything is
     ///    overwritten — `--accept` is irreversible and svn keeps no local copy;
     /// 2. the file is scanned afterwards, because `--accept=working` only clears

@@ -27,7 +27,7 @@ apps/macos/
   OpenSVN.xcodeproj/            thin Xcode shell that references the local package
 ```
 
-This differs from 规划 §4 (which assumes a pure Xcode-native tree). The reasons
+This differs from the planned tree (which assumed a pure Xcode-native layout). The reasons
 and the trade-offs are recorded in
 `docs/development/decisions/ADR-0007-macos-source-layout.md`; the mapping between
 the two layouts is in `docs/architecture/overview.md`.

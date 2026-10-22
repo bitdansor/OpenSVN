@@ -2,7 +2,7 @@
 
 > 状态：**已采纳**
 > 日期：2026-10-18
-> 关联：执行计划 S0-8 / S3-3 / S3-4 / K4、规范 §6、§10.2
+> 关联：`apps/macos/Sources/OpenSVNCore/Services/CredentialStore.swift`、`specifications/data-models.md`
 > 影响阶段：阶段 3（服务层）、阶段 5（日志审计）、阶段 6（干净系统测试）
 
 ## 问题

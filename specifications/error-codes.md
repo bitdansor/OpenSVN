@@ -1,7 +1,7 @@
 # 错误码映射
 
 > 状态：v0.1（与 `SVNErrorMapper.swift` 一致）
-> 关联：执行计划 S2-3、S3-8、S5-5；规划 §10.6
+> 关联：`SVNOutputParser.swift`（token 提取）、`SVNErrorMapper.swift`（映射表）、`specifications/compatibility.md`（版本与平台差异）
 
 ## 1. 分级
 
