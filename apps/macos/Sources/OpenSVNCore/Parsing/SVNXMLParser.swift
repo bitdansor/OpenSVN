@@ -59,12 +59,13 @@ public enum SVNXMLParser {
 
         var repositoryLock: RepositoryLock?
         if let lockElement = wcStatus?.elements(forName: "lock").first {
-            repositoryLock = RepositoryLock(
-                token: lockElement.elements(forName: "token").first?.stringValue,
-                owner: lockElement.elements(forName: "owner").first?.stringValue,
-                comment: lockElement.elements(forName: "comment").first?.stringValue,
-                createdAt: SVNDateParser.parse(lockElement.elements(forName: "created").first?.stringValue)
-            )
+            repositoryLock = parseLock(lockElement)
+        }
+        // `<repos-status>` only appears with `--show-updates`. Its lock is the
+        // server's view, which is how another user's lock becomes visible at all.
+        var remoteLock: RepositoryLock?
+        if let lockElement = reposStatus?.elements(forName: "lock").first {
+            remoteLock = parseLock(lockElement)
         }
 
         var commit: CommitInfo?
@@ -78,7 +79,7 @@ public enum SVNXMLParser {
             )
         }
 
-        _ = reposStatus // repos-status carries server-side state; unused in MVP.
+        _ = reposStatus // repos-status carries server-side state; only its lock is used.
 
         return StatusEntry(
             path: path,
@@ -88,6 +89,7 @@ public enum SVNXMLParser {
             isCopied: isCopied,
             conflicts: conflicts,
             repositoryLock: repositoryLock,
+            remoteLock: remoteLock,
             // `incomplete` means an earlier operation left the working copy in a
             // state that needs `svn cleanup`; it is a local lock signal, not a
             // repository lock.
@@ -95,6 +97,18 @@ public enum SVNXMLParser {
             changelist: element.attribute(forName: "changelist")?.stringValue,
             commit: commit,
             depth: wcStatus?.attribute(forName: "depth")?.stringValue
+        )
+    }
+
+    /// `<lock>` appears in both `<wc-status>` and `<repos-status>`, with the same
+    /// shape. `token` is intentionally kept in the model but never logged: it is
+    /// the credential that authorises `unlock`.
+    private static func parseLock(_ element: XMLElement) -> RepositoryLock {
+        RepositoryLock(
+            token: element.elements(forName: "token").first?.stringValue,
+            owner: element.elements(forName: "owner").first?.stringValue,
+            comment: element.elements(forName: "comment").first?.stringValue,
+            createdAt: SVNDateParser.parse(element.elements(forName: "created").first?.stringValue)
         )
     }
 

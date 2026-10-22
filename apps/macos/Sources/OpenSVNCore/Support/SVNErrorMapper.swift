@@ -28,6 +28,16 @@ public enum SVNErrorMapper {
         ("E155036", .workingCopyNeedsUpgrade),
         ("E195020", .workingCopyNeedsUpgrade),
         ("E155015", .conflictRemains),
+        // Lock failures arrive as *warnings* (`W160035`) followed by the generic
+        // `E200009: One or more locks could not be obtained`. Matching the
+        // specific warning first is what lets the UI name the holder instead of
+        // reporting a bare command failure.
+        ("W160035", .pathLocked),
+        ("E160035", .pathLocked),
+        ("E160039", .pathLocked),
+        ("W160040", .notLocked),
+        ("E160040", .notLocked),
+        ("E195013", .notLocked),
         ("E155011", .outOfDate),
         ("E160028", .outOfDate),
         // `svn checkout file://repo` against a repository written by a newer
@@ -65,6 +75,9 @@ public enum SVNErrorMapper {
         ("previous operation has not finished", .workingCopyLocked),
         ("remains in conflict", .conflictRemains),
         ("one or more conflicts remain", .conflictRemains),
+        ("is already locked by user", .pathLocked),
+        ("is not locked in this working copy", .notLocked),
+        ("no lock on path", .notLocked),
         ("out of date", .outOfDate),
         ("unable to connect", .networkFailure),
         ("connection refused", .networkFailure),
@@ -169,6 +182,10 @@ public enum SVNErrorMapper {
             return "路径不存在"
         case .backupFailed:
             return "无法在解决冲突前备份文件，操作已中止"
+        case .pathLocked:
+            return "路径已被他人锁定"
+        case .notLocked:
+            return "路径没有锁"
         case .cancelled:
             return "操作已取消"
         case .timeout:

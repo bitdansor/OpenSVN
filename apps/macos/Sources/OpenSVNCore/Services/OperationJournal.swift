@@ -38,6 +38,8 @@ public actor OperationJournal {
             case resolve
             case cleanup
             case property
+            case lock
+            case unlock
 
             /// Short label for the recovery banner. Never an svn token.
             public var title: String {
@@ -51,6 +53,8 @@ public actor OperationJournal {
                 case .resolve: return "解决冲突"
                 case .cleanup: return "清理"
                 case .property: return "修改属性"
+                case .lock: return "锁定"
+                case .unlock: return "解锁"
                 }
             }
         }
@@ -97,6 +101,10 @@ public actor OperationJournal {
                 return "检出可能只完成了一部分。确认目录内容后再决定是继续还是删掉重来。"
             case .update, .revert, .resolve, .delete, .add, .property:
                 return "工作副本可能停在中间状态。运行「清理」后再刷新状态。"
+            case .lock:
+                return "锁可能已在服务器上生效。刷新锁定状态确认，再决定是否重试。"
+            case .unlock:
+                return "锁可能已释放。刷新锁定状态确认，不要直接重复解锁。"
             case .cleanup:
                 return "上次清理没有完成。重新运行「清理」即可。"
             }

@@ -24,6 +24,14 @@ public enum SVNErrorCode: Sendable, Hashable, Codable {
     case conflictRemains
     case pathNotFound
     case backupFailed
+    /// The repository refuses the lock because someone else holds it.
+    ///
+    /// Kept apart from `workingCopyLocked`: that one is a local `.svn` lock
+    /// fixed by `svn cleanup`, this one lives on the server and is fixed by the
+    /// holder releasing it — or by an explicit steal.
+    case pathLocked
+    /// `unlock` (or `lock`) was asked about a path that carries no lock.
+    case notLocked
     case hostKeyVerificationFailed
     case timeout
     case cancelled
@@ -45,11 +53,11 @@ public enum SVNErrorCode: Sendable, Hashable, Codable {
 
     public var severity: Severity {
         switch self {
-        case .networkFailure, .workingCopyLocked, .outOfDate:
+        case .networkFailure, .workingCopyLocked, .outOfDate, .notLocked:
             return .recoverable
         case .authenticationRequired, .authorizationFailed, .conflictRemains,
              .confirmationRequired, .hostKeyVerificationFailed, .notAWorkingCopy,
-             .permissionDenied:
+             .permissionDenied, .pathLocked:
             return .needsUserAction
         case .svnNotFound, .unsupportedVersion, .workingCopyNeedsUpgrade,
              .repositoryNeedsUpgrade,
@@ -76,6 +84,8 @@ public enum SVNErrorCode: Sendable, Hashable, Codable {
         case .conflictRemains: return "SVN-0301"
         case .pathNotFound: return "SVN-0302"
         case .backupFailed: return "SVN-0303"
+        case .pathLocked: return "SVN-0304"
+        case .notLocked: return "SVN-0305"
         case .hostKeyVerificationFailed: return "SVN-0103"
         case .timeout: return "SVN-0401"
         case .cancelled: return "SVN-0402"
@@ -112,6 +122,10 @@ public enum SVNErrorCode: Sendable, Hashable, Codable {
             return "仍有未解决的冲突，解决后需标记 resolve 才能提交。"
         case .backupFailed:
             return "无法在解决冲突前备份文件，操作已中止以免数据丢失。请检查磁盘空间与目录写权限。"
+        case .pathLocked:
+            return "该路径已被他人锁定。请对方解除锁定，或在确认风险后使用「强制锁定」抢占。"
+        case .notLocked:
+            return "该路径当前没有锁。它可能已被他人释放或抢占，刷新锁定状态后再操作。"
         case .hostKeyVerificationFailed:
             return "服务器 SSH 主机密钥未被信任，请核对指纹后再连接。"
         case .timeout:

@@ -173,7 +173,15 @@ public struct StatusEntry: Sendable, Hashable, Identifiable {
     public var revision: Int64?
     public var isCopied: Bool
     public var conflicts: ConflictFlags
+    /// The lock token *this* working copy holds, from `<wc-status><lock>`.
     public var repositoryLock: RepositoryLock?
+    /// The lock the server reports, from `<repos-status><lock>`.
+    ///
+    /// Only populated by `svn status --show-updates`. Kept apart from
+    /// `repositoryLock` because holding a token and seeing someone else's lock
+    /// are different situations with different remedies (`unlock` vs "ask the
+    /// owner, or steal it").
+    public var remoteLock: RepositoryLock?
     /// Working-copy internal lock / incomplete operation marker. Populated from
     /// `svn cleanup`-class failures or a `tree-conflicted` marker, never from a
     /// repository lock.
@@ -192,6 +200,7 @@ public struct StatusEntry: Sendable, Hashable, Identifiable {
         isCopied: Bool = false,
         conflicts: ConflictFlags = [],
         repositoryLock: RepositoryLock? = nil,
+        remoteLock: RepositoryLock? = nil,
         isWorkingCopyLocked: Bool = false,
         changelist: String? = nil,
         commit: CommitInfo? = nil,
@@ -204,11 +213,15 @@ public struct StatusEntry: Sendable, Hashable, Identifiable {
         self.isCopied = isCopied
         self.conflicts = conflicts
         self.repositoryLock = repositoryLock
+        self.remoteLock = remoteLock
         self.isWorkingCopyLocked = isWorkingCopyLocked
         self.changelist = changelist
         self.commit = commit
         self.depth = depth
     }
+
+    /// The lock to show for this entry, whether it is ours or someone else's.
+    public var effectiveLock: RepositoryLock? { repositoryLock ?? remoteLock }
 
     public var fileName: String {
         (path as NSString).lastPathComponent

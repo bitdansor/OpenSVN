@@ -91,12 +91,23 @@ public actor SVNService {
 
     public func status(
         at target: URL,
-        includeIgnored: Bool = false
+        includeIgnored: Bool = false,
+        checkRepository: Bool = false,
+        credential: SVNCredential? = nil
     ) async throws -> StatusSnapshot {
         var args = ["status", "--xml"]
         if includeIgnored { args.append("--no-ignore") }
+        // `--show-updates` is the only way to see a lock someone else holds:
+        // without it svn reports just the token this working copy has.
+        if checkRepository { args.append("--show-updates") }
         args.append(target.path)
-        let result = try await invoke(args, workingDirectory: nil, credential: nil, repositoryURL: nil)
+        let repositoryURL = checkRepository ? await repositoryURL(for: target.path) : nil
+        let result = try await invoke(
+            args,
+            workingDirectory: nil,
+            credential: credential,
+            repositoryURL: repositoryURL
+        )
         return try SVNXMLParser.parseStatus(Data(result.standardOutput.utf8))
     }
 
@@ -516,6 +527,136 @@ public actor SVNService {
             await finishJournal(ticket)
             throw error
         }
+    }
+
+    // MARK: - Locks
+
+    /// Takes a repository lock on every path (`svn lock`).
+    ///
+    /// A plain lock is reversible and touches nothing but the lock table, so it
+    /// needs no confirmation. `steal` is the exception: it takes the lock away
+    /// from whoever holds it and blocks *their* commit until they notice, which
+    /// is why the service — not just the dialog — requires `confirmed`.
+    public func lock(
+        _ paths: [URL],
+        comment: String? = nil,
+        steal: Bool = false,
+        confirmed: Bool = false,
+        credential: SVNCredential? = nil
+    ) async throws -> LockOutcome {
+        guard !paths.isEmpty else {
+            throw SVNError(code: .invalidInvocation, message: "没有选择要锁定的路径")
+        }
+        guard !steal || confirmed else {
+            throw SVNError(
+                code: .confirmationRequired,
+                message: "「强制锁定」会抢占他人持有的锁",
+                diagnosticOutput: "持有者将无法提交该路径，直到他注意到锁已易主。"
+            )
+        }
+
+        let key = WorkingCopyLocator.serializationKey(for: paths[0])
+        let ticket = await beginJournal(
+            .lock,
+            workingCopy: URL(fileURLWithPath: key),
+            summary: "锁定 \(paths.count) 个路径"
+        )
+        do {
+            let outcome = try await gate.withLock(key) {
+                var args = ["lock"]
+                let trimmed = (comment ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty { args += ["-m", trimmed] }
+                if steal { args.append("--force") }
+                args += paths.map(\.standardizedFileURL.path)
+
+                let repositoryURL = await self.repositoryURL(for: paths[0].path)
+                let result = try await self.invoke(
+                    args,
+                    workingDirectory: nil,
+                    credential: credential,
+                    repositoryURL: repositoryURL
+                )
+                let reported = LockOutputParser.lockedPaths(in: result.standardOutput)
+                return LockOutcome(
+                    // svn prints the paths it locked; fall back to the request when
+                    // the wording changes, because a successful exit code is the
+                    // contract and the message is a courtesy.
+                    lockedPaths: reported.isEmpty ? paths.map(\.standardizedFileURL.path) : reported,
+                    owner: LockOutputParser.owner(in: result.standardOutput),
+                    rawOutput: LogRedactor.redact(result.standardOutput)
+                )
+            }
+            await finishJournal(ticket)
+            return outcome
+        } catch {
+            await finishJournal(ticket)
+            throw error
+        }
+    }
+
+    /// Releases the lock on every path (`svn unlock`).
+    ///
+    /// `breakLock` maps to `--force`: it releases a lock held by someone else.
+    /// Same reasoning as `lock(steal:)` — it needs `confirmed` at the service
+    /// level, not only in the UI.
+    public func unlock(
+        _ paths: [URL],
+        breakLock: Bool = false,
+        confirmed: Bool = false,
+        credential: SVNCredential? = nil
+    ) async throws -> UnlockOutcome {
+        guard !paths.isEmpty else {
+            throw SVNError(code: .invalidInvocation, message: "没有选择要解锁的路径")
+        }
+        guard !breakLock || confirmed else {
+            throw SVNError(
+                code: .confirmationRequired,
+                message: "「强制解除」会移除他人持有的锁",
+                diagnosticOutput: "对方可能正在编辑该文件；解除后两人的提交都可能互相覆盖。"
+            )
+        }
+
+        let key = WorkingCopyLocator.serializationKey(for: paths[0])
+        let ticket = await beginJournal(
+            .unlock,
+            workingCopy: URL(fileURLWithPath: key),
+            summary: "解锁 \(paths.count) 个路径"
+        )
+        do {
+            let outcome = try await gate.withLock(key) {
+                var args = ["unlock"]
+                if breakLock { args.append("--force") }
+                args += paths.map(\.standardizedFileURL.path)
+
+                let repositoryURL = await self.repositoryURL(for: paths[0].path)
+                let result = try await self.invoke(
+                    args,
+                    workingDirectory: nil,
+                    credential: credential,
+                    repositoryURL: repositoryURL
+                )
+                let reported = LockOutputParser.unlockedPaths(in: result.standardOutput)
+                return UnlockOutcome(
+                    unlockedPaths: reported.isEmpty ? paths.map(\.standardizedFileURL.path) : reported,
+                    rawOutput: LogRedactor.redact(result.standardOutput)
+                )
+            }
+            await finishJournal(ticket)
+            return outcome
+        } catch {
+            await finishJournal(ticket)
+            throw error
+        }
+    }
+
+    /// Repository-side locks for a working copy, including other users' locks.
+    ///
+    /// Deliberately a separate call: it needs the network, and folding it into
+    /// every `refresh()` would make a local status read wait on a server that may
+    /// be unreachable.
+    public func locks(at target: URL, credential: SVNCredential? = nil) async throws -> LockSnapshot {
+        let snapshot = try await status(at: target, checkRepository: true, credential: credential)
+        return LockSnapshot.from(status: snapshot)
     }
 
     // MARK: - Recovery

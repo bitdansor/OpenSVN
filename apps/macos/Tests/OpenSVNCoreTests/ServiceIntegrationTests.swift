@@ -352,6 +352,55 @@ struct ServiceIntegrationTests {
         }
     }
 
+    @Test("lock is visible to a second working copy and only one of them may hold it")
+    func locking() async throws {
+        let fixture = try await makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let service = fixture.service
+        let repoURL = "file://\(fixture.repository.path)/trunk"
+        try await service.checkout(url: repoURL, to: fixture.workingCopy)
+
+        let readme = fixture.workingCopy.appendingPathComponent("README.md")
+        let locked = try await service.lock([readme], comment: "编辑中")
+        #expect(locked.lockedPaths.count == 1)
+        #expect(locked.owner != nil)
+
+        let own = try await service.locks(at: fixture.workingCopy)
+        #expect(own.lock(for: readme.path)?.comment == "编辑中")
+        #expect(own.isOwnLock(for: readme.path))
+
+        // A second checkout sees the lock, does not own it, and cannot take it
+        // without --force.
+        let second = fixture.root.appendingPathComponent("wc2", isDirectory: true)
+        try await service.checkout(url: repoURL, to: second)
+        let secondReadme = second.appendingPathComponent("README.md")
+
+        let foreign = try await service.locks(at: second)
+        #expect(foreign.lock(for: secondReadme.path) != nil)
+        #expect(!foreign.isOwnLock(for: secondReadme.path))
+        #expect(foreign.foreignLocks(among: [secondReadme.path]) == [secondReadme.path])
+
+        do {
+            _ = try await service.lock([secondReadme], comment: "抢")
+            Issue.record("locking a path someone else holds must fail")
+        } catch let error as SVNError {
+            #expect(error.code == .pathLocked)
+        }
+
+        // The service enforces the confirmation, not just the dialog.
+        do {
+            _ = try await service.lock([secondReadme], steal: true, confirmed: false)
+            Issue.record("stealing without confirmation must be refused")
+        } catch let error as SVNError {
+            #expect(error.code == .confirmationRequired)
+        }
+
+        let unlocked = try await service.unlock([readme])
+        #expect(unlocked.unlockedPaths.count == 1)
+        let after = try await service.locks(at: fixture.workingCopy)
+        #expect(after.lock(for: readme.path) == nil)
+    }
+
 }
 
 @Suite("write serialization")
