@@ -73,6 +73,72 @@ final class RepositorySession: Identifiable {
         var isBatch: Bool { paths.count > 1 }
     }
 
+    /// What the update sheet is showing, and whether it is still being fetched.
+    ///
+    /// A sheet with a loading state rather than a modal spinner: `--show-updates`
+    /// talks to the server, and an unresponsive window during a slow handshake is
+    /// the worst possible moment to show one.
+    struct UpdatePreviewState: Identifiable {
+        let id = UUID()
+        var isLoading = true
+        var preview: RemotePreview?
+        var failure: String?
+        /// Local entries that are not committed yet — the other half of "will
+        /// this update collide with my work?".
+        var localChangeCount = 0
+
+        var hasRemoteChanges: Bool { preview?.isEmpty == false }
+    }
+
+    /// Whether the repository behind this working copy answered the last time
+    /// anything asked.
+    ///
+    /// Derived from facts, never guessed: it is set by an `info` that succeeded,
+    /// an update preview that reached the server, or the failure of either. A
+    /// working copy on `file://` is always reachable and never checked.
+    enum ConnectionState: Sendable, Equatable {
+        case unknown
+        case reachable(Date)
+        case needsAuthentication
+        case unreachable(String)
+
+        var isProblem: Bool {
+            switch self {
+            case .unreachable, .needsAuthentication: return true
+            case .unknown, .reachable: return false
+            }
+        }
+
+        /// A bad password is a different problem from a dead host, and the icon
+        /// is the only thing distinguishing them in a 20 pt sidebar row.
+        var isAuthenticationProblem: Bool {
+            if case .needsAuthentication = self { return true }
+            return false
+        }
+
+        var systemImage: String {
+            switch self {
+            case .unknown: return "questionmark.circle"
+            case .reachable: return "circle.fill"
+            case .needsAuthentication: return "person.badge.key"
+            case .unreachable: return "bolt.horizontal.circle"
+            }
+        }
+
+        var summary: String {
+            switch self {
+            case .unknown:
+                return "尚未检查服务器连通性"
+            case .reachable(let at):
+                return "服务器可达（\(at.formatted(date: .omitted, time: .shortened))）"
+            case .needsAuthentication:
+                return "服务器需要认证，尚未保存可用的凭据"
+            case .unreachable(let reason):
+                return "服务器不可达：\(reason)"
+            }
+        }
+    }
+
     nonisolated let bookmark: RepositoryBookmark
     private(set) var service: SVNService?
     private var taskCenter: TaskCenter?
@@ -111,6 +177,18 @@ final class RepositorySession: Identifiable {
     var isLockLoading = false
     /// Non-nil while the "锁定" sheet is open.
     var lockEditor: LockEditorState?
+    /// Non-nil while the update preview sheet is open.
+    var updatePreview: UpdatePreviewState?
+    /// Case-insensitive filter for the change list. Kept here rather than in the
+    /// view so switching tabs and coming back does not lose what was typed.
+    var filterText = ""
+    /// Reachability of the repository behind this working copy.
+    var connection: ConnectionState = .unknown
+
+    var autoRefreshEnabled = true
+    var previewBeforeUpdate = true
+    private var watcher: WorkingCopyWatcher?
+    private var pendingWatchRefresh: Task<Void, Never>?
 
     init(
         bookmark: RepositoryBookmark,
@@ -173,10 +251,10 @@ final class RepositorySession: Identifiable {
 
     // MARK: - Loading
 
-    func refresh() async {
+    func refresh(quiet: Bool = false) async {
         guard let service else { return }
-        isLoading = true
-        defer { isLoading = false }
+        if !quiet { isLoading = true }
+        defer { if !quiet { isLoading = false } }
         do {
             let snapshot = try await service.status(at: path)
             status = snapshot
@@ -184,6 +262,12 @@ final class RepositorySession: Identifiable {
             lastRefreshedAt = Date()
             pruneSelections(using: snapshot)
         } catch {
+            // A quiet refresh comes from the file watcher, which fires while
+            // files are half-written and operations are in flight. Reporting an
+            // alert for every one of those would turn ordinary editing into a
+            // wall of dialogs; the next manual refresh will report it if it is
+            // real.
+            if quiet { return }
             handle(error)
         }
     }
@@ -204,6 +288,68 @@ final class RepositorySession: Identifiable {
     }
 
     // MARK: - Operations
+
+    /// The 更新 button. Reads the server side first when the setting is on.
+    ///
+    /// Updating blindly is the one operation here that can mix an unknown
+    /// changeset into local edits, and `svn update` has no dry run. `status
+    /// --show-updates` is the dry run: it names every incoming path and the
+    /// revision it would land on, at the cost of one round trip.
+    func requestUpdate() async {
+        guard service != nil else { return }
+        guard previewBeforeUpdate else {
+            await update()
+            return
+        }
+        updatePreview = UpdatePreviewState(localChangeCount: changedEntries.count)
+        await loadUpdatePreview()
+    }
+
+    /// Fetches (or re-fetches) the preview for the open sheet.
+    ///
+    /// Keyed on the sheet's identity so a slow answer cannot land in a sheet the
+    /// user already closed, or in a newer one opened for the same working copy.
+    func loadUpdatePreview() async {
+        guard let service, let state = updatePreview else { return }
+        var loading = state
+        loading.isLoading = true
+        loading.failure = nil
+        updatePreview = loading
+
+        do {
+            let preview = try await withAuthRetry { credential in
+                try await service.remotePreview(at: self.path, credential: credential)
+            }
+            connection = .reachable(Date())
+            guard var current = updatePreview, current.id == state.id else { return }
+            current.preview = preview
+            current.isLoading = false
+            updatePreview = current
+        } catch {
+            let svnError = (error as? SVNError)
+                ?? SVNError(code: .unknown, message: error.localizedDescription)
+            // The preview is also the cheapest reachability check the app has,
+            // so a failure here is what tells the sidebar the host is down.
+            if svnError.code.isReachabilityRelated {
+                connection = .unreachable(svnError.message)
+            } else if svnError.code.isAuthenticationRelated {
+                connection = .needsAuthentication
+            }
+            guard var current = updatePreview, current.id == state.id else { return }
+            current.isLoading = false
+            current.failure = svnError.message
+            updatePreview = current
+        }
+    }
+
+    func dismissUpdatePreview() {
+        updatePreview = nil
+    }
+
+    func confirmUpdate() async {
+        updatePreview = nil
+        await update()
+    }
 
     func update() async {
         guard let service else { return }
@@ -242,7 +388,8 @@ final class RepositorySession: Identifiable {
                     confirmLabel: "删除",
                     isDestructive: true,
                     action: { [weak self] in
-                        await self?.perform("删除 \(urls.count) 项") { _, _ in
+                        guard let self else { return }
+                        await self.perform("删除 \(urls.count) 项") { _, _ in
                             try await service.delete(urls, confirmed: true)
                         }
                     }
@@ -265,7 +412,8 @@ final class RepositorySession: Identifiable {
                     confirmLabel: "还原",
                     isDestructive: true,
                     action: { [weak self] in
-                        await self?.perform("还原 \(urls.count) 项") { _, _ in
+                        guard let self else { return }
+                        await self.perform("还原 \(urls.count) 项") { _, _ in
                             try await service.revert(urls, confirmed: true)
                         }
                     }
@@ -898,6 +1046,82 @@ final class RepositorySession: Identifiable {
     func isOwnLock(_ entry: StatusEntry) -> Bool {
         if entry.repositoryLock != nil { return true }
         return lockSnapshot.isOwnLock(for: entry.path)
+    }
+
+    // MARK: - Settings and background refresh
+
+    /// Applies the switches that change this session's background behaviour.
+    func apply(settings: AppSettings) {
+        autoRefreshEnabled = settings.autoRefresh
+        previewBeforeUpdate = settings.previewBeforeUpdate
+        if autoRefreshEnabled {
+            startWatching()
+        } else {
+            stopWatching()
+        }
+    }
+
+    /// Starts watching the working copy. Idempotent, and a no-op when the
+    /// setting is off or SVN is not ready.
+    func startWatching() {
+        guard autoRefreshEnabled, watcher == nil, service != nil else { return }
+        let watcher = WorkingCopyWatcher(root: path) { [weak self] in
+            Task { @MainActor in self?.fileSystemDidChange() }
+        }
+        watcher.start()
+        self.watcher = watcher
+    }
+
+    /// Stops watching. The stream holds an unretained pointer to itself, so this
+    /// must run before the session is deallocated.
+    func stopWatching() {
+        watcher?.stop()
+        watcher = nil
+        pendingWatchRefresh?.cancel()
+        pendingWatchRefresh = nil
+    }
+
+    private func fileSystemDidChange() {
+        guard autoRefreshEnabled, service != nil else { return }
+        // Reading the working copy while a write holds it would block or fail
+        // with `E155004`, and that failure would look like ours rather than the
+        // writer's. Skipping is safe: every write refreshes when it finishes.
+        guard (taskCenter?.runningCount ?? 0) == 0, !isLoading, updatePreview == nil else { return }
+
+        pendingWatchRefresh?.cancel()
+        pendingWatchRefresh = Task { [weak self] in
+            // Editors save in bursts — write, truncate, rename — and one status
+            // read per burst is the entire point of debouncing.
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled else { return }
+            await self?.refresh(quiet: true)
+        }
+    }
+
+    // MARK: - Connection
+
+    /// Asks the server whether it is there.
+    ///
+    /// Only called when the session is opened and from the "检查连接" action, and
+    /// skipped entirely for `file://` repositories, where "unreachable" is not a
+    /// state that can exist.
+    func probeConnection() async {
+        guard let service else { return }
+        guard let url = info?.url, !url.isEmpty else { return }
+        if url.hasPrefix("file://") {
+            connection = .reachable(Date())
+            return
+        }
+        do {
+            _ = try await service.info(at: url)
+            connection = .reachable(Date())
+        } catch let error as SVNError {
+            connection = error.code.isAuthenticationRelated
+                ? .needsAuthentication
+                : .unreachable(error.message)
+        } catch {
+            connection = .unreachable(error.localizedDescription)
+        }
     }
 
     // MARK: - Plumbing

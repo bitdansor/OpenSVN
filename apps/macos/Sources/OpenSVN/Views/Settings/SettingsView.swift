@@ -11,6 +11,9 @@ struct SettingsView: View {
     @State private var confirmDestructive = true
     @State private var logLevel: LogLevel = .info
     @State private var maxConcurrentWrites = AppSettings.defaultMaxConcurrentWrites
+    @State private var autoRefresh = true
+    @State private var previewBeforeUpdate = true
+    @State private var credentialScopes: [CredentialScope] = []
     @State private var statusMessage: String?
     @State private var showingClearConfirmation = false
 
@@ -78,6 +81,18 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section("刷新与更新") {
+                Toggle("自动刷新（监听文件变化）", isOn: $autoRefresh)
+                Text("监听当前打开的工作副本，文件被外部编辑器改动后自动重读状态。.svn 内部变化被忽略（否则每次刷新都会触发下一次刷新），因此只在终端里改属性的情况需要手动刷新。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+
+                Toggle("更新前先查看服务器上的变更", isOn: $previewBeforeUpdate)
+                Text("更新前读取一次远端状态，列出将新增 / 修改 / 删除的路径，并标出与本地未提交修改冲突的风险。代价是多一次网络往返。")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("日志") {
                 Picker("记录级别", selection: $logLevel) {
                     ForEach(LogLevel.allCases) { level in
@@ -105,16 +120,46 @@ struct SettingsView: View {
             }
 
             Section("凭据") {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("密码保存在 macOS 钥匙串")
-                        Text("不会写入配置、日志或命令行参数。")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("密码保存在 macOS 钥匙串")
+                    Text("不会写入配置、日志或命令行参数。下面按服务器列出已保存的条目。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                if credentialScopes.isEmpty {
+                    Text("钥匙串中没有保存的仓库密码。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(credentialScopes, id: \.storageKey) { scope in
+                        HStack(spacing: 8) {
+                            Image(systemName: "key.fill")
+                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(scope.host)
+                                if let realm = scope.realm {
+                                    Text("认证域：\(realm)")
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            Spacer()
+                            // No confirmation: the only consequence of deleting a
+                            // password is typing it once more. A dialog here
+                            // would train the user to dismiss dialogs.
+                            Button("删除", role: .destructive) {
+                                Task { await remove(scope) }
+                            }
+                            .buttonStyle(.borderless)
+                            .help("删除 \(scope.host) 的已保存密码，下次访问时需要重新输入")
+                        }
                     }
-                    Spacer()
-                    Button("清除全部凭据", role: .destructive) {
-                        showingClearConfirmation = true
+                    HStack {
+                        Spacer()
+                        Button("清除全部凭据", role: .destructive) {
+                            showingClearConfirmation = true
+                        }
                     }
                 }
             }
@@ -135,7 +180,10 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .frame(width: 580, height: 660)
-        .onAppear(perform: loadSettings)
+        .onAppear {
+            loadSettings()
+            Task { credentialScopes = await appState.credentialScopes() }
+        }
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("取消") { dismiss() }
@@ -154,6 +202,7 @@ struct SettingsView: View {
             Button("清除", role: .destructive) {
                 Task {
                     await appState.clearAllCredentials()
+                    credentialScopes = []
                     statusMessage = "已清除钥匙串中的 OpenSVN 凭据。"
                 }
             }
@@ -174,6 +223,14 @@ struct SettingsView: View {
         confirmDestructive = settings.confirmBeforeDestructiveAction
         logLevel = settings.logLevel
         maxConcurrentWrites = settings.maxConcurrentWrites
+        autoRefresh = settings.autoRefresh
+        previewBeforeUpdate = settings.previewBeforeUpdate
+    }
+
+    private func remove(_ scope: CredentialScope) async {
+        await appState.forgetCredential(scope)
+        credentialScopes = await appState.credentialScopes()
+        statusMessage = "已删除 \(scope.host) 的已保存密码，下次访问时会重新询问。"
     }
 
     private func openLogFolder() {
@@ -205,7 +262,10 @@ struct SettingsView: View {
             max(AppSettings.maxConcurrentWritesRange.lowerBound, maxConcurrentWrites),
             AppSettings.maxConcurrentWritesRange.upperBound
         )
+        settings.autoRefresh = autoRefresh
+        settings.previewBeforeUpdate = previewBeforeUpdate
         await appState.apply(settings: settings)
+        credentialScopes = await appState.credentialScopes()
         if let error = appState.startupError {
             statusMessage = "保存失败：\(error.message)"
         } else if let installation = appState.installation {

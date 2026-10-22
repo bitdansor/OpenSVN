@@ -75,11 +75,11 @@ struct RepositoryDetailView: View {
                 .help("重新读取工作副本状态")
 
                 Button {
-                    Task { await session.update() }
+                    Task { await session.requestUpdate() }
                 } label: {
                     Label("更新", systemImage: "arrow.down.circle")
                 }
-                .help("svn update")
+                .help("先看服务器上有什么变化，再决定是否更新")
 
                 Button {
                     Task { await session.cleanup() }
@@ -139,10 +139,20 @@ struct RepositoryDetailView: View {
         .sheet(item: $session.propertyEditor) { _ in
             PropertyEditorView(session: session)
         }
+        .sheet(item: $session.updatePreview) { _ in
+            UpdatePreviewSheet(session: session)
+        }
         .task {
             if session.status == nil {
                 await session.refresh()
             }
+            session.startWatching()
+            await session.probeConnection()
+        }
+        // The watcher holds an unretained pointer to itself and burns a file
+        // descriptor; only the working copy on screen needs one.
+        .onDisappear {
+            session.stopWatching()
         }
     }
 
@@ -181,10 +191,39 @@ struct RepositoryDetailView: View {
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
+                connectionIndicator
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
+    }
+
+    /// Shown only when there is something to say.
+    ///
+    /// "Reachable" is a dot, because it is the normal case and does not deserve
+    /// a sentence; the two problems get words, because a coloured dot alone
+    /// would leave the user guessing which one it is.
+    @ViewBuilder
+    private var connectionIndicator: some View {
+        switch session.connection {
+        case .unknown:
+            EmptyView()
+        case .reachable:
+            Image(systemName: "circle.fill")
+                .font(.system(size: 6))
+                .foregroundStyle(.green)
+                .help(session.connection.summary)
+        case .needsAuthentication:
+            Label("需要认证", systemImage: "person.badge.key")
+                .font(.caption2)
+                .foregroundStyle(.orange)
+                .help(session.connection.summary)
+        case .unreachable:
+            Label("服务器不可达", systemImage: "bolt.horizontal.circle")
+                .font(.caption2)
+                .foregroundStyle(.red)
+                .help(session.connection.summary)
+        }
     }
 
     @ViewBuilder

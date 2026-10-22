@@ -154,10 +154,13 @@ final class AppState {
         newValue.save()
         await AppLog.shared.configure(level: newValue.logLevel)
         AppLog.shared.record(.info, "设置已更新：日志级别 \(newValue.logLevel.rawValue)，写操作并发上限 \(newValue.maxConcurrentWrites)")
+        // Rebuild first: `apply` may start the file watcher, which needs a
+        // ready service to be worth anything.
+        await buildService()
         for session in sessions.values {
             session.updateTimeout(newValue.operationTimeout)
+            session.apply(settings: newValue)
         }
-        await buildService()
     }
 
     // MARK: - Tasks
@@ -192,6 +195,7 @@ final class AppState {
             }
         )
         sessions[id] = session
+        session.apply(settings: settings)
         return session
     }
 
@@ -347,6 +351,28 @@ final class AppState {
             }
         } catch {
             startupError = SVNError(code: .unknown, message: error.localizedDescription)
+        }
+    }
+
+    /// Every host (and realm) that currently has a password in the Keychain.
+    ///
+    /// Metadata only — no secret is read. `all` is separate from `scopes` so the
+    /// settings screen can show "saved for these servers" without inventing an
+    /// entry when the Keychain cannot be listed.
+    func credentialScopes() async -> [CredentialScope] {
+        await service?.credentialScopes() ?? []
+    }
+
+    /// Removes one stored credential, and forgets the in-memory copy in every
+    /// session that was using it.
+    ///
+    /// The in-memory half matters: without it, a session would keep committing
+    /// with a password the user just deleted, which is the opposite of what
+    /// deleting it was meant to achieve.
+    func forgetCredential(_ scope: CredentialScope) async {
+        await service?.forgetCredential(for: scope)
+        for session in sessions.values where session.repositoryHost == scope.host {
+            session.credential = nil
         }
     }
 

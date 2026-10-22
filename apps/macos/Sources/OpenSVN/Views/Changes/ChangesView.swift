@@ -13,13 +13,23 @@ struct ChangesView: View {
             if session.status == nil {
                 ProgressView("正在读取工作副本…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let snapshot = session.status, snapshot.entries.isEmpty {
+            } else if session.status?.isEmpty == true {
                 ContentUnavailableView {
                     Label("工作副本干净", systemImage: "checkmark.seal")
                 } description: {
                     Text("没有本地修改。")
                 } actions: {
-                    Button("更新") { Task { await session.update() } }
+                    Button("更新") { Task { await session.requestUpdate() } }
+                }
+            } else if filteredEntries.isEmpty {
+                // Distinct from "clean": the working copy has changes, the
+                // filter is hiding them. Saying "干净" here would be a lie.
+                ContentUnavailableView {
+                    Label("没有匹配的文件", systemImage: "line.3.horizontal.decrease.circle")
+                } description: {
+                    Text("「\(session.filterText)」没有匹配任何变更。")
+                } actions: {
+                    Button("清除过滤") { session.filterText = "" }
                 }
             } else {
                 list
@@ -57,6 +67,13 @@ struct ChangesView: View {
             }
         }
         .listStyle(.inset)
+        // System search field rather than a hand-rolled one: it brings ⌘F, the
+        // clear button, and the platform's own Escape handling with it.
+        .searchable(
+            text: $session.filterText,
+            placement: .toolbar,
+            prompt: "过滤文件（空格分隔多个关键词）"
+        )
     }
 
     private func row(_ entry: StatusEntry) -> some View {
@@ -293,14 +310,37 @@ struct ChangesView: View {
     }
 
     private var selectionSummary: String {
-        if session.selectedPaths.isEmpty {
-            return "未选择"
+        var parts: [String] = []
+        if !session.filterText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            parts.append("显示 \(filteredEntries.count) / \(session.status?.entries.count ?? 0) 项")
         }
-        return "已选择 \(session.selectedPaths.count) 项"
+        if session.selectedPaths.isEmpty {
+            parts.append("未选择")
+        } else {
+            parts.append("已选择 \(session.selectedPaths.count) 项")
+        }
+        return parts.joined(separator: " · ")
     }
 
     private var grouped: [StatusCategory: [StatusEntry]] {
-        Dictionary(grouping: session.status?.entries ?? [], by: \.category)
+        Dictionary(grouping: filteredEntries, by: \.category)
+    }
+
+    /// The entries the filter lets through.
+    ///
+    /// Every whitespace-separated term has to match somewhere in the relative
+    /// path, which makes "src retry" mean "inside src, named retry" instead of
+    /// "anything called src or retry". Matching the whole path rather than the
+    /// file name is what makes directory filtering work without a second field.
+    private var filteredEntries: [StatusEntry] {
+        let raw = session.filterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let all = session.status?.entries ?? []
+        guard !raw.isEmpty else { return all }
+        let terms = raw.split(whereSeparator: \.isWhitespace).map { $0.lowercased() }
+        return all.filter { entry in
+            let haystack = session.relativePath(entry.path).lowercased()
+            return terms.allSatisfy { haystack.contains($0) }
+        }
     }
 
     private var orderedCategories: [StatusCategory] {

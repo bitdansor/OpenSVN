@@ -20,6 +20,9 @@ struct SidebarView: View {
                         Button("在 Finder 中显示") {
                             NSWorkspace.shared.activateFileViewerSelecting([bookmark.url])
                         }
+                        Button("检查连接") {
+                            Task { await appState.session(for: bookmark.id)?.probeConnection() }
+                        }
                         Divider()
                         Button("移除", role: .destructive) {
                             appState.removeRepository(id: bookmark.id)
@@ -102,6 +105,13 @@ private struct RepositoryRow: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.red)
                     .help("\(conflicts) 个冲突")
+            }
+            // Only problems get an icon. A green dot on every row would be
+            // noise; a missing icon means "nothing to report".
+            if let connection = session?.connection, connection.isProblem {
+                Image(systemName: connection.systemImage)
+                    .foregroundStyle(connection.isAuthenticationProblem ? Color.orange : Color.red)
+                    .help(connection.summary)
             }
         }
         .padding(.vertical, 2)

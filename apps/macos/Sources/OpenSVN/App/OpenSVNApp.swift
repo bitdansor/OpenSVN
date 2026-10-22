@@ -35,7 +35,7 @@ struct OpenSVNApp: App {
 
                 Button("更新") {
                     if let session = appState.selectedSession {
-                        Task { await session.update() }
+                        Task { await session.requestUpdate() }
                     }
                 }
                 .keyboardShortcut("u", modifiers: [.command, .shift])

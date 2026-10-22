@@ -52,7 +52,7 @@ struct RepositoryOverviewView: View {
 
                 HStack(spacing: 10) {
                     Button {
-                        Task { await session.update() }
+                        Task { await session.requestUpdate() }
                     } label: {
                         Label("更新工作副本", systemImage: "arrow.down.circle")
                     }
