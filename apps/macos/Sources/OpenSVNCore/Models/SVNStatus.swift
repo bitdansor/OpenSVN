@@ -182,6 +182,14 @@ public struct StatusEntry: Sendable, Hashable, Identifiable {
     /// are different situations with different remedies (`unlock` vs "ask the
     /// owner, or steal it").
     public var remoteLock: RepositoryLock?
+    /// What the *server* has for this path, from `<repos-status item="...">`.
+    ///
+    /// Only populated by `svn status --show-updates`, and only for paths that
+    /// actually differ from the base revision: svn omits `<repos-status>`
+    /// entirely otherwise, so `nil` means "unchanged on the server", not
+    /// "unknown".
+    public var remoteItem: WCItemStatus?
+    public var remoteProperties: WCItemStatus?
     /// Working-copy internal lock / incomplete operation marker. Populated from
     /// `svn cleanup`-class failures or a `tree-conflicted` marker, never from a
     /// repository lock.
@@ -201,6 +209,8 @@ public struct StatusEntry: Sendable, Hashable, Identifiable {
         conflicts: ConflictFlags = [],
         repositoryLock: RepositoryLock? = nil,
         remoteLock: RepositoryLock? = nil,
+        remoteItem: WCItemStatus? = nil,
+        remoteProperties: WCItemStatus? = nil,
         isWorkingCopyLocked: Bool = false,
         changelist: String? = nil,
         commit: CommitInfo? = nil,
@@ -214,6 +224,8 @@ public struct StatusEntry: Sendable, Hashable, Identifiable {
         self.conflicts = conflicts
         self.repositoryLock = repositoryLock
         self.remoteLock = remoteLock
+        self.remoteItem = remoteItem
+        self.remoteProperties = remoteProperties
         self.isWorkingCopyLocked = isWorkingCopyLocked
         self.changelist = changelist
         self.commit = commit
@@ -265,11 +277,23 @@ public struct StatusSnapshot: Sendable, Hashable {
     public var entries: [StatusEntry]
     /// Revision of the working copy root at scan time, when svn reports it.
     public var workingCopyRevision: Int64?
+    /// The server's head revision, from `<against revision="N">`.
+    ///
+    /// Only present with `--show-updates`. This is the revision an `update`
+    /// would bring the working copy to, which is why the update preview can
+    /// name a target revision before running anything.
+    public var serverRevision: Int64?
 
-    public init(target: String? = nil, entries: [StatusEntry], workingCopyRevision: Int64? = nil) {
+    public init(
+        target: String? = nil,
+        entries: [StatusEntry],
+        workingCopyRevision: Int64? = nil,
+        serverRevision: Int64? = nil
+    ) {
         self.target = target
         self.entries = entries
         self.workingCopyRevision = workingCopyRevision
+        self.serverRevision = serverRevision
     }
 
     public var conflicted: [StatusEntry] { entries.filter(\.hasConflicts) }

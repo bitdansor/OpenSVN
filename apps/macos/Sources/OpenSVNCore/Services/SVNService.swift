@@ -111,6 +111,20 @@ public actor SVNService {
         return try SVNXMLParser.parseStatus(Data(result.standardOutput.utf8))
     }
 
+    /// What an `update` would bring in, without changing anything.
+    ///
+    /// Same command as `locks(at:)` — `status --show-updates` — but a different
+    /// reading of it. Keeping them as two entry points is deliberate: one is a
+    /// question about ownership, the other about content, and merging them would
+    /// force the lock refresh to parse changes it never shows.
+    public func remotePreview(
+        at target: URL,
+        credential: SVNCredential? = nil
+    ) async throws -> RemotePreview {
+        let snapshot = try await status(at: target, checkRepository: true, credential: credential)
+        return RemotePreview.make(from: snapshot)
+    }
+
     /// `target` accepts either a filesystem path or a repository URL.
     public func info(at target: String) async throws -> InfoReport {
         let isURL = target.contains("://")
@@ -935,6 +949,18 @@ public actor SVNService {
         try? credentials.remove(for: CredentialScope(host: host))
     }
 
+    /// Same as the host version, but exact: a realm-specific entry is not the
+    /// same item as a bare host entry, and deleting "the host" must not silently
+    /// remove a credential for a different realm.
+    public func forgetCredential(for scope: CredentialScope) {
+        try? credentials.remove(for: scope)
+    }
+
+    /// Hosts and realms that have a stored password. Metadata only.
+    public func credentialScopes() -> [CredentialScope] {
+        (try? credentials.scopes()) ?? []
+    }
+
     public func forgetAllCredentials() throws {
         try credentials.removeAll()
     }
@@ -1123,6 +1149,21 @@ extension SVNErrorCode {
     public var isAuthenticationRelated: Bool {
         switch self {
         case .authenticationRequired, .authorizationFailed:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// The server did not answer, as opposed to answering with a refusal.
+    ///
+    /// The distinction decides what the connection indicator claims: a bad
+    /// password and an unreachable host need completely different actions, and
+    /// showing "不可达" for the first would send the user to check a network
+    /// that is working fine.
+    public var isReachabilityRelated: Bool {
+        switch self {
+        case .networkFailure, .timeout, .hostKeyVerificationFailed:
             return true
         default:
             return false

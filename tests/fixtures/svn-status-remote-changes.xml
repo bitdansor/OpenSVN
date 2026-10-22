@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<status>
+<target
+   path=".">
+<entry
+   path="n.txt">
+<wc-status
+   item="none"
+   props="none">
+</wc-status>
+<repos-status
+   item="added"
+   props="none">
+</repos-status>
+</entry>
+<entry
+   path="a.txt">
+<wc-status
+   item="modified"
+   revision="1"
+   props="none">
+<commit
+   revision="1">
+<author>wanyingfei</author>
+<date>2026-10-22T04:09:48.725148Z</date>
+</commit>
+</wc-status>
+<repos-status
+   item="modified"
+   props="none">
+</repos-status>
+</entry>
+<entry
+   path="b.txt">
+<wc-status
+   item="normal"
+   revision="1"
+   props="none">
+<commit
+   revision="1">
+<author>wanyingfei</author>
+<date>2026-10-22T04:09:48.725148Z</date>
+</commit>
+</wc-status>
+<repos-status
+   props="none"
+   item="deleted">
+</repos-status>
+</entry>
+<entry
+   path=".">
+<wc-status
+   item="normal"
+   revision="1"
+   props="none">
+<commit
+   revision="1">
+<author>wanyingfei</author>
+<date>2026-10-22T04:09:48.725148Z</date>
+</commit>
+</wc-status>
+<repos-status
+   item="modified"
+   props="none">
+</repos-status>
+</entry>
+<against
+   revision="2"/>
+</target>
+</status>

@@ -18,16 +18,31 @@ public enum SVNXMLParser {
             .attribute(forName: "path")?.stringValue
 
         var entries: [StatusEntry] = []
+        var serverRevision: Int64?
         for target in root.elements(forName: "target") {
             for entryElement in target.elements(forName: "entry") {
                 if let entry = parseStatusEntry(entryElement) {
                     entries.append(entry)
                 }
             }
+            // `<against revision="N"/>` is the server head at scan time. It is
+            // only emitted by `--show-updates`, and has no `revision` attribute
+            // when the answer is HEAD, so a missing value must stay `nil`
+            // rather than becoming 0.
+            if let raw = target.elements(forName: "against").first?
+                .attribute(forName: "revision")?.stringValue,
+               let revision = Int64(raw) {
+                serverRevision = max(serverRevision ?? revision, revision)
+            }
         }
 
         let revision = entries.compactMap(\.revision).min()
-        return StatusSnapshot(target: targetPath, entries: entries, workingCopyRevision: revision)
+        return StatusSnapshot(
+            target: targetPath,
+            entries: entries,
+            workingCopyRevision: revision,
+            serverRevision: serverRevision
+        )
     }
 
     private static func parseStatusEntry(_ element: XMLElement) -> StatusEntry? {
@@ -67,6 +82,17 @@ public enum SVNXMLParser {
         if let lockElement = reposStatus?.elements(forName: "lock").first {
             remoteLock = parseLock(lockElement)
         }
+        // ...and its `item` / `props` are the server's change, present only for
+        // paths that actually differ. Both are `nil` otherwise, which the update
+        // preview reads as "unchanged on the server", never as "unknown".
+        var remoteItem: WCItemStatus?
+        if let raw = reposStatus?.attribute(forName: "item")?.stringValue {
+            remoteItem = WCItemStatus(rawValue: raw)
+        }
+        var remoteProperties: WCItemStatus?
+        if let raw = reposStatus?.attribute(forName: "props")?.stringValue {
+            remoteProperties = WCItemStatus(rawValue: raw)
+        }
 
         var commit: CommitInfo?
         if let commitElement = wcStatus?.elements(forName: "commit").first,
@@ -79,7 +105,7 @@ public enum SVNXMLParser {
             )
         }
 
-        _ = reposStatus // repos-status carries server-side state; only its lock is used.
+        _ = reposStatus // Its lock and item attributes are read above.
 
         return StatusEntry(
             path: path,
@@ -90,6 +116,8 @@ public enum SVNXMLParser {
             conflicts: conflicts,
             repositoryLock: repositoryLock,
             remoteLock: remoteLock,
+            remoteItem: remoteItem,
+            remoteProperties: remoteProperties,
             // `incomplete` means an earlier operation left the working copy in a
             // state that needs `svn cleanup`; it is a local lock signal, not a
             // repository lock.

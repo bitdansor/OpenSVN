@@ -15,6 +15,19 @@ public struct CredentialScope: Sendable, Hashable, Codable {
         self.realm = realm
     }
 
+    /// Reverses `storageKey`. Used to list what is in the Keychain: the account
+    /// attribute *is* the storage key, so an entry can be named without ever
+    /// reading its secret.
+    public init(storageKey: String) {
+        let parts = storageKey.split(separator: "|", maxSplits: 1, omittingEmptySubsequences: false)
+        self.host = parts.first.map(String.init) ?? ""
+        if parts.count > 1, !parts[1].isEmpty {
+            self.realm = String(parts[1])
+        } else {
+            self.realm = nil
+        }
+    }
+
     /// Best-effort scope from a repository URL. Returns nil for `file://` URLs,
     /// which never need credentials.
     public init?(repositoryURL: String) {
@@ -71,6 +84,11 @@ public protocol CredentialStoring: Sendable {
     func save(_ credential: SVNCredential, for scope: CredentialScope) throws
     func remove(for scope: CredentialScope) throws
     func removeAll() throws
+    /// Every scope that currently has a stored credential.
+    ///
+    /// Metadata only: this must never read the secret, so a settings screen can
+    /// list "which servers have a saved password" without unlocking each item.
+    func scopes() throws -> [CredentialScope]
 }
 
 /// macOS Keychain implementation.
@@ -150,6 +168,29 @@ public struct KeychainCredentialStore: CredentialStoring {
         }
     }
 
+    public func scopes() throws -> [CredentialScope] {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            // Attributes only. Asking for the data would make macOS prompt for
+            // each item just to render a list of host names.
+            kSecReturnAttributes as String: true,
+            kSecMatchLimit as String: kSecMatchLimitAll
+        ]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return [] }
+        guard status == errSecSuccess else {
+            throw CredentialStoreError.keychain(status: status, message: keychainMessage(for: status))
+        }
+        let items = result as? [[String: Any]] ?? []
+        return items
+            .compactMap { $0[kSecAttrAccount as String] as? String }
+            .map(CredentialScope.init(storageKey:))
+            .filter { !$0.host.isEmpty }
+            .sorted { $0.storageKey < $1.storageKey }
+    }
+
     private func keychainMessage(for status: OSStatus) -> String {
         if let message = SecCopyErrorMessageString(status, nil) as String? {
             return message
@@ -185,5 +226,10 @@ public final class InMemoryCredentialStore: CredentialStoring, @unchecked Sendab
 
     public func removeAll() throws {
         lock.lock(); storage.removeAll(); lock.unlock()
+    }
+
+    public func scopes() throws -> [CredentialScope] {
+        lock.lock(); defer { lock.unlock() }
+        return storage.keys.sorted().map(CredentialScope.init(storageKey:))
     }
 }

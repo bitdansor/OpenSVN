@@ -401,6 +401,43 @@ struct ServiceIntegrationTests {
         #expect(after.lock(for: readme.path) == nil)
     }
 
+    @Test("the update preview names the incoming revision and the paths, without changing anything")
+    func remotePreview() async throws {
+        let fixture = try await makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let service = fixture.service
+        let repoURL = "file://\(fixture.repository.path)/trunk"
+
+        try await service.checkout(url: repoURL, to: fixture.workingCopy)
+        let second = fixture.root.appendingPathComponent("wc2", isDirectory: true)
+        try await service.checkout(url: repoURL, to: second)
+
+        // The first working copy commits, so the second is now behind.
+        let readme = fixture.workingCopy.appendingPathComponent("README.md")
+        try "# changed on server\n".write(to: readme, atomically: true, encoding: .utf8)
+        _ = try await service.commit([readme], message: "server edit")
+
+        let before = try await service.status(at: second)
+        let preview = try await service.remotePreview(at: second)
+        #expect(!preview.isEmpty)
+        #expect(preview.serverRevision != nil)
+        #expect(preview.changes.contains {
+            $0.path.hasSuffix("README.md") && $0.item == WCItemStatus.modified
+        })
+        // Nothing local in the second copy yet, so nothing can collide.
+        #expect(!preview.hasConflictsWithLocal)
+
+        // Reading the preview must not have touched the working copy.
+        let after = try await service.status(at: second)
+        #expect(after.entries.count == before.entries.count)
+
+        // Edit the same file locally: now the update has something to collide with.
+        let secondReadme = second.appendingPathComponent("README.md")
+        try "# local edit\n".write(to: secondReadme, atomically: true, encoding: .utf8)
+        let risky = try await service.remotePreview(at: second)
+        #expect(risky.conflictRisks.contains { $0.path.hasSuffix("README.md") })
+    }
+
 }
 
 @Suite("write serialization")
