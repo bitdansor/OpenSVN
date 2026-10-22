@@ -30,6 +30,9 @@ struct ChangesView: View {
         .sheet(item: $session.mergeEditor) { editor in
             MergeEditorView(session: session, editor: editor)
         }
+        .sheet(item: $session.lockEditor) { _ in
+            LockSheet(session: session)
+        }
     }
 
     private var list: some View {
@@ -88,10 +91,15 @@ struct ChangesView: View {
                 .controlSize(.small)
                 .help("并排比较我的改动、基线和服务器改动，逐块决定保留哪一边")
             }
-            if let lock = entry.repositoryLock {
+            // The badge tells the two situations apart: an orange lock is ours
+            // (releasable), a red one belongs to someone else (only a steal
+            // clears it). Collapsing them into "locked" invites a failed commit
+            // with no explanation.
+            if let lock = session.lock(for: entry) {
                 Label(lock.owner ?? "已锁定", systemImage: "lock.fill")
                     .font(.caption2)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(session.isOwnLock(entry) ? .orange : .red)
+                    .help(lockHelp(lock, own: session.isOwnLock(entry)))
             }
             if entry.isWorkingCopyLocked {
                 StatusBadge(text: "需清理", color: .orange)
@@ -159,6 +167,7 @@ struct ChangesView: View {
                 }
             }
         }
+        lockMenu(for: [entry])
         Divider()
         Button("还原本地修改…", role: .destructive) {
             session.requestRevert([entry.id])
@@ -166,6 +175,43 @@ struct ChangesView: View {
         Button("删除…", role: .destructive) {
             session.requestDelete([entry.id])
         }
+    }
+
+    /// Lock actions for one or more entries.
+    ///
+    /// Only versioned paths can be locked, and the offered action depends on who
+    /// holds the lock: taking again what we already hold can only fail.
+    @ViewBuilder
+    private func lockMenu(for entries: [StatusEntry]) -> some View {
+        let lockable = entries.filter { $0.item != .unversioned && $0.item != .ignored }
+        if !lockable.isEmpty {
+            Divider()
+            let path = lockable.map(\.id)
+            if lockable.contains(where: { session.isOwnLock($0) }) {
+                Button("解除锁定…") { session.requestUnlock(path) }
+            }
+            if lockable.contains(where: { session.lock(for: $0) == nil }) {
+                Button("锁定…") { session.openLockEditor(for: path) }
+            }
+            if lockable.contains(where: { session.lock(for: $0) != nil && !session.isOwnLock($0) }) {
+                Button("强制抢占锁定…") { session.openLockEditor(for: path) }
+            }
+        }
+    }
+
+    private func lockHelp(_ lock: RepositoryLock, own: Bool) -> String {
+        var lines: [String] = []
+        lines.append(own ? "本工作副本持有该锁" : "锁由 \(lock.owner ?? "他人") 持有")
+        if let comment = lock.comment, !comment.isEmpty {
+            lines.append("说明：\(comment)")
+        }
+        if let created = lock.createdAt {
+            lines.append("锁定于 \(created.formatted(date: .abbreviated, time: .shortened))")
+        }
+        if !own {
+            lines.append("解除需要强制，且会让对方无法提交。")
+        }
+        return lines.joined(separator: "\n")
     }
 
     private var actionBar: some View {
@@ -202,6 +248,12 @@ struct ChangesView: View {
                     session.openProperties(for: entry)
                 }
                 .disabled(selectedEntries.count != 1)
+                lockMenu(for: selectedEntries)
+                Button(session.isLockLoading ? "正在查询锁定…" : "刷新锁定状态") {
+                    Task { await session.refreshLocks() }
+                }
+                .disabled(session.isLockLoading)
+                .help("向服务器查询这些文件上的锁（包括他人持有的）")
                 Button("还原…") { session.requestRevert(Array(session.selectedPaths)) }
                     .disabled(session.selectedPaths.isEmpty)
                 Button("删除…") { session.requestDelete(Array(session.selectedPaths)) }

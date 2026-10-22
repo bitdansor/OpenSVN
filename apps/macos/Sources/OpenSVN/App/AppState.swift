@@ -56,6 +56,9 @@ final class AppState {
 
     let taskCenter = TaskCenter()
     let journal = OperationJournal()
+    /// Shared across every repository: the messages describe the person's work,
+    /// not one checkout.
+    let commitMessages = CommitMessageStore()
     private let repositoryStore = RepositoryStore()
     private var authContinuation: CheckedContinuation<SVNCredential?, Never>?
 
@@ -183,6 +186,7 @@ final class AppState {
             bookmark: bookmark,
             service: service,
             taskCenter: taskCenter,
+            commitMessages: commitMessages,
             onCredentialRequired: { [weak self] host in
                 await self?.requestCredential(host: host)
             }

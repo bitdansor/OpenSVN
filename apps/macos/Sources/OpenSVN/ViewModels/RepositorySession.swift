@@ -57,9 +57,26 @@ final class RepositorySession: Identifiable {
         var properties: [SVNProperty] { targets.first?.properties ?? [] }
     }
 
+    /// State of the "锁定" sheet: the paths, the comment, and whether this lock
+    /// is meant to replace someone else's.
+    struct LockEditorState: Identifiable {
+        let id = UUID()
+        let paths: [String]
+        let displayPaths: [String]
+        var comment = ""
+        /// Pre-set when the refresh already knows the lock belongs to someone
+        /// else; the user still has to confirm again in the dialog.
+        var steal = false
+        var foreignLockCount = 0
+        var ownLockCount = 0
+
+        var isBatch: Bool { paths.count > 1 }
+    }
+
     nonisolated let bookmark: RepositoryBookmark
     private(set) var service: SVNService?
     private var taskCenter: TaskCenter?
+    private let commitMessages: CommitMessageStore?
     private let onCredentialRequired: (@MainActor (String) async -> SVNCredential?)?
 
     var credential: SVNCredential?
@@ -74,6 +91,11 @@ final class RepositorySession: Identifiable {
     var diff: DiffResult?
     var diffTitle = ""
     var commitMessage = ""
+    /// Set after a successful commit so the panel can say "已提交为 r123".
+    var lastCommit: CommitSummary?
+    /// The file whose diff the commit panel is previewing.
+    var commitPreviewPath: String?
+    var commitPreviewDiff: DiffResult?
     var selectedPaths: Set<String> = []
     var commitSelection: Set<String> = []
     var presentedError: PresentedError?
@@ -83,16 +105,24 @@ final class RepositorySession: Identifiable {
     var mergeEditor: MergeEditorState?
     /// Non-nil while the property sheet is open.
     var propertyEditor: PropertyEditorState?
+    /// Repository-side locks, including other users'. Only refreshed on demand:
+    /// it needs the network, and a local status read must not wait on a server.
+    var lockSnapshot = LockSnapshot()
+    var isLockLoading = false
+    /// Non-nil while the "锁定" sheet is open.
+    var lockEditor: LockEditorState?
 
     init(
         bookmark: RepositoryBookmark,
         service: SVNService?,
         taskCenter: TaskCenter?,
+        commitMessages: CommitMessageStore? = nil,
         onCredentialRequired: (@MainActor (String) async -> SVNCredential?)? = nil
     ) {
         self.bookmark = bookmark
         self.service = service
         self.taskCenter = taskCenter
+        self.commitMessages = commitMessages
         self.onCredentialRequired = onCredentialRequired
     }
 
@@ -330,11 +360,60 @@ final class RepositorySession: Identifiable {
             return
         }
         let urls = paths.map { URL(fileURLWithPath: $0) }
-        await perform("提交 \(urls.count) 个文件") { credential, progress in
-            try await service.commit(urls, message: message, credential: credential, progress: progress)
+        lastCommit = nil
+
+        // Not routed through `perform`: that helper swallows the error, and this
+        // one needs to know whether to clear the message. Losing a carefully
+        // written commit message to a failed commit is a real cost — the text is
+        // the user's work, the failure is ours to report.
+        do {
+            guard let taskCenter else { return }
+            let summary = try await withAuthRetry { credential in
+                try await taskCenter.run("提交 \(urls.count) 个文件") { progress in
+                    try await service.commit(
+                        urls,
+                        message: message,
+                        credential: credential,
+                        progress: progress
+                    )
+                }
+            }
+            commitMessages?.record(message)
+            commitMessage = ""
+            lastCommit = summary
+            commitPreviewDiff = nil
+            await refresh()
+            await loadLog(reset: true)
+        } catch {
+            // Message and checkboxes stay exactly as they were.
+            handle(error)
         }
-        commitMessage = ""
-        await loadLog(reset: true)
+    }
+
+    /// Recent commit messages, newest first.
+    var recentCommitMessages: [String] {
+        commitMessages?.recent(limit: 10) ?? []
+    }
+
+    /// Loads the diff the commit panel shows for one file.
+    ///
+    /// Only text changes are previewed: a directory entry or a binary has no
+    /// useful unified diff, and `svn diff` on a deleted path errors out.
+    func previewDiff(for entry: StatusEntry) async {
+        guard let service else { return }
+        guard entry.item != .unversioned else {
+            commitPreviewPath = entry.id
+            commitPreviewDiff = nil
+            return
+        }
+        commitPreviewPath = entry.id
+        do {
+            // Kept apart from `session.diff` so previewing here does not replace
+            // what the Diff tab is showing.
+            commitPreviewDiff = try await service.diffWorkingCopy(at: entryURL(entry))
+        } catch {
+            commitPreviewDiff = nil
+        }
     }
 
     func resolve(_ entry: StatusEntry, strategy: ResolveStrategy) {
@@ -655,6 +734,170 @@ final class RepositorySession: Identifiable {
         } catch {
             handle(error)
         }
+    }
+
+    // MARK: - Locks
+
+    /// Reads repository-side locks. Separate from `refresh()` on purpose: this is
+    /// the only status read that goes over the network.
+    func refreshLocks() async {
+        guard let service else { return }
+        isLockLoading = true
+        defer { isLockLoading = false }
+        do {
+            let target = path
+            lockSnapshot = try await withAuthRetry { credential in
+                try await service.locks(at: target, credential: credential)
+            }
+        } catch {
+            handle(error)
+        }
+    }
+
+    func openLockEditor(for paths: [String]) {
+        guard !paths.isEmpty else { return }
+        let own = paths.filter { lockSnapshot.isOwnLock(for: $0) }
+        let foreign = lockSnapshot.foreignLocks(among: paths)
+        // Already locked by us: taking it again would only produce W160035, so
+        // the menu offers "解除锁定" instead. Reaching here means the snapshot is
+        // stale, and the sheet says so rather than failing after a network trip.
+        lockEditor = LockEditorState(
+            paths: paths,
+            displayPaths: paths.map { relativePath($0) },
+            foreignLockCount: foreign.count,
+            ownLockCount: own.count
+        )
+    }
+
+    func closeLockEditor() {
+        lockEditor = nil
+    }
+
+    func confirmLock() async {
+        guard let service, let editor = lockEditor, !editor.paths.isEmpty else { return }
+        let urls = editor.paths.map { URL(fileURLWithPath: $0) }
+        let comment = editor.comment.trimmingCharacters(in: .whitespacesAndNewlines)
+        let steal = editor.steal
+        let title = urls.count == 1
+            ? "锁定「\(urls[0].lastPathComponent)」"
+            : "锁定 \(urls.count) 项"
+
+        if steal {
+            confirmation = Confirmation(
+                title: title + "（强制）",
+                message: "强制锁定会抢占以下路径上他人持有的锁：\n"
+                    + editor.displayPaths.prefix(8).map { "· \($0)" }.joined(separator: "\n")
+                    + "\n\n持有者将无法提交，直到他发现锁已易主。",
+                confirmLabel: "强制锁定",
+                isDestructive: true,
+                action: { [weak self] in
+                    await self?.runLock(urls: urls, comment: comment, steal: true, title: title, service: service)
+                }
+            )
+            lockEditor = nil
+            return
+        }
+
+        lockEditor = nil
+        await runLock(urls: urls, comment: comment, steal: false, title: title, service: service)
+    }
+
+    private func runLock(
+        urls: [URL],
+        comment: String,
+        steal: Bool,
+        title: String,
+        service: SVNService
+    ) async {
+        do {
+            guard let taskCenter else { return }
+            _ = try await withAuthRetry { credential in
+                try await taskCenter.run(title) { _ in
+                    try await service.lock(
+                        urls,
+                        comment: comment,
+                        steal: steal,
+                        confirmed: steal,
+                        credential: credential
+                    )
+                }
+            }
+            await refresh()
+            await refreshLocks()
+        } catch {
+            handle(namingTheHolder(error))
+        }
+    }
+
+    /// Turns "path is already locked" into "…by alice".
+    ///
+    /// svn puts the holder's name in the warning text and nowhere else, so the
+    /// generic message ("locked by someone else") would throw away the only
+    /// actionable part of the failure — and it can be *our own* name, which is a
+    /// different problem with a different fix (unlock, then lock again).
+    private func namingTheHolder(_ error: any Error) -> any Error {
+        guard let error = error as? SVNError,
+              error.code == .pathLocked,
+              let owner = LockOutputParser.owner(in: error.diagnosticOutput ?? "") else {
+            return error
+        }
+        return SVNError(
+            code: error.code,
+            message: "该路径已由 \(owner) 锁定",
+            diagnosticOutput: error.diagnosticOutput,
+            svnCode: error.svnCode,
+            exitCode: error.exitCode
+        )
+    }
+
+    /// Releases locks through the shared confirmation dialog.
+    ///
+    /// The dialog carries the one fact that changes the decision: whether any of
+    /// these locks belong to someone else. Breaking those needs `--force`, and
+    /// that is the service-level `confirmed` gate, not a UI nicety.
+    func requestUnlock(_ paths: [String]) {
+        guard let service, !paths.isEmpty else { return }
+        let urls = paths.map { URL(fileURLWithPath: $0) }
+        let foreign = lockSnapshot.foreignLocks(among: paths)
+        let needsForce = !foreign.isEmpty
+        let preview = paths.prefix(8).map { "· \(relativePath($0))" }.joined(separator: "\n")
+        let overflow = paths.count > 8 ? "\n… 其余 \(paths.count - 8) 项" : ""
+
+        var lines = ["将解除 \(paths.count) 个路径的锁：", preview + overflow]
+        if needsForce {
+            lines.append("")
+            lines.append("其中 \(foreign.count) 个锁由他人持有。解除需要强制，持有者将失去保护。")
+            lines.append("如果只是在本地不想被锁影响，也可以不解除，直接继续编辑。")
+        }
+
+        confirmation = Confirmation(
+            title: needsForce ? "强制解除 \(paths.count) 个锁" : "解除 \(paths.count) 个锁",
+            message: lines.joined(separator: "\n"),
+            confirmLabel: needsForce ? "强制解除" : "解除锁定",
+            isDestructive: needsForce,
+            action: { [weak self] in
+                await self?.perform(needsForce ? "强制解除锁" : "解除锁定") { credential, _ in
+                    try await service.unlock(
+                        urls,
+                        breakLock: needsForce,
+                        confirmed: needsForce,
+                        credential: credential
+                    )
+                }
+                await self?.refreshLocks()
+            }
+        )
+    }
+
+    /// The lock to display for an entry: the one this working copy holds, the
+    /// one the last refresh found on the server, or none.
+    func lock(for entry: StatusEntry) -> RepositoryLock? {
+        entry.effectiveLock ?? lockSnapshot.lock(for: entry.path)
+    }
+
+    func isOwnLock(_ entry: StatusEntry) -> Bool {
+        if entry.repositoryLock != nil { return true }
+        return lockSnapshot.isOwnLock(for: entry.path)
     }
 
     // MARK: - Plumbing

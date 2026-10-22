@@ -150,6 +150,8 @@ struct RecoveryBanner: View {
         case .resolve: return "checkmark.circle"
         case .cleanup: return "wand.and.stars"
         case .property: return "tag.circle"
+        case .lock: return "lock.circle"
+        case .unlock: return "lock.open.circle"
         }
     }
 }
