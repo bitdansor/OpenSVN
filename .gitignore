@@ -53,3 +53,5 @@ credentials.json
 # Internal planning and execution documents — kept locally, never published
 OpenSVN_开发执行计划.md
 OpenSVN_开发规划.md
+docs/development/versions-parity.md
+docs/releases/app-store-readiness.md
