@@ -3,7 +3,7 @@
 
 Modes (any combination, default = --layout --metadata --fixtures --scenarios):
 
-  --layout          the planned tree recorded in ADR-0007 exists and is not empty
+  --layout          the planned tree recorded in ADR-0007 exists and is tracked
   --metadata        VERSION / CHANGELOG / Info.plist / governance files agree
   --fixtures        every recorded `svn --xml` fixture is well-formed and typed
   --scenarios       every fault-injection scenario has its four files and is runnable
@@ -12,6 +12,11 @@ Modes (any combination, default = --layout --metadata --fixtures --scenarios):
 
 Exit code is 0 only when every check passes. This script must stay
 dependency-free: it runs on a bare CI runner and locally before a release.
+
+Required paths are checked against the git index, not just against the working
+tree. A file that exists here but is ignored or untracked is absent from a fresh
+clone, and a fresh clone is what CI runs — see `GitIndex` for the failure this
+closes.
 """
 
 from __future__ import annotations
@@ -72,6 +77,13 @@ REQUIRED_FILES = [
     "scripts/sign-macos-app.sh",
     "scripts/verify-clean-install.sh",
     ".github/pull_request_template.md",
+]
+
+# Paths that must never reach a clone. `.gitignore` covers `/internal/`, so a
+# tracked file here can only come from `git add -f` — which is exactly how a
+# planning note ends up published in a repository that says it publishes none.
+UNPUBLISHED_DIRS = [
+    "internal",
 ]
 
 
@@ -154,6 +166,90 @@ def read_version() -> str:
     return VERSION_FILE.read_text(encoding="utf-8").strip()
 
 
+# ---------------------------------------------------------------------------
+# what a clone actually has
+# ---------------------------------------------------------------------------
+def _git(*args: str) -> subprocess.CompletedProcess[str] | None:
+    """Run git inside the repository root; None when git cannot be run at all."""
+    if not shutil.which("git"):
+        return None
+    try:
+        return subprocess.run(
+            ["git", "-C", str(ROOT), *args],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+
+
+@dataclass(frozen=True)
+class GitIndex:
+    """The paths a fresh clone would actually contain.
+
+    Existence on this machine is not the property that matters. The red build of
+    2026-10-22 was `docs/releases/app-store-readiness.md`: it had been moved into
+    the ignored `internal/` tree while `REQUIRED_FILES` still listed it. The tree
+    looked complete to whoever made the move; a clone had nothing at that path,
+    so `verify-release.py` failed on CI and nowhere else. Hence "is it tracked?"
+    is the check, and "is it ignored?" is what the message has to say when the
+    answer is no — those two want different fixes.
+    """
+
+    tracked: frozenset[str]
+
+    @classmethod
+    def load(cls) -> "GitIndex | None":
+        listing = _git("ls-files", "-z")
+        if listing is None or listing.returncode != 0:
+            return None
+        return cls(frozenset(entry for entry in listing.stdout.split("\0") if entry))
+
+    def state(self, relative: str) -> str:
+        """`tracked`, `ignored` or `untracked`."""
+        if relative in self.tracked:
+            return "tracked"
+        probe = _git("check-ignore", "-q", "--", relative)
+        if probe is not None and probe.returncode == 0:
+            return "ignored"
+        return "untracked"
+
+    def under(self, relative: str) -> list[str]:
+        prefix = relative.rstrip("/") + "/"
+        return sorted(path for path in self.tracked if path.startswith(prefix))
+
+
+# Directories that never hold a publishable artefact: build output, VCS metadata,
+# tool scratch space. Pruned while searching so a missing path does not cost a
+# walk through `.build`.
+UNSEARCHABLE_DIRS = {
+    ".git", ".build", ".build-home", "build", "DerivedData", "node_modules", ".workbuddy",
+}
+
+
+def find_same_name(basename: str, exclude: str) -> list[str]:
+    """Working-tree locations of a file with this name, ignored ones included.
+
+    A required path that disappears usually did not disappear — it moved. Naming
+    the new location turns "is missing" into the edit someone has to make.
+    """
+    found: list[str] = []
+    for current, dirnames, filenames in os.walk(ROOT):
+        dirnames[:] = [name for name in dirnames if name not in UNSEARCHABLE_DIRS]
+        if basename in filenames:
+            relative = str(Path(current, basename).relative_to(ROOT))
+            if relative != exclude:
+                found.append(relative)
+    return sorted(found)
+
+
+def describe_state(state: str) -> str:
+    if state == "ignored":
+        return "excluded by .gitignore"
+    return "not tracked by git"
+
+
 def numeric_version(version: str) -> str:
     """`0.1.0-dev` -> `0.1.0`; Info.plist only accepts three integers."""
     return version.split("-", 1)[0]
@@ -162,7 +258,7 @@ def numeric_version(version: str) -> str:
 # ---------------------------------------------------------------------------
 # metadata
 # ---------------------------------------------------------------------------
-def check_metadata(report: Report) -> None:
+def check_metadata(report: Report, index: GitIndex | None) -> None:
     report.section("Repository metadata")
 
     if not VERSION_FILE.is_file():
@@ -175,10 +271,39 @@ def check_metadata(report: Report) -> None:
         report.fail(f"VERSION '{version}' is not semver (expected MAJOR.MINOR.PATCH[-pre])")
 
     for relative in REQUIRED_FILES:
-        if (ROOT / relative).is_file():
+        path = ROOT / relative
+        if not path.is_file():
+            # "Missing" is only half the story: the usual cause is that the file
+            # moved somewhere this list does not know about, and the fix differs
+            # between "it moved into ignored territory" and "the entry is stale".
+            hint = ""
+            elsewhere = find_same_name(path.name, exclude=relative)
+            if elsewhere and index is not None:
+                state = index.state(elsewhere[0])
+                hint = (
+                    f" — a file of that name exists at {elsewhere[0]}, "
+                    f"{describe_state(state)}, so a clone will not have it"
+                )
+            elif elsewhere:
+                hint = f" — a file of that name exists at {elsewhere[0]}"
+            report.fail(
+                f"{relative} is missing{hint}. "
+                "If the file was removed on purpose, drop its entry here in the same commit"
+            )
+            continue
+        state = index.state(relative) if index is not None else "tracked"
+        if state == "tracked":
             report.ok(relative)
+        elif state == "ignored":
+            report.fail(
+                f"{relative} exists here but is excluded by .gitignore — "
+                "a fresh clone and CI will not have it"
+            )
         else:
-            report.fail(f"{relative} is missing")
+            report.fail(
+                f"{relative} exists but is not tracked by git — `git add` it, "
+                "otherwise CI starts from a tree without it"
+            )
 
     # CHANGELOG must mention the current version, and must not leave the
     # previous release as the only heading.
@@ -282,7 +407,7 @@ def check_metadata(report: Report) -> None:
 # ---------------------------------------------------------------------------
 # layout
 # ---------------------------------------------------------------------------
-def check_layout(report: Report) -> None:
+def check_layout(report: Report, index: GitIndex | None) -> None:
     report.section("Repository layout (ADR-0007)")
 
     missing_dirs = []
@@ -291,22 +416,54 @@ def check_layout(report: Report) -> None:
         if not directory.is_dir():
             missing_dirs.append(relative)
             report.fail(f"missing directory: {relative}")
-        elif not any(directory.iterdir()):
-            # Git cannot track an empty directory, so this would vanish on clone.
-            missing_dirs.append(relative)
-            report.fail(f"directory is empty and would not survive a clone: {relative}")
+            continue
+        # Git cannot track an empty directory, so "the folder exists" is only
+        # true if something inside it is committed. An untracked scratch file
+        # makes a directory look present here and absent on a clone, which is the
+        # distinction `iterdir()` alone cannot make.
+        if index is not None:
+            inhabited = bool(index.under(relative))
+        else:
+            inhabited = any(directory.iterdir())
+        if inhabited:
+            continue
+        missing_dirs.append(relative)
+        report.fail(f"directory holds no tracked file and would not survive a clone: {relative}")
 
-    missing_files = []
+    unusable_files = []
     for relative in LAYOUT_FILES:
         path = ROOT / relative
-        if path.is_file():
+        if not path.is_file():
+            unusable_files.append(relative)
+            report.fail(f"missing file: {relative}")
+            continue
+        state = index.state(relative) if index is not None else "tracked"
+        if state == "tracked":
             report.ok(relative)
         else:
-            missing_files.append(relative)
-            report.fail(f"missing file: {relative}")
+            unusable_files.append(relative)
+            report.fail(
+                f"{relative} exists but is {describe_state(state)} — "
+                "an anchor file a clone does not have is not an anchor"
+            )
 
-    if not missing_dirs and not missing_files:
+    if not missing_dirs and not unusable_files:
         report.ok(f"{len(LAYOUT_DIRS)} planned directories and {len(LAYOUT_FILES)} anchor files present")
+
+    # The other direction of the same question: files that exist in a clone and
+    # must not. `/internal/` is in .gitignore, so only `git add -f` can put
+    # anything there — and one forced add publishes a planning note that the
+    # repository elsewhere promises does not exist.
+    if index is not None:
+        for relative in UNPUBLISHED_DIRS:
+            leaked = index.under(relative)
+            if leaked:
+                report.fail(
+                    f"{len(leaked)} file(s) tracked under {relative}/ but that tree must never be "
+                    f"published: {leaked[:5]} — remove them with `git rm --cached`"
+                )
+            else:
+                report.ok(f"{relative}/ holds no tracked file")
 
     # The macOS port must state its own status; a silent tree is how
     # "implemented" gets claimed without existing.
@@ -764,10 +921,19 @@ def main() -> int:
     run_scenarios = args.scenarios or args.all or not explicit
 
     report = Report()
+    # Loaded once: the index answers "would a clone have this?" for both the
+    # metadata and the layout sections, and shelling out twice would just double
+    # the cost of the only check that has to be right.
+    index = GitIndex.load()
+    if index is None:
+        report.warn(
+            "git index unavailable (not a repository, or git is not installed) — "
+            "required paths are only checked for existence, not for being tracked"
+        )
     if run_layout:
-        check_layout(report)
+        check_layout(report, index)
     if run_metadata:
-        check_metadata(report)
+        check_metadata(report, index)
     if run_fixtures:
         check_fixtures(report)
     if run_scenarios:

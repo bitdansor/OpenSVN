@@ -6,6 +6,24 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed (release gate: existence is not the property that matters)
+
+- **`verify-release.py` asks git instead of the filesystem.** The red build on
+  2026-10-22 was `docs/releases/app-store-readiness.md`: the file had been moved
+  into the ignored `internal/` tree while `REQUIRED_FILES` still listed it, so
+  the working tree looked complete to whoever made the move and a clone had
+  nothing at that path. Required and anchor paths are now classified as tracked /
+  ignored / untracked / missing, each with its own fix, and a missing path names
+  any same-named file elsewhere in the tree — "a file of that name exists at
+  `internal/app-store-readiness.md`, excluded by .gitignore" is an instruction,
+  "is missing" is a puzzle. Planned directories are judged by whether they hold a
+  *tracked* file, which is the same property a clone preserves; without git the
+  script says so and falls back to existence.
+- **The gate looks the other way too.** Anything tracked under `internal/` fails
+  it. `.gitignore` covers that tree, so only `git add -f` can put a file there —
+  and one forced add publishes a planning note that this repository elsewhere
+  states it does not publish.
+
 ### Added (filtering, auto-refresh, update preview, per-host credentials)
 
 - **The change list can be filtered.** A system search field (⌘F) matches the

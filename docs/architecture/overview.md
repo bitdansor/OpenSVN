@@ -115,7 +115,7 @@ be tested without a window; it is `@MainActor` and has no SwiftUI dependency.
 | `apps/macos/OpenSVNUITests/` | 暂无 | 界面测试要等打包稳定（阶段 6） |
 | `apps/windows/**` | 暂无（2026-10-18 清空） | 重做时按 ADR-0007 记录的原定布局；不要为了对齐目录而提前建空壳 |
 
-`python3 scripts/verify-release.py --layout` 会逐项检查这张表对应的目录与锚点文件是否真的存在（空目录会被判失败，因为 git 不跟踪空目录）。
+`python3 scripts/verify-release.py --layout` 会逐项检查这张表对应的目录与锚点文件是否**被 git 跟踪**。只检查"存在"还不够：文件被挪进被忽略的目录、或还没 `git add` 时，本地看着齐全，CI 的干净 checkout 里却没有它——2026-10-22 那次红灯就是这么来的。同理，`internal/` 下任何被跟踪的文件都会直接判失败。
 
 ## 冲突解决：先合并，后 resolve（S5-2）
 
