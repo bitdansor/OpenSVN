@@ -50,6 +50,9 @@
 | `setProperty(name,value,targets)` | 设置属性 | 否 | 是 | 否 | 是 |
 | `deleteProperty(name,targets)` | 删除属性 | 否 | 是 | 否 | 是 |
 | `ignore(paths)` | 按文件名追加 `svn:ignore` | 否 | 是 | 否 | 是 |
+| `lock(paths,comment,steal)` | 取仓库锁 | 是 | 是（写 lock token） | 仅 `steal` | 否（重复锁报错） |
+| `unlock(paths,breakLock)` | 释放仓库锁 | 是 | 是 | 仅 `breakLock` | 否（无锁报错） |
+| `locks(at)` | 读取仓库锁（含他人持有） | 是 | 否 | 否 | 是 |
 
 \* `info` 针对工作副本路径时只读本地 `.svn`；针对 URL 时访问网络。
 
@@ -162,9 +165,32 @@
 | 通配符转义 | `svn:ignore` 是 glob 列表。文件名里的 `*` `?` `[` `]` 必须转义为 `[*]` `[?]` `[[]` `[]]`，否则 `report*.txt` 会忽略掉一整类文件 |
 | 删除 | 只对确实拥有该属性的路径执行 `propdel`；全部不存在时返回 0，不报错 |
 
+### 1.10 锁定（lock / unlock / locks）
+
+SVN 里有两套完全不同的"锁"，从错误码到补救动作都不一样，**不得合并成一个概念**：
+
+| 名称 | 来源 | 报错 | 解法 |
+|---|---|---|---|
+| 工作副本内部锁 | 上次操作中断留下的 `.svn` 事务锁 | `E155004`（`SVN-0004`） | `svn cleanup` |
+| 仓库锁 | `svn lock` 在服务器上登记的独占编辑权 | `W160035`（`SVN-0304`） | 由持有人 `unlock`，或有意识地 `--force` 抢占 |
+
+| 项 | 契约 |
+|---|---|
+| 读取 | `svn status --xml --show-updates`。**只有 `-u` 能看到别人持有的锁**；不带 `-u` 时 svn 只报告本工作副本持有的 token |
+| 两处 `<lock>` | `<wc-status>` 里的锁 = 本工作副本持有（有 token）；`<repos-status>` 里的锁 = 服务器现状，可能是别人的。模型分别记为 `repositoryLock` / `remoteLock`，界面据此决定给"解除"还是"抢占" |
+| 网络 | `locks(at)` 会访问服务器，因此**不并入 `refresh()`**：本地状态刷新绝不能因为服务器不可达而卡住 |
+| lock | `svn lock [-m 说明] [--force] -- <paths>`。普通锁定可撤销、不改变文件内容，因此**不需要 `confirmed`** |
+| steal | `--force` 抢占他人锁，服务层要求 `confirmed: true`（R3），界面拦截只是第二道防线 |
+| unlock | `svn unlock [--force] -- <paths>`；`--force` 解除他人锁，同样要求 `confirmed` |
+| 输出 | `svn lock` 没有 `--xml`。成功时读 stdout（`'<path>' locked by user '<owner>'.` / `'<path>' unlocked.`）；**解析失败不得让已成功的操作失败**——退出码是契约，文案只是顺带 |
+| 失败映射 | `W160035`（已被他人锁定）→ `SVN-0304`；`W160040` / `E195013`（无锁）→ `SVN-0305`。**不能映射到 `E200009`**：那只是"有一个锁操作失败"的汇总，说不清原因 |
+| 串行 | lock / unlock 会写 `.svn/wc.db`（记录 token），因此走 R4 写锁，并记 journal（`.lock` / `.unlock`） |
+| 提交后 | `svn commit` 默认释放该路径的锁（除非 `--keep-locks`），所以界面不需要"提交后自动解锁"选项 |
+| 只读操作 | `locks(at)` 不加锁、不记 journal（与 `status` 同类） |
+
 ## 2. 中断恢复（操作日志）
 
-写操作（checkout / update / commit / add / delete / revert / resolve / cleanup / property）在**启动子进程之前**落一条记录，在子进程返回后删除。启动时仍然存在的记录，按定义就是"上次没有结果的操作"。
+写操作（checkout / update / commit / add / delete / revert / resolve / cleanup / property / lock / unlock）在**启动子进程之前**落一条记录，在子进程返回后删除。启动时仍然存在的记录，按定义就是"上次没有结果的操作"。
 
 | 项 | 契约 |
 |---|---|
@@ -204,4 +230,4 @@
 
 ## 5. 未实现的接口（后续版本）
 
-`switch`、`merge`、`lock` / `unlock`、`export`、`blame`、`cat`。契约预留：方法名、错误码、确认策略在设计时补入本文，而不是先写实现后补文档。
+`switch`、`merge`、`export`、`blame`、`cat`。契约预留：方法名、错误码、确认策略在设计时补入本文，而不是先写实现后补文档。

@@ -6,6 +6,45 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (repository locks)
+
+- **`svn lock` / `svn unlock` are part of the app.** Files can be locked from the
+  Changes page, with a comment that is stored in the repository — the only place
+  the reason for a lock can live where the blocked person will see it.
+- **A lock we hold and a lock someone else holds are two different things.** The
+  first lives in `<wc-status>`, the second only appears in `<repos-status>` and
+  only with `--show-updates`. They are modelled separately (`repositoryLock` /
+  `remoteLock`) because the remedies differ: orange badge and "解除锁定" versus
+  red badge and "强制抢占".
+- **`SVN-0304 pathLocked` and `SVN-0305 notLocked` exist because "locked" already
+  means something else here.** A repository lock is not the `.svn` internal lock
+  that `svn cleanup` fixes; mapping `W160035` onto `SVN-0004` would send people to
+  run a command that cannot possibly help.
+- **Only `--force` asks for confirmation, and the service enforces it.** Taking a
+  plain lock is reversible and changes nothing, so it is one click. Stealing is
+  the one action that makes someone else's commit fail while they are not looking,
+  so `lock(steal:)` and `unlock(breakLock:)` refuse to run without `confirmed`.
+- **`locks(at:)` is a separate call, never folded into `refresh()`.** It is the
+  only status read that needs the network, and a local refresh must not hang
+  because a server is unreachable.
+- `svn lock` has no `--xml`; the paths are taken from the request and the stdout
+  parse only adds the owner name. A parse miss must not fail an operation svn
+  already reported as successful.
+
+### Changed (commit panel)
+
+- **A failed commit no longer throws away the message and the selection.** The
+  text is the user's work and the failure is ours to report; clearing it forced a
+  rewrite, usually a shorter and worse one.
+- **The panel previews the selected file's diff.** Committing is when "did I mean
+  to include this" gets answered, and answering it should not cost a tab switch.
+- **Recent commit messages are one click away** (`~/Library/Application
+  Support/OpenSVN/commit-messages.json`, 30 entries, shared across working
+  copies). Only successful commits are recorded — an entry for a message that
+  never reached the repository would suggest work that does not exist.
+- **A successful commit now shows its revision** at the top of the panel instead
+  of sending the user to the history page to find out what just happened.
+
 ### Added (property editing and svn:ignore)
 
 - **The GUI can finally read and write versioned properties.** Until now the

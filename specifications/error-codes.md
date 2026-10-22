@@ -37,6 +37,8 @@
 | `SVN-0301` conflictRemains | 仍有冲突 | `E155015` | needsUserAction | 解决冲突并 resolve |
 | `SVN-0302` pathNotFound | 路径不存在 | `E160013` | fatal | 刷新后重试 |
 | `SVN-0303` backupFailed | 解决冲突前的本地备份失败 | — | fatal | 检查磁盘空间与目录权限；操作已中止，未覆盖任何文件 |
+| `SVN-0304` pathLocked | 路径已被他人锁定 | `W160035`, `E160035`, `E160039` | needsUserAction | 由持有人解除，或在确认风险后强制抢占。**不是**工作副本内部锁，Cleanup 无效 |
+| `SVN-0305` notLocked | 路径上没有锁（已释放或被抢占） | `W160040`, `E160040`, `E195013` | recoverable | 刷新锁定状态后重试 |
 | `SVN-0401` timeout | 超时 | — | fatal | 重试或调整超时 |
 | `SVN-0402` cancelled | 用户取消 | — | fatal | 必要时 Cleanup |
 | `SVN-0501` confirmationRequired | 危险操作未确认 | — | needsUserAction | 查看预览后确认 |
