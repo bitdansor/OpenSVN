@@ -49,3 +49,7 @@ credentials.json
 
 # Assistant/agent scratch data for this repository
 .workbuddy/
+
+# Internal planning and execution documents — kept locally, never published
+OpenSVN_开发执行计划.md
+OpenSVN_开发规划.md
