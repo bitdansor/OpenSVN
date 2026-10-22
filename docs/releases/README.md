@@ -23,7 +23,8 @@ SHA256SUMS.txt
 Nothing here is published yet: signing and notarisation are stage 6, and
 `release.yml` refuses to publish unsigned artifacts.
 
-Mac App Store distribution is **not** on the roadmap.
-[`app-store-readiness.md`](app-store-readiness.md) records why — sandbox,
-security-scoped bookmarks, a runtime without gettext — so the question does not
-have to be re-evaluated from scratch. Distribution is Developer ID, direct.
+Mac App Store distribution is **not** on the roadmap. The reason is structural
+rather than cosmetic: the sandbox, the security-scoped bookmark model, and a
+bundled runtime without gettext each conflict with an existing architecture
+decision, so the question does not have to be re-evaluated from scratch.
+Distribution is Developer ID, direct.
