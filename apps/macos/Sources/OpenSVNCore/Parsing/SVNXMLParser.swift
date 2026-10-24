@@ -177,6 +177,39 @@ public enum SVNXMLParser {
         }
     }
 
+    // MARK: - blame
+
+    /// `svn blame --xml` carries the annotation only: line number, revision,
+    /// author, date. The text is not in the file and has to be paired in from
+    /// the working copy or `svn cat`.
+    public static func parseBlame(_ data: Data) throws -> BlameResult {
+        let document = try loadDocument(data, kind: "blame")
+        guard let root = document.rootElement(), root.name == "blame" else {
+            throw parseError("根元素不是 <blame>", data)
+        }
+        guard let target = root.elements(forName: "target").first else {
+            throw parseError("<blame> 中没有 <target>", data)
+        }
+
+        let lines = target.elements(forName: "entry").compactMap { element -> BlameLine? in
+            guard let raw = element.attribute(forName: "line-number")?.stringValue,
+                  let number = Int(raw) else { return nil }
+            let commit = element.elements(forName: "commit").first
+            let author = commit?.elements(forName: "author").first?.stringValue
+            return BlameLine(
+                lineNumber: number,
+                revision: commit?.attribute(forName: "revision")?.stringValue.flatMap(Int64.init),
+                author: (author?.isEmpty ?? true) ? nil : author,
+                date: SVNDateParser.parse(commit?.elements(forName: "date").first?.stringValue)
+            )
+        }
+
+        return BlameResult(
+            target: target.attribute(forName: "path")?.stringValue,
+            lines: lines
+        )
+    }
+
     // MARK: - info
 
     public static func parseInfo(_ data: Data) throws -> InfoReport {

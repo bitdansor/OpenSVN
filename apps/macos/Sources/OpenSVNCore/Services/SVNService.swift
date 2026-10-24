@@ -143,13 +143,31 @@ public actor SVNService {
         limit: Int = 50,
         from startRevision: Int64? = nil,
         to endRevision: Int64? = nil,
+        newerThanOrEqual: Int64? = nil,
+        search: String? = nil,
         credential: SVNCredential? = nil,
         progress: SVNProgressHandler? = nil
     ) async throws -> LogPage {
         let isURL = target.contains("://")
         let path = isURL ? target : URL(fileURLWithPath: target).standardizedFileURL.path
         var args = ["log", "--xml", "-v", "-l", String(max(1, limit))]
-        if let startRevision, let endRevision {
+        let trimmedSearch = search?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !trimmedSearch.isEmpty {
+            // `-l` and `--search` do not compose the way it looks: with
+            // `--search`, svn applies the limit to the messages *scanned*, not
+            // the ones printed. Asking for 50 matches would scan 50 revisions
+            // and usually return nothing. The scan is unbounded instead, which
+            // is why the caller runs it as a task it can cancel.
+            args = ["log", "--xml", "-v", "--search", trimmedSearch]
+        }
+        if let newerThanOrEqual {
+            // Deliberately inclusive of `newerThanOrEqual` itself. The cached
+            // revision comes back as the last row and is dropped by the merge's
+            // deduplication — which is also the cheapest proof that the cache and
+            // the server are talking about the same revision, instead of trusting
+            // that they are.
+            args += ["-r", "HEAD:\(newerThanOrEqual)"]
+        } else if let startRevision, let endRevision {
             args += ["-r", "\(startRevision):\(endRevision)"]
         } else if let startRevision {
             args += ["-r", "\(startRevision):1"]
@@ -171,8 +189,35 @@ public actor SVNService {
             entries: entries,
             target: target,
             limit: limit,
-            hasMore: entries.count >= limit
+            // A search is a scan of everything; there is no next page.
+            hasMore: trimmedSearch.isEmpty && entries.count >= limit
         )
+    }
+
+    /// Annotates every line of a file.
+    ///
+    /// On a working-copy path this annotates the file **on disk**, reporting
+    /// locally modified lines with no revision at all (the CLI prints `-`). That
+    /// is the behaviour that makes it useful before committing: uncommitted work
+    /// shows up as uncommitted instead of being attributed to whoever last
+    /// touched the surrounding lines.
+    public func blame(
+        at target: URL,
+        revision: Int64? = nil,
+        credential: SVNCredential? = nil
+    ) async throws -> BlameResult {
+        let path = target.standardizedFileURL.path
+        var args = ["blame", "--xml"]
+        if let revision { args += ["-r", String(revision)] }
+        args += ["--", path]
+
+        let result = try await invoke(
+            args,
+            workingDirectory: nil,
+            credential: credential,
+            repositoryURL: await repositoryURL(for: path)
+        )
+        return try SVNXMLParser.parseBlame(Data(result.standardOutput.utf8))
     }
 
     /// Diff of local modifications inside a working copy.

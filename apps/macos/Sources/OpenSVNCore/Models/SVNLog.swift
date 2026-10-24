@@ -1,8 +1,8 @@
 import Foundation
 
 /// One changed path inside a log entry (`<path>` in `svn log --xml`).
-public struct ChangedPath: Sendable, Hashable {
-    public enum Action: String, Sendable, Hashable {
+public struct ChangedPath: Sendable, Hashable, Codable {
+    public enum Action: String, Sendable, Hashable, Codable {
         case added = "A"
         case deleted = "D"
         case modified = "M"
@@ -32,7 +32,7 @@ public struct ChangedPath: Sendable, Hashable {
 }
 
 /// One revision from `svn log --xml`.
-public struct LogEntry: Sendable, Hashable, Identifiable {
+public struct LogEntry: Sendable, Hashable, Identifiable, Codable {
     public var revision: Int64
     public var author: String?
     /// Always stored as an absolute instant; formatting is a UI concern.

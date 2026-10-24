@@ -438,6 +438,99 @@ struct ServiceIntegrationTests {
         #expect(risky.conflictRisks.contains { $0.path.hasSuffix("README.md") })
     }
 
+
+    @Test("blame marks locally added lines as uncommitted, not as someone's work")
+    func blameAndCat() async throws {
+        let fixture = try await makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let service = fixture.service
+        let repoURL = "file://\(fixture.repository.path)/trunk"
+        try await service.checkout(url: repoURL, to: fixture.workingCopy)
+
+        let readme = fixture.workingCopy.appendingPathComponent("README.md")
+        try "# committed\nline two\n".write(to: readme, atomically: true, encoding: .utf8)
+        _ = try await service.commit([readme], message: "two lines")
+
+        // Local edit that is never committed.
+        try "# committed\nline two\nline three local only\n".write(to: readme, atomically: true, encoding: .utf8)
+
+        let blame = try await service.blame(at: readme)
+        // The working file has three lines and blame annotates all of them; the
+        // one that exists only locally carries no revision at all.
+        #expect(blame.lines.count == 3)
+        #expect(blame.lines.map(\.lineNumber) == [1, 2, 3])
+        #expect(blame.lines[0].revision != nil)
+        #expect(blame.lines[1].revision != nil)
+        #expect(blame.lines[2].revision == nil)
+        #expect(blame.uncommittedLineCount == 1)
+        #expect(blame.hasLocalEdits)
+        // ...and it is not attributed to anybody.
+        #expect(blame.authorship.allSatisfy { $0.author != "—" })
+
+        var paired = blame
+        paired.attachContents(try String(contentsOf: readme, encoding: .utf8))
+        #expect(paired.lines.map(\.content) == ["# committed", "line two", "line three local only"])
+    }
+
+    @Test("a file's history follows the rename that moved it")
+    func logFollowsRename() async throws {
+        let fixture = try await makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let service = fixture.service
+        let repoURL = "file://\(fixture.repository.path)/trunk"
+        try await service.checkout(url: repoURL, to: fixture.workingCopy)
+
+        let readme = fixture.workingCopy.appendingPathComponent("README.md")
+        try "# renamed later\n".write(to: readme, atomically: true, encoding: .utf8)
+        _ = try await service.commit([readme], message: "edit before rename")
+
+        // Rename through the CLI: the service has no move yet, and the point
+        // here is `svn log`'s behaviour, not how the move was made.
+        let svn = try #require(TestEnvironment.svnExecutable)
+        let runner = SVNProcessRunner(executableURL: svn, defaultTimeout: 60)
+        let moved = try await runner.run(SVNInvocation(
+            executableURL: svn,
+            arguments: ["move", "README.md", "GUIDE.md", "--no-auth-cache"],
+            workingDirectory: fixture.workingCopy
+        ))
+        #expect(moved.isSuccess, "move failed: \(moved.standardError)")
+        let guide = fixture.workingCopy.appendingPathComponent("GUIDE.md")
+        #expect(FileManager.default.fileExists(atPath: guide.path))
+        // A local move takes no log message; the rename has to be committed.
+        _ = try await service.commit([readme, guide], message: "rename readme")
+
+        let page = try await service.log(at: guide.path, limit: 20)
+        let messages = page.entries.map(\.message)
+        // The revisions from before the rename come with it: svn follows copies
+        // by default, which is what makes "history of this file" mean the file
+        // rather than the path.
+        #expect(messages.contains("rename readme"))
+        #expect(messages.contains("edit before rename"))
+        #expect(messages.contains("import fixture"))
+    }
+
+    @Test("server-side search only works against a repository URL")
+    func searchNeedsURL() async throws {
+        let fixture = try await makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let service = fixture.service
+        let repoURL = "file://\(fixture.repository.path)/trunk"
+        try await service.checkout(url: repoURL, to: fixture.workingCopy)
+
+        let readme = fixture.workingCopy.appendingPathComponent("README.md")
+        try "# needle\n".write(to: readme, atomically: true, encoding: .utf8)
+        _ = try await service.commit([readme], message: "haystack keyword commit")
+
+        let byURL = try await service.log(at: repoURL, search: "haystack")
+        #expect(byURL.entries.contains { $0.message.contains("haystack") })
+
+        // Documented because it is surprising: `--search` against a working-copy
+        // path returns an empty log on svn 1.14.5 no matter the pattern. If a
+        // future svn changes this, the app can stop translating paths to URLs —
+        // and this test is where that shows up.
+        let byPath = try await service.log(at: fixture.workingCopy.path, search: "haystack")
+        #expect(byPath.entries.isEmpty)
+    }
 }
 
 @Suite("write serialization")
