@@ -6,6 +6,33 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (history: search, cache, per-file log, blame, copy summary)
+
+- **History is cached on disk and fetched incrementally.** Knowing the newest
+  cached revision turns "load the first page again" into "ask for what happened
+  since". The cache is keyed by working copy, target *and* repository UUID, so a
+  file's history and the working copy's do not evict each other, and a repository
+  recreated from a dump invalidates the cache instead of lying about it.
+- **Filtering is local and instant; searching the whole history is a separate
+  button.** `svn log --search` scans everything and cannot be narrowed to a field,
+  so it sits next to the local filter rather than pretending to be it. Author and
+  date filters are choices, not text: picking an author who is actually present
+  cannot return zero rows because of a typo.
+- **A file's history, from the file.** `svn log <path>` follows copies by default,
+  so a renamed file keeps the revisions from before the rename — verified with a
+  real rename in the integration suite. The page states that it is scoped and
+  offers 显示全部, because a silently narrowed list reads as missing history.
+- **`svn blame` as a sheet, coloured per author.** Uncommitted lines are shown as
+  uncommitted and attributed to nobody: on svn 1.14.5, blame annotates the file on
+  disk and reports those lines with no revision at all.
+- **Copy a revision summary as Markdown** — header, message, and the changed paths
+  with their actions, ready for a ticket or a chat.
+- Two svn behaviours worth recording, both found by testing rather than by reading
+  the manual: `--search` returns an empty log when given a **working-copy path**
+  (it needs a repository URL), and `-l` combined with `--search` limits the
+  messages *scanned* rather than the ones printed — so the search sends no limit
+  and runs as a cancellable task.
+
 ### Fixed (release gate: existence is not the property that matters)
 
 - **`verify-release.py` asks git instead of the filesystem.** The red build on

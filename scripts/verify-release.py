@@ -54,6 +54,7 @@ FIXTURE_ROOTS = {
     "svn-status-remote-changes.xml": "status",
     "svn-status-remote-lock.xml": "status",
     "svn-log.xml": "log",
+    "svn-blame.xml": "blame",
     "svn-info-wc.xml": "info",
     "svn-info-url.xml": "info",
     "svn-info-conflict.xml": "info",
