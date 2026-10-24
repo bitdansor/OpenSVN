@@ -90,6 +90,16 @@ final class RepositorySession: Identifiable {
         var hasRemoteChanges: Bool { preview?.isEmpty == false }
     }
 
+    /// One file's annotation, shown as a sheet.
+    struct BlameState: Identifiable {
+        let id = UUID()
+        let path: String
+        let displayPath: String
+        var result: BlameResult?
+        var isLoading = true
+        var error: String?
+    }
+
     /// Whether the repository behind this working copy answered the last time
     /// anything asked.
     ///
@@ -143,6 +153,7 @@ final class RepositorySession: Identifiable {
     private(set) var service: SVNService?
     private var taskCenter: TaskCenter?
     private let commitMessages: CommitMessageStore?
+    private let logCache: LogCache
     private let onCredentialRequired: (@MainActor (String) async -> SVNCredential?)?
 
     var credential: SVNCredential?
@@ -151,6 +162,17 @@ final class RepositorySession: Identifiable {
     var log: [LogEntry] = []
     var logHasMore = false
     var logPageSize = 50
+    /// History limited to one path; `nil` means the whole working copy.
+    ///
+    /// `svn log` follows copies by default, so a renamed file keeps its history
+    /// from before the rename without a special flag.
+    var logTarget: String?
+    var logFilter = LogFilter()
+    /// True when `log` holds a server-side search result rather than history.
+    var logIsServerSearch = false
+    var logServerSearchText = ""
+    var isLogSearching = false
+    var blameState: BlameState?
     var isLoading = false
     var isLogLoading = false
     var lastRefreshedAt: Date?
@@ -195,12 +217,14 @@ final class RepositorySession: Identifiable {
         service: SVNService?,
         taskCenter: TaskCenter?,
         commitMessages: CommitMessageStore? = nil,
+        logCache: LogCache = LogCache(),
         onCredentialRequired: (@MainActor (String) async -> SVNCredential?)? = nil
     ) {
         self.bookmark = bookmark
         self.service = service
         self.taskCenter = taskCenter
         self.commitMessages = commitMessages
+        self.logCache = logCache
         self.onCredentialRequired = onCredentialRequired
     }
 
@@ -464,29 +488,201 @@ final class RepositorySession: Identifiable {
         isLogLoading = true
         defer { isLogLoading = false }
 
-        let from: Int64? = reset ? nil : log.last.map { $0.revision - 1 }
-        if let from, from < 1 { logHasMore = false; return }
-        let target = path.path
+        logIsServerSearch = false
+        logServerSearchText = ""
 
+        let key = logCacheKey
+        let target = logQueryTarget()
+
+        if reset || log.isEmpty {
+            if log.isEmpty {
+                // Whatever was cached appears before the network is touched. On a
+                // slow link this is the difference between "instant" and two
+                // seconds of spinner for a page the user has already seen.
+                let cached = await logCache.load(key: key)
+                if !cached.entries.isEmpty {
+                    log = cached.entries
+                    logHasMore = true
+                }
+            }
+            await fetchNewest(key: key, target: target, service: service)
+        } else {
+            await fetchOlder(key: key, target: target, service: service)
+        }
+    }
+
+    /// Fetches the newest revision and everything after the newest cached one.
+    ///
+    /// The cached revision is requested again on purpose (`HEAD:<newest>` rather
+    /// than `HEAD:<newest+1>`): it comes back as the last row and is removed by
+    /// deduplication, which also proves the cache and the server agree instead of
+    /// assuming it — and it keeps the range legal when nothing new was committed,
+    /// where `HEAD:<newest+1>` would name a revision that does not exist.
+    private func fetchNewest(key: LogCache.Key, target: String, service: SVNService) async {
+        let newest = log.map(\.revision).max()
         do {
             let page = try await withAuthRetry { credential in
                 try await service.log(
                     at: target,
                     limit: self.logPageSize,
-                    from: from,
+                    newerThanOrEqual: newest,
                     credential: credential
                 )
             }
-            if reset {
-                log = page.entries
-            } else {
-                let existing = Set(log.map(\.revision))
-                log.append(contentsOf: page.entries.filter { !existing.contains($0.revision) })
+            log = await logCache.merge(page.entries, key: key)
+            logHasMore = (log.map(\.revision).min() ?? 1) > 1
+        } catch {
+            handle(error)
+        }
+    }
+
+    private func fetchOlder(key: LogCache.Key, target: String, service: SVNService) async {
+        guard let oldest = log.map(\.revision).min(), oldest > 1 else {
+            logHasMore = false
+            return
+        }
+        do {
+            let page = try await withAuthRetry { credential in
+                try await service.log(
+                    at: target,
+                    limit: self.logPageSize,
+                    from: oldest - 1,
+                    to: 1,
+                    credential: credential
+                )
             }
+            log = await logCache.merge(page.entries, key: key)
             logHasMore = page.entries.count >= logPageSize
         } catch {
             handle(error)
         }
+    }
+
+    /// Runs a server-side `svn log --search`.
+    ///
+    /// Two measured facts shape this. First, `--search` returns **nothing** when
+    /// the target is a working-copy path; the same pattern against the repository
+    /// URL finds the revisions, so the URL is used here. Second, the result is a
+    /// scan of all history rather than a page, so `hasMore` goes false and the
+    /// entries are not written to the cache — they are a filtered view, not the
+    /// history itself.
+    func searchLog(_ text: String) async {
+        guard let service else { return }
+        let pattern = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !pattern.isEmpty else { return }
+        guard let url = logQueryURL() else {
+            handle(SVNError(
+                code: .notAWorkingCopy,
+                message: "无法确定仓库地址，历史搜索需要先读取工作副本信息"
+            ))
+            return
+        }
+
+        isLogSearching = true
+        defer { isLogSearching = false }
+        do {
+            let page = try await withAuthRetry { credential in
+                try await service.log(at: url, search: pattern, credential: credential)
+            }
+            log = page.entries
+            logHasMore = false
+            logIsServerSearch = true
+            logServerSearchText = pattern
+        } catch {
+            handle(error)
+        }
+    }
+
+    func clearServerSearch() async {
+        logIsServerSearch = false
+        logServerSearchText = ""
+        await loadLog(reset: true)
+    }
+
+    /// Limits history to one path. `svn log` follows copies by default, so a
+    /// renamed file keeps the revisions from before the rename.
+    func showHistory(for entry: StatusEntry) async {
+        logTarget = relativePath(entry.path)
+        log = []
+        logFilter = LogFilter()
+        await loadLog(reset: true)
+    }
+
+    func clearLogTarget() async {
+        guard logTarget != nil else { return }
+        logTarget = nil
+        log = []
+        logFilter = LogFilter()
+        await loadLog(reset: true)
+    }
+
+    // MARK: - Blame
+
+    func openBlame(for entry: StatusEntry) {
+        blameState = BlameState(
+            path: entryURL(entry).path,
+            displayPath: relativePath(entry.path)
+        )
+        Task { await loadBlame() }
+    }
+
+    func loadBlame() async {
+        guard let service, let state = blameState else { return }
+        var loading = state
+        loading.isLoading = true
+        loading.error = nil
+        blameState = loading
+
+        let url = URL(fileURLWithPath: state.path)
+        do {
+            var result = try await withAuthRetry { credential in
+                try await service.blame(at: url, credential: credential)
+            }
+            // `svn blame` reports the file as it is on disk, including lines that
+            // are not committed yet, so the text comes straight from the file.
+            let text = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
+            result.attachContents(text)
+
+            guard var current = blameState, current.id == state.id else { return }
+            current.result = result
+            current.isLoading = false
+            blameState = current
+        } catch {
+            guard var current = blameState, current.id == state.id else { return }
+            current.isLoading = false
+            current.error = (error as? SVNError)?.message ?? error.localizedDescription
+            blameState = current
+        }
+    }
+
+    func dismissBlame() {
+        blameState = nil
+    }
+
+    /// Markdown summary of one revision, for a ticket or a chat message.
+    func summary(for entry: LogEntry) -> String {
+        var lines: [String] = []
+        var header = "r\(entry.revision)"
+        if let author = entry.author, !author.isEmpty { header += " · \(author)" }
+        if let date = entry.date {
+            header += " · " + date.formatted(date: .abbreviated, time: .shortened)
+        }
+        lines.append(header)
+
+        let body = entry.message.trimmingCharacters(in: .whitespacesAndNewlines)
+        lines.append(body.isEmpty ? "（无提交说明）" : body)
+
+        if !entry.changedPaths.isEmpty {
+            lines.append("")
+            lines.append("变更 \(entry.changedPaths.count) 个路径：")
+            for path in entry.changedPaths.prefix(20) {
+                lines.append("- `\(path.action.rawValue)` \(path.path)")
+            }
+            if entry.changedPaths.count > 20 {
+                lines.append("- … 其余 \(entry.changedPaths.count - 20) 个")
+            }
+        }
+        return lines.joined(separator: "\n")
     }
 
     func commit() async {
@@ -1122,6 +1318,40 @@ final class RepositorySession: Identifiable {
         } catch {
             connection = .unreachable(error.localizedDescription)
         }
+    }
+
+    // MARK: - History helpers
+
+    /// The entries the local filter lets through.
+    var filteredLog: [LogEntry] { logFilter.apply(to: log) }
+
+    private var logCacheKey: LogCache.Key {
+        LogCache.Key(
+            workingCopy: path.standardizedFileURL.path,
+            target: logTarget ?? "",
+            repositoryUUID: info?.repositoryUUID
+        )
+    }
+
+    /// Filesystem path handed to `svn log`: the root, or one path inside it.
+    private func logQueryTarget() -> String {
+        guard let logTarget, !logTarget.isEmpty else { return path.path }
+        return path.appendingPathComponent(logTarget).path
+    }
+
+    /// Repository URL handed to `svn log --search`.
+    ///
+    /// Search has to go to a URL: measured against svn 1.14.5, `--search` on a
+    /// working-copy path returns an empty log regardless of the pattern, while the
+    /// same pattern against the repository URL finds the revisions.
+    private func logQueryURL() -> String? {
+        guard let base = info?.url, !base.isEmpty, base.contains("://") else { return nil }
+        guard let logTarget, !logTarget.isEmpty else { return base }
+        guard let root = URL(string: base) else { return nil }
+        return logTarget
+            .split(separator: "/")
+            .reduce(root) { $0.appendingPathComponent(String($1)) }
+            .absoluteString
     }
 
     // MARK: - Plumbing

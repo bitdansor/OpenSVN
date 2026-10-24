@@ -160,6 +160,18 @@ struct ChangesView: View {
             }
             Divider()
         }
+        if entry.item != .unversioned, entry.item != .ignored {
+            Button("查看此文件的历史") {
+                Task {
+                    await session.showHistory(for: entry)
+                    tab = .history
+                }
+            }
+            Button("注解（谁写的）…") {
+                session.openBlame(for: entry)
+            }
+            Divider()
+        }
         Button("属性…") {
             session.openProperties(for: entry)
         }

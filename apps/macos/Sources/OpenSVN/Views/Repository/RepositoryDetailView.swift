@@ -142,6 +142,9 @@ struct RepositoryDetailView: View {
         .sheet(item: $session.updatePreview) { _ in
             UpdatePreviewSheet(session: session)
         }
+        .sheet(item: $session.blameState) { _ in
+            BlameSheet(session: session)
+        }
         .task {
             if session.status == nil {
                 await session.refresh()
