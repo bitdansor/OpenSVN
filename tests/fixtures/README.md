@@ -19,6 +19,8 @@ The recorded `.xml` fixtures in this directory share one environment:
 | `svn-status-remote-lock.xml` | hand-written | own lock, another user's lock and no lock in one snapshot — `<lock>` under `wc-status` is mine, under `repos-status` is theirs |
 | `svn-log.xml` | `svn log --xml -l 10` | author, date, message, changed paths |
 | `svn-blame.xml` | `svn blame --xml` | per-line revision/author/date, **no content** — `--xml` carries the annotation only |
+| `svn-status-changelist.xml` | `svn status --xml` with a changelist | members under a `<changelist>` **sibling** of `<target>`, not inside it |
+| `svn-list.xml` | `svn list --xml` | one file with size, one directory without |
 | `svn-info-wc.xml` | `svn info --xml` in a working copy | wc-info, repository root/uuid, commit |
 | `svn-info-url.xml` | `svn info --xml` on a URL | no wc-info, remote last-changed fields |
 | `svn-info-conflict.xml` | `svn info --xml` on a text-conflicted file | `<conflict>` block: `prev-base-file`, `prev-wc-file`, `source-left` / `source-right` revisions — the three versions the merge editor needs |

@@ -53,6 +53,10 @@ FIXTURE_ROOTS = {
     # nothing else validates.
     "svn-status-remote-changes.xml": "status",
     "svn-status-remote-lock.xml": "status",
+    # Changelist members arrive as a sibling of <target>, which is why this one
+    # exists: a fixture without them cannot catch a parser that drops them.
+    "svn-status-changelist.xml": "status",
+    "svn-list.xml": "lists",
     "svn-log.xml": "log",
     "svn-blame.xml": "blame",
     "svn-info-wc.xml": "info",

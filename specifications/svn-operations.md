@@ -56,6 +56,16 @@
 | `unlock(paths,breakLock)` | 释放仓库锁 | 是 | 是 | 仅 `breakLock` | 否（无锁报错） |
 | `locks(at)` | 读取仓库锁（含他人持有） | 是 | 否 | 否 | 是 |
 | `remotePreview(at)` | 更新预检：远端有哪些变更 | 是 | 否 | 否 | 是 |
+| `list(url,revision)` | 浏览仓库目录 | 是 | 否 | 否 | 是 |
+| `makeDirectory(url,message)` | 远程建目录（一次提交） | 是 | 否 | 否 | 否 |
+| `copy(from,to,message,parents)` | 远程复制 / 建 tag | 是 | 否 | 否 | 否 |
+| `moveRemote(from,to,message)` | 远程移动 | 是 | 否 | 否 | 否 |
+| `deleteRemote(url,message,confirmed)` | 远程删除 | 是 | 否 | **是** | 否 |
+| `remoteProperties(url)` | 远程属性（只读） | 是 | 否 | 否 | 是 |
+| `export(from,to,revision)` | 导出快照（无 .svn） | 是 | 否 | 否 | 否 |
+| `importDirectory(from,to,message)` | 导入本地目录 | 是 | 否 | 否 | 否 |
+| `relocate(wc,to)` | 切换仓库地址 | 否 | 是 | 否 | 否 |
+| `setChangelist(name,paths)` | 本地变更集 | 否 | 是 | 否 | 是 |
 
 \* `info` 针对工作副本路径时只读本地 `.svn`；针对 URL 时访问网络。
 
@@ -223,6 +233,49 @@ SVN 里有两套完全不同的"锁"，从错误码到补救动作都不一样�
 | blame 的对象 | 对工作副本路径注解的是**磁盘上的文件**，本地未提交的行没有 revision（CLI 显示 `-`）。这恰好是提交前想看的东西：未提交的改动不会被算到别人头上 |
 | blame 的文本 | `--xml` 只给行号/修订/作者/日期，不含内容。内容从同一个文件读，二者行数一致；行数多出时留空而不是错位，错位会把内容归给错误的修订 |
 | 只读 | 三者都不写工作副本、不记 journal、不需要确认 |
+
+### 1.13 仓库侧操作（URL 目标）
+
+svn 自己就把「工作副本路径」和「URL」分成两套语义：`svn mkdir path` 暂存一个改动等着 commit，`svn mkdir URL` 当场提交。两者混在一个方法后面，会让人分不清刚才做的是哪一种，所以本文把 URL 目标单列一节。
+
+| 项 | 契约 |
+|---|---|
+| 提交语义 | `mkdir` / `copy` / `move` / `delete` 针对 URL 时**各自产生一次提交**，没有暂存阶段，因此没有"确认后撤销"的余地。方法名以 `Remote` 结尾或带 `url` 参数，是为了在调用处就能看出这一点 |
+| 提交说明 | 必填，服务层校验。svn 要求 `-m`，空说明会进入历史且无法事后区分"没写"和"写错了" |
+| 修订号 | 从 stdout 的 `Committed revision N.` 提取，**可以为 nil**。退出码是契约，文案只是顺带；解析失败不得把成功的操作变成失败 |
+| 删除 | 服务层要求 `confirmed`（R3）。svn 保留历史所以可恢复，但恢复需要知道修订号并执行命令，那不是点确认的人能做到的 |
+| `--parents` | `copy` 与 `mkdir` 支持。建 tag 时 `tags/` 往往还不存在，没有它就得让用户先手动建一层 |
+| tag / branch | **不是独立命令**，是目录 `copy` 的约定。UI 提供"创建 tag"只是替用户写好 `tags/<name>` 这个目的地，不会改变 svn 的历史模型 |
+| 远程属性 | **只读**。svn 1.14 对 URL 执行 `svn propset` 直接报 `E200009: Targets must be working copy paths`，不存在远程改属性的能力。改属性需要检出，因此界面必须说清这一点，而不是给一个注定失败的输入框 |
+| 属性读取 | `svn proplist --xml --recursive --verbose URL`。`--xml` 必须带，否则输出格式不同（不带 `--xml` 的 `-R -v` 在实际测试里返回空） |
+| export | `svn export [-r N] URL DEST`，产出没有 `.svn` 的树。目标目录必须为空，svn 不覆盖 |
+| import | `svn import PATH URL -m`，一次提交整棵树。目标不能已存在 |
+| relocate | `svn relocate NEW_URL`，在工作副本目录内执行。UUID 检查是 svn 的：relocate 到另一个仓库会失败，这是"不会把两段历史接错"的保证 |
+| changelist | 纯本地概念，从不进入服务器。`svn changelist NAME paths` / `--remove`；它只影响 `status` 的分组和 `commit --changelist` 的选择 |
+
+**`svn status --xml` 里 changelist 的位置（实测）**
+
+changelist 成员不在 `<target>` 下，也不是 entry 的属性，而是 `<target>` 的**兄弟元素**：
+
+```xml
+<status>
+  <target path="trunk"><entry path="trunk/sub/b.txt">…</entry></target>
+  <changelist name="ui-review"><entry path="trunk/readme.md">…</entry></changelist>
+</status>
+```
+
+只遍历 `<target>` 的解析器会**静默丢掉**所有被设进 changelist 的文件——没有报错，文件从列表里消失。这是文件列表最坏的失败方式，因此解析必须同时读两处。
+
+### 1.14 externals 与提交边界
+
+`svn:externals` 挂载的是**另一个工作副本**，可能来自另一个仓库。svn 在 status 里只给挂载点本身 `item="external"` 标记，其内部的改动与父工作副本的改动用同样的 `modified` 出现在同一份输出里。
+
+| 项 | 契约 |
+|---|---|
+| 分类 | `external` 是独立分类，**不得**归入 `ignored`。ignored 是"不关心的噪音"，external 是"别人的工作副本" |
+| 提交边界 | 挂载点及其下的所有路径都不可从本工作副本提交。`StatusSnapshot.committable` 负责排除，UI 的计数与勾选都基于它 |
+| 判定 | 祖先目录是 external 才算"在外部之内"。路径前缀必须带分隔符比较，否则 `/wc/shared-notes.md` 会被当成 `/wc/shared` 的子路径 |
+| 只读展示 | `svn propget svn:externals -R URL` 可读；修改同 §1.13——没有远程 propset |
 
 ## 2. 中断恢复（操作日志）
 

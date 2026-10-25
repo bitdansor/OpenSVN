@@ -6,6 +6,38 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (repository side: browse, remote writes, externals, changelists, external diff)
+
+- **Repositories can be bookmarked and browsed without checking them out.**
+  Looking at `trunk` or a tag no longer costs a copy of the tree. Bookmark kind is
+  a new field; it is decoded by hand because a synthesised decoder ignores property
+  defaults and would have emptied the sidebar of every existing user on first
+  launch after the update.
+- **Remote writes commit immediately, and the UI says so.** `mkdir`, `copy`,
+  `move` and `delete` against a URL each produce their own commit — there is no
+  staging — so the sheet shows the **full destination URL** rather than the leaf
+  name, and requires a message. Tagging is offered as its own command because the
+  name is what people think in, but it is `svn copy` and the sheet says so.
+- **Remote properties are read-only, because svn has no other option.** Measured:
+  `svn propset` against a URL fails with `E200009: Targets must be working copy
+  paths`. The sheet states this instead of offering an input that cannot work.
+- **`svn:externals` is its own category and outside the commit boundary.** svn
+  marks only the mount point as `external`; the changes *inside* it arrive as
+  ordinary `modified` rows. Before this, they were counted as committable and
+  would have been sent to a commit that svn refuses — or, on a shared external,
+  to the wrong repository.
+- **Changelists work, and a parser bug that hid them is fixed.** In
+  `svn status --xml` the members live in a `<changelist>` **sibling** of
+  `<target>`, not inside it and not as an entry attribute. The old parser walked
+  only `<target>`, so every file assigned to a changelist vanished from the change
+  list with no error anywhere.
+- **Export and import**, at any revision, with `export` producing a tree without
+  `.svn`. **relocate** for the case where the repository moved but the content did
+  not — svn's own UUID check is what makes that safe.
+- **An external diff command** (`svn diff --diff-cmd`) configurable in settings.
+  The pane says "handed to an external tool" instead of "no differences", since a
+  GUI differ usually prints nothing.
+
 ### Added (history: search, cache, per-file log, blame, copy summary)
 
 - **History is cached on disk and fetched incrementally.** Knowing the newest
