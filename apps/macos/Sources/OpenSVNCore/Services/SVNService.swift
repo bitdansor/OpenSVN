@@ -224,13 +224,23 @@ public actor SVNService {
     public func diffWorkingCopy(
         at target: URL,
         contextLines: Int = 3,
-        maxBytes: Int = 2_000_000
+        maxBytes: Int = 2_000_000,
+        externalDiffCommand: String? = nil
     ) async throws -> DiffResult {
-        let args = [
-            "diff", "--internal-diff",
-            "-x", "-U\(max(0, contextLines))",
-            target.path
-        ]
+        var args = ["diff"]
+        if let command = externalDiffCommand?.trimmingCharacters(in: .whitespaces), !command.isEmpty {
+            // `--diff-cmd` replaces the differ entirely, so `--internal-diff` and
+            // `-x -U<n>` must not be sent with it: svn would pass the context
+            // option to a tool that does not understand it.
+            //
+            // A GUI tool is expected to be wrapped in a script that returns
+            // immediately; svn waits for the child to exit, and a tool that
+            // blocks until the window closes freezes this operation with it.
+            args += ["--diff-cmd", command]
+        } else {
+            args += ["--internal-diff", "-x", "-U\(max(0, contextLines))"]
+        }
+        args.append(target.path)
         let result = try await invoke(args, workingDirectory: nil, credential: nil, repositoryURL: nil)
         return Self.makeDiffResult(result.standardOutput, maxBytes: maxBytes)
     }
@@ -982,6 +992,256 @@ public actor SVNService {
             )
         }
         return url
+    }
+
+    // MARK: - Repository (URL) operations
+    //
+    // Everything here works on a URL and never touches a working copy. svn itself
+    // draws the same line: `svn mkdir URL` commits immediately, while `svn mkdir
+    // path` stages a change. The two are different operations with different
+    // failure modes, and mixing them behind one method would hide which one the
+    // user just did.
+
+    /// Lists one directory of the repository.
+    public func list(
+        at url: String,
+        revision: Int64? = nil,
+        credential: SVNCredential? = nil
+    ) async throws -> RepositoryListing {
+        var args = ["list", "--xml"]
+        if let revision { args += ["-r", String(revision)] }
+        args += ["--", url]
+        let result = try await invoke(
+            args,
+            workingDirectory: nil,
+            credential: credential,
+            repositoryURL: url
+        )
+        return try SVNXMLParser.parseList(Data(result.standardOutput.utf8))
+    }
+
+    /// `svn mkdir URL` — one commit, created server-side.
+    public func makeDirectory(
+        at url: String,
+        message: String,
+        parents: Bool = false,
+        credential: SVNCredential? = nil
+    ) async throws -> RemoteCommit {
+        try Self.requireMessage(message)
+        var args = ["mkdir"]
+        if parents { args.append("--parents") }
+        args += ["-m", message, "--", url]
+        let result = try await invoke(
+            args,
+            workingDirectory: nil,
+            credential: credential,
+            repositoryURL: url
+        )
+        return RemoteCommit(
+            revision: RemoteCommit.parseRevision(result.standardOutput),
+            summary: "已创建 \(Self.leafName(of: url))"
+        )
+    }
+
+    /// `svn copy URL URL` — the primitive behind tagging and branching.
+    ///
+    /// Copying a directory is the operation that creates a tag or a branch; there
+    /// is no separate "tag" command, and inventing one in the UI would be a
+    /// promise svn cannot keep for history.
+    public func copy(
+        from source: String,
+        to destination: String,
+        message: String,
+        parents: Bool = false,
+        credential: SVNCredential? = nil
+    ) async throws -> RemoteCommit {
+        try Self.requireMessage(message)
+        var args = ["copy"]
+        // Tagging usually targets `tags/v1.0` when `tags` does not exist yet;
+        // without `--parents` that is a failure the user has to fix by hand.
+        if parents { args.append("--parents") }
+        args += ["-m", message, "--", source, destination]
+        let result = try await invoke(
+            args,
+            workingDirectory: nil,
+            credential: credential,
+            repositoryURL: destination
+        )
+        return RemoteCommit(
+            revision: RemoteCommit.parseRevision(result.standardOutput),
+            summary: "已复制到 \(Self.leafName(of: destination))"
+        )
+    }
+
+    /// `svn move URL URL`.
+    ///
+    /// The server-side counterpart of `svn mv` in a working copy: it renames in
+    /// the repository immediately, including in every checkout that updates next.
+    public func moveRemote(
+        from source: String,
+        to destination: String,
+        message: String,
+        credential: SVNCredential? = nil
+    ) async throws -> RemoteCommit {
+        try Self.requireMessage(message)
+        let result = try await invoke(
+            ["move", "-m", message, "--", source, destination],
+            workingDirectory: nil,
+            credential: credential,
+            repositoryURL: destination
+        )
+        return RemoteCommit(
+            revision: RemoteCommit.parseRevision(result.standardOutput),
+            summary: "已移动到 \(Self.leafName(of: destination))"
+        )
+    }
+
+    /// `svn delete URL` — immediate and irreversible from the caller's side.
+    ///
+    /// Behind `confirmed` for the same reason as the local delete (R3): the path
+    /// is gone from HEAD the moment it returns, and every checkout finds out on
+    /// its next update. svn keeps it in history, so it is *recoverable* — by
+    /// someone who knows the revision and the command, which is not the person in
+    /// front of this dialog.
+    public func deleteRemote(
+        at url: String,
+        message: String,
+        confirmed: Bool,
+        credential: SVNCredential? = nil
+    ) async throws -> RemoteCommit {
+        guard confirmed else {
+            throw SVNError(
+                code: .confirmationRequired,
+                message: "删除仓库路径需要确认：\(url)"
+            )
+        }
+        try Self.requireMessage(message)
+        let result = try await invoke(
+            ["delete", "-m", message, "--", url],
+            workingDirectory: nil,
+            credential: credential,
+            repositoryURL: url
+        )
+        return RemoteCommit(
+            revision: RemoteCommit.parseRevision(result.standardOutput),
+            summary: "已删除 \(Self.leafName(of: url))"
+        )
+    }
+
+    /// Properties of a repository path, read recursively.
+    ///
+    /// **Read-only, and it has to be.** svn 1.14 refuses `svn propset` against a
+    /// URL with `E200009: Targets must be working copy paths` — there is no remote
+    /// property editing. Changing a property therefore requires a checkout, which
+    /// is a different and much larger action than this screen can imply.
+    public func remoteProperties(
+        at url: String,
+        credential: SVNCredential? = nil
+    ) async throws -> [PropertyTarget] {
+        let result = try await invoke(
+            ["proplist", "--xml", "--recursive", "--verbose", "--", url],
+            workingDirectory: nil,
+            credential: credential,
+            repositoryURL: url
+        )
+        return try SVNXMLParser.parseProperties(Data(result.standardOutput.utf8))
+    }
+
+    /// `svn export` — a clean tree with no `.svn` directory, at any revision.
+    public func export(
+        from url: String,
+        to destination: URL,
+        revision: Int64? = nil,
+        credential: SVNCredential? = nil
+    ) async throws {
+        var args = ["export"]
+        if let revision { args += ["-r", String(revision)] }
+        args += ["--", url, destination.standardizedFileURL.path]
+        _ = try await invoke(
+            args,
+            workingDirectory: nil,
+            credential: credential,
+            repositoryURL: url
+        )
+    }
+
+    /// `svn import` — puts a local directory into the repository in one commit.
+    ///
+    /// The counterpart of `export`: it uploads a directory that was never under
+    /// version control. The target must not already exist, and the import is a
+    /// single commit of the whole tree, which is why the message is required.
+    public func importDirectory(
+        from localPath: URL,
+        to destinationURL: String,
+        message: String,
+        credential: SVNCredential? = nil
+    ) async throws -> RemoteCommit {
+        try Self.requireMessage(message)
+        let result = try await invoke(
+            ["import", "--", localPath.standardizedFileURL.path, destinationURL, "-m", message],
+            workingDirectory: nil,
+            credential: credential,
+            repositoryURL: destinationURL
+        )
+        return RemoteCommit(
+            revision: RemoteCommit.parseRevision(result.standardOutput),
+            summary: "已导入 \(Self.leafName(of: destinationURL))"
+        )
+    }
+
+    /// `svn relocate` — repoints a working copy at the same repository over a
+    /// different URL.
+    ///
+    /// The UUID check is svn's, not ours: relocating to a *different* repository
+    /// fails, and that failure is the guarantee that this cannot silently mix two
+    /// histories.
+    public func relocate(
+        workingCopy: URL,
+        to newURL: String,
+        credential: SVNCredential? = nil
+    ) async throws {
+        _ = try await invoke(
+            ["relocate", "--", newURL],
+            workingDirectory: workingCopy.standardizedFileURL,
+            credential: credential,
+            repositoryURL: newURL
+        )
+    }
+
+    /// Puts paths into a changelist, or takes them out when `name` is `nil`.
+    ///
+    /// A changelist is local-only: it never reaches the server, and it is not a
+    /// commit boundary unless the commit asks for it (`--changelist`). Modelling
+    /// it as "a label in the working copy" is the whole truth.
+    public func setChangelist(
+        _ name: String?,
+        on paths: [URL]
+    ) async throws {
+        guard !paths.isEmpty else { return }
+        var args = ["changelist"]
+        if let name, !name.isEmpty {
+            args.append(name)
+        } else {
+            args.append("--remove")
+        }
+        args.append("--")
+        args += paths.map { $0.standardizedFileURL.path }
+        _ = try await invoke(args, workingDirectory: nil, credential: nil, repositoryURL: nil)
+    }
+
+    private static func requireMessage(_ message: String) throws {
+        guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw SVNError(
+                code: .invalidInvocation,
+                message: "仓库操作需要提交说明：svn 会把它写进历史，不能留空"
+            )
+        }
+    }
+
+    private static func leafName(of url: String) -> String {
+        let trimmed = url.hasSuffix("/") ? String(url.dropLast()) : url
+        let name = (trimmed as NSString).lastPathComponent
+        return name.isEmpty ? url : name
     }
 
     // MARK: - Credentials

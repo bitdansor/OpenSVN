@@ -36,6 +36,21 @@ public enum SVNXMLParser {
             }
         }
 
+        // Changelist members are a **sibling** of `<target>`, grouped under
+        // `<changelist name="…">`, not an attribute of the entry and not inside
+        // `<target>`. A parser that only walks `<target>` drops every file
+        // assigned to a changelist: the change disappears from the list with no
+        // error anywhere, which is the worst possible failure mode for a file
+        // list.
+        for changelistElement in root.elements(forName: "changelist") {
+            let name = changelistElement.attribute(forName: "name")?.stringValue
+            for entryElement in changelistElement.elements(forName: "entry") {
+                guard var entry = parseStatusEntry(entryElement) else { continue }
+                if entry.changelist == nil { entry.changelist = name }
+                entries.append(entry)
+            }
+        }
+
         let revision = entries.compactMap(\.revision).min()
         return StatusSnapshot(
             target: targetPath,
@@ -175,6 +190,41 @@ public enum SVNXMLParser {
                 changedPaths: paths
             )
         }
+    }
+
+    // MARK: - list
+
+    /// `svn list --xml`: the children of one repository directory.
+    public static func parseList(_ data: Data) throws -> RepositoryListing {
+        let document = try loadDocument(data, kind: "list")
+        guard let root = document.rootElement(), root.name == "lists" else {
+            throw parseError("根元素不是 <lists>", data)
+        }
+        guard let listElement = root.elements(forName: "list").first else {
+            throw parseError("<lists> 中没有 <list>", data)
+        }
+
+        let entries = listElement.elements(forName: "entry").compactMap { element -> RemoteEntry? in
+            guard let name = element.elements(forName: "name").first?.stringValue,
+                  !name.isEmpty else { return nil }
+            let kindToken = element.attribute(forName: "kind")?.stringValue ?? "none"
+            let commit = element.elements(forName: "commit").first
+            let author = commit?.elements(forName: "author").first?.stringValue
+            return RemoteEntry(
+                name: name,
+                kind: NodeKind(rawValue: kindToken),
+                // svn emits <size> for files only; a directory has none.
+                size: element.elements(forName: "size").first?.stringValue.flatMap(Int64.init),
+                revision: commit?.attribute(forName: "revision")?.stringValue.flatMap(Int64.init),
+                author: (author?.isEmpty ?? true) ? nil : author,
+                date: SVNDateParser.parse(commit?.elements(forName: "date").first?.stringValue)
+            )
+        }
+
+        return RepositoryListing(
+            path: listElement.attribute(forName: "path")?.stringValue ?? "",
+            entries: entries
+        )
     }
 
     // MARK: - blame

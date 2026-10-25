@@ -531,6 +531,134 @@ struct ServiceIntegrationTests {
         let byPath = try await service.log(at: fixture.workingCopy.path, search: "haystack")
         #expect(byPath.entries.isEmpty)
     }
+
+    @Test("remote writes commit on their own and show up in the listing")
+    func remoteWrites() async throws {
+        let fixture = try await makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let service = fixture.service
+        let repoURL = "file://\(fixture.repository.path)/trunk"
+        let rootURL = "file://\(fixture.repository.path)"
+
+        let listing = try await service.list(at: repoURL)
+        #expect(listing.entries.contains { $0.name == "README.md" && !$0.isDirectory })
+
+        let created = try await service.makeDirectory(at: repoURL + "/newdir", message: "add dir")
+        #expect(created.revision != nil)
+
+        let afterCreate = try await service.list(at: repoURL)
+        #expect(afterCreate.entries.contains { $0.name == "newdir" && $0.isDirectory })
+
+        _ = try await service.moveRemote(
+            from: repoURL + "/newdir",
+            to: repoURL + "/renamed",
+            message: "rename dir"
+        )
+        let afterMove = try await service.list(at: repoURL)
+        #expect(afterMove.entries.contains { $0.name == "renamed" })
+        #expect(!afterMove.entries.contains { $0.name == "newdir" })
+
+        // A tag is a directory copy, and `--parents` is what makes it work when
+        // `tags/` does not exist yet.
+        let tagged = try await service.copy(
+            from: repoURL,
+            to: rootURL + "/tags/v1.0",
+            message: "tag v1.0",
+            parents: true
+        )
+        #expect(tagged.revision != nil)
+        let tagListing = try await service.list(at: rootURL + "/tags/v1.0")
+        #expect(tagListing.entries.contains { $0.name == "README.md" })
+
+        // Deleting needs confirmation at the service layer, not just in the UI.
+        await #expect(throws: SVNError.self) {
+            _ = try await service.deleteRemote(
+                at: repoURL + "/renamed",
+                message: "drop",
+                confirmed: false
+            )
+        }
+        _ = try await service.deleteRemote(
+            at: repoURL + "/renamed",
+            message: "drop",
+            confirmed: true
+        )
+        let afterDelete = try await service.list(at: repoURL)
+        #expect(!afterDelete.entries.contains { $0.name == "renamed" })
+    }
+
+    @Test("a remote write without a message is refused before it runs")
+    func remoteWriteNeedsMessage() async throws {
+        let fixture = try await makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let repoURL = "file://\(fixture.repository.path)/trunk"
+
+        await #expect(throws: SVNError.self) {
+            _ = try await fixture.service.makeDirectory(at: repoURL + "/x", message: "   ")
+        }
+        // Nothing was created.
+        let listing = try await fixture.service.list(at: repoURL)
+        #expect(!listing.entries.contains { $0.name == "x" })
+    }
+
+    @Test("export writes a clean tree with no metadata, at any revision")
+    func exportTree() async throws {
+        let fixture = try await makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let repoURL = "file://\(fixture.repository.path)/trunk"
+
+        let destination = fixture.root.appendingPathComponent("exported", isDirectory: true)
+        try await fixture.service.export(from: repoURL, to: destination, revision: 1)
+
+        #expect(FileManager.default.fileExists(atPath: destination.appendingPathComponent("README.md").path))
+        // The whole point of export: no working copy.
+        #expect(!FileManager.default.fileExists(atPath: destination.appendingPathComponent(".svn").path))
+    }
+
+    @Test("remote properties are readable but not writable")
+    func remoteProperties() async throws {
+        let fixture = try await makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let service = fixture.service
+        let repoURL = "file://\(fixture.repository.path)/trunk"
+
+        // Set the external through a working copy: svn refuses it on a URL, which
+        // is exactly why the browser's property view is read-only.
+        try await service.checkout(url: repoURL, to: fixture.workingCopy)
+        _ = try await service.setProperty(
+            name: "svn:externals",
+            value: "^/trunk/src shared-src",
+            on: [fixture.workingCopy]
+        )
+        _ = try await service.commit([fixture.workingCopy], message: "add externals")
+
+        let targets = try await service.remoteProperties(at: repoURL)
+        let value = targets.compactMap { $0.value(of: "svn:externals") }.first
+        #expect(value?.contains("shared-src") == true)
+    }
+
+    @Test("a changelist is local, and status still reports its members")
+    func changelistRoundTrip() async throws {
+        let fixture = try await makeFixture()
+        defer { try? FileManager.default.removeItem(at: fixture.root) }
+        let service = fixture.service
+        let repoURL = "file://\(fixture.repository.path)/trunk"
+        try await service.checkout(url: repoURL, to: fixture.workingCopy)
+
+        let readme = fixture.workingCopy.appendingPathComponent("README.md")
+        try "# edited\n".write(to: readme, atomically: true, encoding: .utf8)
+
+        try await service.setChangelist("ui-review", on: [readme])
+        let labelled = try await service.status(at: fixture.workingCopy)
+        // The member must survive parsing: it arrives under <changelist>, not
+        // under <target>, and losing it would hide the file from the list.
+        let entry = try #require(labelled.entries.first { $0.path.hasSuffix("README.md") })
+        #expect(entry.changelist == "ui-review")
+
+        try await service.setChangelist(nil, on: [readme])
+        let cleared = try await service.status(at: fixture.workingCopy)
+        #expect(cleared.entries.first { $0.path.hasSuffix("README.md") }?.changelist == nil)
+    }
 }
 
 @Suite("write serialization")

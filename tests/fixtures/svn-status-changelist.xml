@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<status>
+<target
+   path="trunk">
+<entry
+   path="trunk/sub/b.txt">
+<wc-status
+   item="modified"
+   revision="1"
+   props="none">
+<commit
+   revision="1">
+<author>wanyingfei</author>
+<date>2026-10-25T11:27:45.369022Z</date>
+</commit>
+</wc-status>
+</entry>
+</target>
+<changelist
+   name="ui-review">
+<entry
+   path="trunk/readme.md">
+<wc-status
+   item="modified"
+   revision="1"
+   props="none">
+<commit
+   revision="1">
+<author>wanyingfei</author>
+<date>2026-10-25T11:27:45.369022Z</date>
+</commit>
+</wc-status>
+</entry>
+</changelist>
+</status>

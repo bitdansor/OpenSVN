@@ -9,6 +9,7 @@ extension StatusCategory {
         case .added: return "新增"
         case .deleted: return "删除"
         case .unversioned: return "未纳入版本控制"
+        case .external: return "外部工作副本"
         case .ignored: return "已忽略"
         case .normal: return "正常"
         case .other: return "其他"
@@ -22,6 +23,7 @@ extension StatusCategory {
         case .added: return .green
         case .deleted: return .pink
         case .unversioned: return .secondary
+        case .external: return .blue
         case .ignored: return .secondary
         case .normal: return .secondary
         case .other: return .secondary
@@ -35,6 +37,7 @@ extension StatusCategory {
         case .added: return "plus.circle.fill"
         case .deleted: return "minus.circle.fill"
         case .unversioned: return "questionmark.circle"
+        case .external: return "link.circle.fill"
         case .ignored: return "eye.slash"
         case .normal: return "checkmark.circle"
         case .other: return "circle.dashed"
@@ -48,9 +51,10 @@ extension StatusCategory {
         case .added: return 2
         case .deleted: return 3
         case .unversioned: return 4
-        case .other: return 5
-        case .ignored: return 6
-        case .normal: return 7
+        case .external: return 5
+        case .other: return 6
+        case .ignored: return 7
+        case .normal: return 8
         }
     }
 }

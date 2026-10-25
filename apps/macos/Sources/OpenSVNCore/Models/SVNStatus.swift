@@ -249,9 +249,29 @@ public struct StatusEntry: Sendable, Hashable, Identifiable {
         case .deleted, .missing: return .deleted
         case .modified, .merged: return .modified
         case .unversioned: return .unversioned
-        case .ignored, .external: return .ignored
+        // An external is *not* ignored. It is a second working copy mounted
+        // inside this one, belonging to another repository or path; its changes
+        // cannot be committed from here. Filing it under "ignored" told the user
+        // it was noise when it was actually someone else's work in progress.
+        case .external: return .external
+        case .ignored: return .ignored
         case .normal, .none: return propertyOrNone
         default: return .other
+        }
+    }
+
+    /// True when this path lives inside an external working copy.
+    ///
+    /// svn reports the changes of an external alongside the parent's, without
+    /// marking them: only the mount point itself carries `item="external"`. A
+    /// commit that includes them fails, and on a shared external it would be
+    /// committing someone else's checkout.
+    public func isInsideExternal(_ roots: [String]) -> Bool {
+        guard !roots.isEmpty else { return false }
+        let candidate = path.hasSuffix("/") ? String(path.dropLast()) : path
+        return roots.contains { root in
+            let prefix = root.hasSuffix("/") ? root : root + "/"
+            return candidate != root && candidate.hasPrefix(prefix)
         }
     }
 
@@ -266,6 +286,8 @@ public enum StatusCategory: String, Sendable, Hashable, CaseIterable {
     case added
     case deleted
     case unversioned
+    /// A working copy mounted from another repository or path (`svn:externals`).
+    case external
     case ignored
     case normal
     case other
@@ -298,6 +320,22 @@ public struct StatusSnapshot: Sendable, Hashable {
 
     public var conflicted: [StatusEntry] { entries.filter(\.hasConflicts) }
     public var changed: [StatusEntry] { entries.filter { $0.item.isCommittableChange || $0.properties == .modified } }
+
+    /// Mount points of `svn:externals` in this working copy.
+    public var externalRoots: [String] { entries.filter { $0.item == .external }.map(\.path) }
+
+    /// Entries that can be committed from *this* working copy.
+    ///
+    /// External mounts and everything below them are excluded: svn refuses the
+    /// commit, and the reason is not an error message but a fact about ownership.
+    public var committable: [StatusEntry] {
+        let roots = externalRoots
+        return entries.filter {
+            ($0.item.isCommittableChange || $0.properties == .modified)
+                && !$0.hasConflicts
+                && !$0.isInsideExternal(roots)
+        }
+    }
     public var unversioned: [StatusEntry] { entries.filter { $0.item == .unversioned } }
     public var missing: [StatusEntry] { entries.filter { $0.item == .missing } }
 
