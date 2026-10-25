@@ -145,6 +145,9 @@ struct RepositoryDetailView: View {
         .sheet(item: $session.blameState) { _ in
             BlameSheet(session: session)
         }
+        .sheet(item: $session.externalsState) { _ in
+            ExternalsSheet(session: session)
+        }
         .task {
             if session.status == nil {
                 await session.refresh()

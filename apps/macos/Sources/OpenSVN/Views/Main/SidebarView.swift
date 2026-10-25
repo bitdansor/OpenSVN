@@ -9,23 +9,52 @@ struct SidebarView: View {
         @Bindable var appState = appState
 
         List(selection: $appState.selectedBookmarkID) {
-            Section("工作副本") {
-                ForEach(appState.bookmarks) { bookmark in
-                    RepositoryRow(
-                        bookmark: bookmark,
-                        session: appState.sessions[bookmark.id]
-                    )
-                    .tag(bookmark.id)
-                    .contextMenu {
-                        Button("在 Finder 中显示") {
-                            NSWorkspace.shared.activateFileViewerSelecting([bookmark.url])
+            if !appState.workingCopyBookmarks.isEmpty {
+                Section("工作副本") {
+                    ForEach(appState.workingCopyBookmarks) { bookmark in
+                        RepositoryRow(
+                            bookmark: bookmark,
+                            session: appState.sessions[bookmark.id],
+                            browser: nil
+                        )
+                        .tag(bookmark.id)
+                        .contextMenu {
+                            Button("在 Finder 中显示") {
+                                NSWorkspace.shared.activateFileViewerSelecting([bookmark.url])
+                            }
+                            Button("检查连接") {
+                                Task { await appState.session(for: bookmark.id)?.probeConnection() }
+                            }
+                            Divider()
+                            Button("移除", role: .destructive) {
+                                appState.removeRepository(id: bookmark.id)
+                            }
                         }
-                        Button("检查连接") {
-                            Task { await appState.session(for: bookmark.id)?.probeConnection() }
-                        }
-                        Divider()
-                        Button("移除", role: .destructive) {
-                            appState.removeRepository(id: bookmark.id)
+                    }
+                }
+            }
+
+            if !appState.repositoryBookmarks.isEmpty {
+                Section("仓库") {
+                    ForEach(appState.repositoryBookmarks) { bookmark in
+                        RepositoryRow(
+                            bookmark: bookmark,
+                            session: nil,
+                            browser: appState.browsers[bookmark.id]
+                        )
+                        .tag(bookmark.id)
+                        .contextMenu {
+                            Button("复制地址") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(
+                                    bookmark.repositoryURL ?? "",
+                                    forType: .string
+                                )
+                            }
+                            Divider()
+                            Button("移除", role: .destructive) {
+                                appState.removeRepository(id: bookmark.id)
+                            }
                         }
                     }
                 }
@@ -62,6 +91,14 @@ struct SidebarView: View {
                 .buttonStyle(.borderless)
                 .help("检出仓库")
 
+                Button {
+                    appState.promptForRepositoryBookmark()
+                } label: {
+                    Image(systemName: "shippingbox")
+                }
+                .buttonStyle(.borderless)
+                .help("只看仓库（不检出）")
+
                 Spacer()
 
                 if let installation = appState.installation {
@@ -80,10 +117,11 @@ struct SidebarView: View {
 private struct RepositoryRow: View {
     let bookmark: RepositoryBookmark
     let session: RepositorySession?
+    let browser: RepositoryBrowser?
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "externaldrive.badge.checkmark")
+            Image(systemName: bookmark.isRepository ? "shippingbox" : "externaldrive.badge.checkmark")
                 .foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 1) {
                 Text(bookmark.name)
@@ -118,6 +156,11 @@ private struct RepositoryRow: View {
     }
 
     private var abbreviatedPath: String {
-        (bookmark.path as NSString).abbreviatingWithTildeInPath
+        if bookmark.isRepository {
+            return URL(string: bookmark.repositoryURL ?? "")?.host
+                ?? bookmark.repositoryURL
+                ?? ""
+        }
+        return (bookmark.path as NSString).abbreviatingWithTildeInPath
     }
 }

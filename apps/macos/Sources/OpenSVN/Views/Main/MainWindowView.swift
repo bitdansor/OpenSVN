@@ -30,6 +30,11 @@ struct MainWindowView: View {
                 if let session = appState.selectedSession {
                     RepositoryDetailView(session: session)
                         .id(session.id)
+                } else if let browser = appState.selectedBrowser {
+                    // A repository bookmark has no working copy, so it gets the
+                    // browser rather than a detail view with five disabled tabs.
+                    RepositoryBrowserView(browser: browser)
+                        .id(browser.id)
                 } else {
                     WelcomeView()
                 }

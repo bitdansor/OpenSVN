@@ -66,6 +66,12 @@ struct RepositoryOverviewView: View {
                     } label: {
                         Label("在 Finder 中显示", systemImage: "folder")
                     }
+                    Button {
+                        promptRelocate()
+                    } label: {
+                        Label("切换仓库地址…", systemImage: "arrow.triangle.swap")
+                    }
+                    .help("svn relocate：仓库换了地址（协议/主机/路径）但内容还是同一个")
                     Spacer()
                 }
                 .padding(.top, 4)
@@ -73,6 +79,23 @@ struct RepositoryOverviewView: View {
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    /// A URL edit needs a text field, and `NSAlert` is the shortest path to one
+    /// that blocks until answered.
+    private func promptRelocate() {
+        let alert = NSAlert()
+        alert.messageText = "切换仓库地址"
+        alert.informativeText = "只用于仓库换了地址但内容没变的情况（换协议、换主机、换路径）。换到另一个仓库会被 svn 拒绝。"
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 380, height: 24))
+        field.stringValue = session.info?.url ?? ""
+        alert.accessoryView = field
+        alert.addButton(withTitle: "切换")
+        alert.addButton(withTitle: "取消")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let url = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !url.isEmpty else { return }
+        Task { await session.relocate(to: url) }
     }
 
     private func card<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {

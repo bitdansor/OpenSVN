@@ -209,6 +209,13 @@ final class RepositorySession: Identifiable {
 
     var autoRefreshEnabled = true
     var previewBeforeUpdate = true
+    /// `svn diff --diff-cmd` value; `nil` uses the built-in differ.
+    var externalDiffCommand: String?
+    /// True when the diff on screen was produced by an external tool.
+    ///
+    /// Such a tool usually prints nothing, so an empty pane would otherwise look
+    /// like "this file has no changes" instead of "look at the other window".
+    var lastDiffUsedExternalTool = false
     private var watcher: WorkingCopyWatcher?
     private var pendingWatchRefresh: Task<Void, Never>?
 
@@ -237,10 +244,25 @@ final class RepositorySession: Identifiable {
         return URL(string: info?.url ?? "")?.host
     }
 
+    /// Entries that can be committed from this working copy.
+    ///
+    /// Everything under an `svn:externals` mount is excluded: svn reports those
+    /// changes here but refuses to commit them, because they belong to another
+    /// repository or path. Counting them made the sidebar promise work that the
+    /// commit button could not deliver.
     var changedEntries: [StatusEntry] {
-        (status?.entries ?? []).filter {
-            $0.item.isCommittableChange || $0.properties == .modified
-        }
+        status?.committable ?? []
+    }
+
+    /// `svn:externals` mounts inside this working copy.
+    var externalEntries: [StatusEntry] {
+        (status?.entries ?? []).filter { $0.item == .external }
+    }
+
+    /// Changes that live inside an external mount.
+    var externalChangeEntries: [StatusEntry] {
+        let roots = status?.externalRoots ?? []
+        return (status?.entries ?? []).filter { $0.isInsideExternal(roots) }
     }
 
     var conflictedEntries: [StatusEntry] {
@@ -299,11 +321,7 @@ final class RepositorySession: Identifiable {
     private func pruneSelections(using snapshot: StatusSnapshot) {
         let valid = Set(snapshot.entries.map(\.id))
         selectedPaths.formIntersection(valid)
-        let committable = Set(
-            snapshot.entries
-                .filter { ($0.item.isCommittableChange || $0.properties == .modified) && !$0.hasConflicts }
-                .map(\.id)
-        )
+        let committable = Set(snapshot.committable.map(\.id))
         if commitSelection.isEmpty || !commitSelection.isSubset(of: valid) {
             commitSelection = committable
         } else {
@@ -459,9 +477,14 @@ final class RepositorySession: Identifiable {
         isLoading = true
         defer { isLoading = false }
         do {
-            let result = try await service.diffWorkingCopy(at: entryURL(entry))
+            let external = externalDiffCommand
+            let result = try await service.diffWorkingCopy(
+                at: entryURL(entry),
+                externalDiffCommand: external
+            )
             diff = result
             diffTitle = relativePath(entry.path)
+            lastDiffUsedExternalTool = external != nil
         } catch {
             handle(error)
         }
@@ -1250,6 +1273,7 @@ final class RepositorySession: Identifiable {
     func apply(settings: AppSettings) {
         autoRefreshEnabled = settings.autoRefresh
         previewBeforeUpdate = settings.previewBeforeUpdate
+        externalDiffCommand = settings.externalDiffCommand
         if autoRefreshEnabled {
             startWatching()
         } else {
@@ -1294,6 +1318,31 @@ final class RepositorySession: Identifiable {
         }
     }
 
+    // MARK: - Relocate
+
+    /// Repoints this working copy at the same repository over a different URL.
+    ///
+    /// svn's own UUID check is the safety net: relocating to a different
+    /// repository fails, so this cannot silently splice two histories together.
+    func relocate(to newURL: String) async {
+        guard let service else { return }
+        let trimmed = newURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.contains("://") else {
+            handle(SVNError(code: .invalidInvocation, message: "新的仓库地址需要包含协议"))
+            return
+        }
+        let target = path
+        do {
+            _ = try await withAuthRetry { credential in
+                try await service.relocate(workingCopy: target, to: trimmed, credential: credential)
+            }
+            await refresh()
+            await probeConnection()
+        } catch {
+            handle(error)
+        }
+    }
+
     // MARK: - Connection
 
     /// Asks the server whether it is there.
@@ -1318,6 +1367,76 @@ final class RepositorySession: Identifiable {
         } catch {
             connection = .unreachable(error.localizedDescription)
         }
+    }
+
+    // MARK: - Changelists
+
+    /// Filters the change list to one changelist. `nil` shows everything.
+    ///
+    /// A changelist is a local label, not a server concept — which is why this is
+    /// a view filter and not a query: the data is already in the snapshot.
+    var changelistFilter: String?
+
+    /// Names present in the working copy, in alphabetical order.
+    var changelists: [String] {
+        Set((status?.entries ?? []).compactMap(\.changelist))
+            .sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    /// Puts paths into a changelist, or takes them out when `name` is `nil`.
+    func assignChangelist(_ name: String?, to paths: [String]) async {
+        guard let service, !paths.isEmpty else { return }
+        let urls = paths.map { URL(fileURLWithPath: $0) }
+        do {
+            try await service.setChangelist(name, on: urls)
+            await refresh()
+        } catch {
+            handle(error)
+        }
+    }
+
+    // MARK: - Externals
+
+    /// The `svn:externals` definitions of this working copy, read-only.
+    struct ExternalsState: Identifiable {
+        let id = UUID()
+        var isLoading = true
+        var targets: [PropertyTarget] = []
+        var error: String?
+    }
+
+    var externalsState: ExternalsState?
+
+    func openExternals() {
+        externalsState = ExternalsState()
+        Task { await loadExternals() }
+    }
+
+    func loadExternals() async {
+        guard let service, let state = externalsState else { return }
+        guard let url = info?.url, url.contains("://") else {
+            externalsState?.isLoading = false
+            externalsState?.error = "无法确定仓库地址（file:// 之外的工作副本需要先读取信息）"
+            return
+        }
+        do {
+            let targets = try await withAuthRetry { credential in
+                try await service.remoteProperties(at: url, credential: credential)
+            }
+            guard var current = externalsState, current.id == state.id else { return }
+            current.targets = targets.filter { $0.value(of: "svn:externals") != nil }
+            current.isLoading = false
+            externalsState = current
+        } catch {
+            guard var current = externalsState, current.id == state.id else { return }
+            current.isLoading = false
+            current.error = (error as? SVNError)?.message ?? error.localizedDescription
+            externalsState = current
+        }
+    }
+
+    func dismissExternals() {
+        externalsState = nil
     }
 
     // MARK: - History helpers

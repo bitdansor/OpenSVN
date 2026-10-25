@@ -29,6 +29,8 @@ final class AppState {
 
     private(set) var bookmarks: [RepositoryBookmark] = []
     private(set) var sessions: [UUID: RepositorySession] = [:]
+    /// Repository bookmarks, which have no working copy behind them.
+    private(set) var browsers: [UUID: RepositoryBrowser] = [:]
     var selectedBookmarkID: UUID?
     var settings: AppSettings
     private(set) var installation: SVNInstallation?
@@ -75,6 +77,14 @@ final class AppState {
         guard let selectedBookmarkID else { return nil }
         return session(for: selectedBookmarkID)
     }
+
+    var selectedBrowser: RepositoryBrowser? {
+        guard let selectedBookmarkID else { return nil }
+        return browser(for: selectedBookmarkID)
+    }
+
+    var workingCopyBookmarks: [RepositoryBookmark] { bookmarks.filter { !$0.isRepository } }
+    var repositoryBookmarks: [RepositoryBookmark] { bookmarks.filter(\.isRepository) }
 
     // MARK: - Lifecycle
 
@@ -136,6 +146,9 @@ final class AppState {
             for session in sessions.values {
                 session.attach(service: service, taskCenter: taskCenter)
             }
+            for browser in browsers.values {
+                browser.attach(service: service, taskCenter: taskCenter)
+            }
         } catch let error as SVNError {
             self.service = nil
             self.installation = nil
@@ -181,7 +194,9 @@ final class AppState {
     // MARK: - Bookmarks
 
     func session(for id: UUID) -> RepositorySession? {
-        guard let bookmark = bookmarks.first(where: { $0.id == id }) else { return nil }
+        guard let bookmark = bookmarks.first(where: { $0.id == id }), !bookmark.isRepository else {
+            return nil
+        }
         if let existing = sessions[id] {
             return existing
         }
@@ -222,10 +237,75 @@ final class AppState {
 
     func removeRepository(id: UUID) {        bookmarks.removeAll { $0.id == id }
         sessions[id] = nil
+        browsers[id] = nil
         repositoryStore.save(bookmarks)
         if selectedBookmarkID == id {
             selectedBookmarkID = bookmarks.first?.id
         }
+    }
+
+    /// Asks for a repository URL and bookmarks it.
+    ///
+    /// An `NSAlert` because the answer is one line of text and a sheet would need
+    /// a whole view for it; the URL is validated by `addRepositoryBookmark`.
+    func promptForRepositoryBookmark() {
+        let alert = NSAlert()
+        alert.messageText = "只看仓库（不检出）"
+        alert.informativeText = "输入仓库地址。浏览、建目录、打 tag 都不需要把文件拉到本地。"
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 380, height: 24))
+        field.placeholderString = "https://svn.example.com/repo/trunk"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "添加")
+        alert.addButton(withTitle: "取消")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let url = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !url.isEmpty else { return }
+        addRepositoryBookmark(url: url)
+    }
+
+    /// Adds a repository bookmark and returns its browser.
+    ///
+    /// A repository can be bookmarked without checking anything out — that is the
+    /// point of having it: looking at `trunk` or a tag should not cost a copy of
+    /// the whole tree.
+    @discardableResult
+    func addRepositoryBookmark(url: String, name: String? = nil) -> RepositoryBrowser? {
+        let trimmed = url.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.contains("://") || trimmed.hasPrefix("/") else {
+            startupError = SVNError(
+                code: .invalidInvocation,
+                message: "仓库地址需要包含协议（例如 https:// 或 svn://）：\(trimmed)"
+            )
+            return nil
+        }
+        if let existing = bookmarks.first(where: { $0.repositoryURL == trimmed }) {
+            selectedBookmarkID = existing.id
+            return browser(for: existing.id)
+        }
+        let bookmark = RepositoryBookmark.repository(url: trimmed, name: name)
+        bookmarks.append(bookmark)
+        repositoryStore.save(bookmarks)
+        selectedBookmarkID = bookmark.id
+        let browser = browser(for: bookmark.id)
+        Task { await browser?.loadRoot() }
+        return browser
+    }
+
+    func browser(for id: UUID) -> RepositoryBrowser? {
+        guard let bookmark = bookmarks.first(where: { $0.id == id }), bookmark.isRepository else {
+            return nil
+        }
+        if let existing = browsers[id] { return existing }
+        let browser = RepositoryBrowser(
+            bookmark: bookmark,
+            service: service,
+            taskCenter: taskCenter,
+            onCredentialRequired: { [weak self] host in
+                await self?.requestCredential(host: host)
+            }
+        )
+        browsers[id] = browser
+        return browser
     }
 
     func moveBookmark(_ id: UUID, to index: Int) {

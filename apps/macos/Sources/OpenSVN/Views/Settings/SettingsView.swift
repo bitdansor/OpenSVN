@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var maxConcurrentWrites = AppSettings.defaultMaxConcurrentWrites
     @State private var autoRefresh = true
     @State private var previewBeforeUpdate = true
+    @State private var externalDiffCommand = ""
     @State private var credentialScopes: [CredentialScope] = []
     @State private var statusMessage: String?
     @State private var showingClearConfirmation = false
@@ -91,6 +92,25 @@ struct SettingsView: View {
                 Text("更新前读取一次远端状态，列出将新增 / 修改 / 删除的路径，并标出与本地未提交修改冲突的风险。代价是多一次网络往返。")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+            }
+
+            Section("外部工具") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("外部 diff 命令")
+                        .font(.callout)
+                    HStack {
+                        TextField("留空则使用内置差异视图", text: $externalDiffCommand)
+                            .textFieldStyle(.roundedBorder)
+                        Button("选择…") { chooseDiffCommand() }
+                        if !externalDiffCommand.isEmpty {
+                            Button("清除") { externalDiffCommand = "" }
+                        }
+                    }
+                    Text("传给 `svn diff --diff-cmd`。应填一个包装脚本而不是 GUI 程序本身：svn 会等子进程退出，直接指向 GUI 会让操作卡到窗口关闭为止。脚本可以 `open -a` 启动工具后立即返回。")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             Section("日志") {
@@ -225,6 +245,7 @@ struct SettingsView: View {
         maxConcurrentWrites = settings.maxConcurrentWrites
         autoRefresh = settings.autoRefresh
         previewBeforeUpdate = settings.previewBeforeUpdate
+        externalDiffCommand = settings.externalDiffCommand ?? ""
     }
 
     private func remove(_ scope: CredentialScope) async {
@@ -237,6 +258,17 @@ struct SettingsView: View {
         let directory = AppLog.defaultDirectory
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         NSWorkspace.shared.open(directory)
+    }
+
+    private func chooseDiffCommand() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "选择"
+        panel.message = "选择用于 svn diff 的脚本或程序"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        externalDiffCommand = url.path
     }
 
     private func chooseExecutable() {
@@ -264,6 +296,8 @@ struct SettingsView: View {
         )
         settings.autoRefresh = autoRefresh
         settings.previewBeforeUpdate = previewBeforeUpdate
+        let diffCommand = externalDiffCommand.trimmingCharacters(in: .whitespacesAndNewlines)
+        settings.externalDiffCommand = diffCommand.isEmpty ? nil : diffCommand
         await appState.apply(settings: settings)
         credentialScopes = await appState.credentialScopes()
         if let error = appState.startupError {

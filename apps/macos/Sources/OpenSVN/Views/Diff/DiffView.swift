@@ -14,6 +14,14 @@ struct DiffView: View {
             } else if session.isLoading {
                 ProgressView("正在生成差异…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if session.lastDiffUsedExternalTool {
+                // An external tool almost always prints nothing. Saying "没有差异"
+                // here would be the opposite of what is happening.
+                ContentUnavailableView {
+                    Label("已交给外部工具", systemImage: "arrow.up.forward.app")
+                } description: {
+                    Text("差异由外部 diff 命令打开，窗口可能已经出现在前台。要改回内置视图，到设置里清空外部 diff 命令。")
+                }
             } else {
                 ContentUnavailableView {
                     Label("没有差异", systemImage: "plus.forwardslash.minus")

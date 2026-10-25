@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 import OpenSVNCore
 
@@ -89,6 +90,12 @@ struct ChangesView: View {
 
             Spacer(minLength: 8)
 
+            if entry.isInsideExternal(externalRoots) {
+                // svn lists these next to the parent's own changes but refuses to
+                // commit them; without a badge the row looks like any other edit.
+                StatusBadge(text: "外部", color: .blue)
+                    .help("该路径位于 svn:externals 挂载的工作副本内，要提交得去那个工作副本")
+            }
             if let changelist = entry.changelist {
                 StatusBadge(text: changelist, color: .blue)
             }
@@ -251,6 +258,8 @@ struct ChangesView: View {
                 Label("刷新", systemImage: "arrow.clockwise")
             }
 
+            changelistMenu
+
             Divider().frame(height: 16)
 
             Button {
@@ -321,6 +330,71 @@ struct ChangesView: View {
         .background(.bar)
     }
 
+    /// Changelists: a local label and a view filter, never a server concept.
+    private var changelistMenu: some View {
+        Menu {
+            Button("显示全部") { session.changelistFilter = nil }
+            if !session.changelists.isEmpty {
+                Divider()
+                ForEach(session.changelists, id: \.self) { name in
+                    Button {
+                        session.changelistFilter = name
+                    } label: {
+                        if session.changelistFilter == name {
+                            Label(name, systemImage: "checkmark")
+                        } else {
+                            Text(name)
+                        }
+                    }
+                }
+            }
+
+            Divider()
+
+            Menu("将所选加入") {
+                ForEach(session.changelists, id: \.self) { name in
+                    Button(name) {
+                        Task { await session.assignChangelist(name, to: selectedEntries.map(\.id)) }
+                    }
+                }
+                if !session.changelists.isEmpty { Divider() }
+                Button("新建变更集…") { promptForChangelistName() }
+            }
+            .disabled(selectedEntries.isEmpty)
+
+            Button("移出变更集") {
+                Task { await session.assignChangelist(nil, to: selectedEntries.map(\.id)) }
+            }
+            .disabled(!selectedEntries.contains { $0.changelist != nil })
+        } label: {
+            Label(
+                session.changelistFilter ?? "变更集",
+                systemImage: "tray.full"
+            )
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("变更集只存在于本地，用来把改动分组；提交时按勾选，不按变更集")
+    }
+
+    /// A name prompt has to be a text field, and `NSAlert` is the shortest path
+    /// to one that also blocks until answered.
+    private func promptForChangelistName() {
+        let alert = NSAlert()
+        alert.messageText = "新建变更集"
+        alert.informativeText = "变更集是本地标签，不会提交到服务器。"
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        field.placeholderString = "例如 ui-review"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "创建")
+        alert.addButton(withTitle: "取消")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let name = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        let paths = selectedEntries.map(\.id)
+        Task { await session.assignChangelist(name, to: paths) }
+    }
+
     private var selectionSummary: String {
         var parts: [String] = []
         if !session.filterText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -345,14 +419,21 @@ struct ChangesView: View {
     /// "anything called src or retry". Matching the whole path rather than the
     /// file name is what makes directory filtering work without a second field.
     private var filteredEntries: [StatusEntry] {
+        var entries = session.status?.entries ?? []
+        if let list = session.changelistFilter {
+            entries = entries.filter { $0.changelist == list }
+        }
         let raw = session.filterText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let all = session.status?.entries ?? []
-        guard !raw.isEmpty else { return all }
+        guard !raw.isEmpty else { return entries }
         let terms = raw.split(whereSeparator: \.isWhitespace).map { $0.lowercased() }
-        return all.filter { entry in
+        return entries.filter { entry in
             let haystack = session.relativePath(entry.path).lowercased()
             return terms.allSatisfy { haystack.contains($0) }
         }
+    }
+
+    private var externalRoots: [String] {
+        session.status?.externalRoots ?? []
     }
 
     private var orderedCategories: [StatusCategory] {
