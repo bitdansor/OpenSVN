@@ -22,13 +22,6 @@ struct HistoryView: View {
                     .frame(minWidth: 340)
             }
         }
-        // Local by default: it is instant, and it is what people mean by
-        // "search" when the answer is already on screen.
-        .searchable(
-            text: $session.logFilter.text,
-            placement: .toolbar,
-            prompt: "筛选已加载的历史（⌘F）"
-        )
         .task {
             if session.log.isEmpty {
                 await session.loadLog(reset: true)
@@ -142,19 +135,32 @@ struct HistoryView: View {
         }
     }
 
+    /// The list's own bar.
+    ///
+    /// The filter field used to be a toolbar search field, one row up with the
+    /// actions that belong to the whole window. It only filters this list, so it
+    /// sits on this list's bar — and the "历史" caption that used to open the row
+    /// is gone: the section switcher already says which page this is, and a
+    /// duplicate title only costs width the field can use.
+    ///
+    /// Local by default: it is instant, and it is what people mean by "search"
+    /// when the answer is already on screen.
     private var header: some View {
         HStack(spacing: 8) {
-            Text("历史")
-                .font(.headline)
+            FilterField(
+                text: $session.logFilter.text,
+                prompt: "筛选说明、作者、路径、r1234"
+            )
+            .frame(minWidth: 110, maxWidth: .infinity)
+
             Text(countLabel)
-                .font(.caption)
+                .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
+                .fixedSize()
 
             if session.isLogLoading || session.isLogSearching {
                 ProgressView().controlSize(.small)
             }
-
-            Spacer()
 
             filterMenu
 
@@ -178,7 +184,7 @@ struct HistoryView: View {
             .disabled(session.isLogLoading)
             .help("重新读取最新历史")
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 12)
         .padding(.vertical, 8)
     }
 
