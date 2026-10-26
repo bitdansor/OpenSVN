@@ -42,6 +42,21 @@ struct MainWindowView: View {
             }
         }
         .navigationTitle(appState.selectedBookmark?.name ?? "OpenSVN")
+        // The two columns must meet on one line, from the window's top edge all
+        // the way down.
+        //
+        // By default the toolbar draws its sidebar-shaped background 2 pt
+        // narrower than the sidebar column is, and the divider between the
+        // columns only starts below the toolbar. Measured on screen: the colour
+        // change at the top was at x=496 and the divider below it at x=500, so
+        // the seam stepped sideways exactly at the toolbar's bottom edge — which
+        // is the notch that showed up at the top of the split. Hiding the
+        // toolbar's own background removes the mismatch at its source: there is
+        // one surface and one divider, with no second edge to line up against.
+        //
+        // The title stays legible because the detail column's content begins
+        // below the toolbar; nothing scrolls underneath it.
+        .toolbarBackground(.hidden, for: .windowToolbar)
         .animation(.easeOut(duration: 0.18), value: showsRecoveryBanner)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
