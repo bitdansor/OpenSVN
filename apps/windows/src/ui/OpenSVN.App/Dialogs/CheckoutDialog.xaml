@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="OpenSVN.App.Dialogs.CheckoutDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="检出仓库"
+    PrimaryButtonText="开始检出"
+    CloseButtonText="取消"
+    DefaultButton="Primary"
+    MinWidth="640">
+
+    <StackPanel Spacing="10">
+        <TextBox x:Name="UrlBox" Header="仓库 URL"
+                 PlaceholderText="https://example.com/svn/project/trunk" />
+        <Grid ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="DestinationBox" Header="目标目录" IsReadOnly="True"
+                     PlaceholderText="选择一个空目录或新目录" />
+            <Button Grid.Column="1" Content="浏览…" Click="Browse_Click" VerticalAlignment="Bottom" />
+        </Grid>
+        <Grid ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="180" />
+            </Grid.ColumnDefinitions>
+            <ComboBox x:Name="DepthBox" Header="深度" SelectedIndex="0" HorizontalAlignment="Stretch">
+                <ComboBoxItem Content="完整（infinity）" Tag="infinity" />
+                <ComboBoxItem Content="仅目录（immediates）" Tag="immediates" />
+                <ComboBoxItem Content="仅文件（files）" Tag="files" />
+                <ComboBoxItem Content="空目录（empty）" Tag="empty" />
+            </ComboBox>
+            <TextBox x:Name="RevisionBox" Grid.Column="1" Header="修订（可选）"
+                     PlaceholderText="例如 42" />
+        </Grid>
+        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                   Text="检出会下载仓库内容到目标目录；可以随时取消。若目标目录已经存在内容，svn 仍可能拒绝写入。" />
+        <TextBlock x:Name="ErrorText" FontSize="12"
+                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                   TextWrapping="Wrap" Visibility="Collapsed" />
+    </StackPanel>
+</ContentDialog>

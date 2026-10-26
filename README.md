@@ -3,17 +3,19 @@
 A modern, native, cross-platform Subversion client.
 
 OpenSVN is a free, open-source, native GUI client for Apache Subversion (SVN) on macOS and Windows.
-macOS is built with Swift 6 + SwiftUI/AppKit; Windows (planned) with C++20 + WinUI 3.
+macOS is built with Swift 6 + SwiftUI/AppKit; Windows uses a C++20 core behind a C ABI with a C# WinUI 3 app.
 No Electron, no Qt, no embedded browser.
 
 > Status: `v0.1.0-dev` — macOS core + GUI under active development. The Windows
-> tree was deliberately emptied on 2026-10-18 and will be rebuilt from scratch.
+> core and app build and pass the native test suite; they have been runtime-tested
+> only against `fake_svn`, not a real Subversion installation. No Windows installer
+> exists yet. Details: [apps/windows/README.md](apps/windows/README.md).
 
 ## Repository layout
 
 ```text
 apps/macos/            Swift Package (OpenSVNCore + SwiftUI app) and Xcode project
-apps/windows/          Reserved for the Windows port; intentionally empty
+apps/windows/          C++20 core + C ABI + C# WinUI 3 app (unpackaged)
 specifications/        Cross-platform behaviour contracts (the source of truth)
 tests/fixtures/        Recorded `svn --xml` outputs used by contract tests
 tests/scenarios/       Fault-injection catalogue (F1-F15) and its future harness
@@ -23,11 +25,11 @@ packaging/{macos,windows}/  Signing, notarisation, installer definitions (stage 
 third_party/           Dependency inventory and licence obligations
 ```
 
-What is actually verified is written down in
-[apps/macos/README.md](apps/macos/README.md) (implemented, tested). `apps/windows/`
-contains only a placeholder: the previous C++/WinUI skeleton never compiled, so it
-was removed rather than left as a claim nobody could check. `windows-ci.yml` and
-`bootstrap-windows.ps1` were removed with it and must come back together.
+What is actually verified is written down per platform:
+[apps/macos/README.md](apps/macos/README.md) and
+[apps/windows/README.md](apps/windows/README.md). The Windows tree was rebuilt
+from scratch after the previous C++/WinUI skeleton never compiled; code, CI and
+bootstrap scripts now land together.
 
 ## Build & run (macOS)
 
@@ -89,10 +91,31 @@ HOME="$PWD/.build-home" swift test
 
 `.build-home` is ignored by git.
 
+## Build & run (Windows)
+
+Requirements: Windows 11 x64, Visual Studio 2022/2026 with **Desktop development
+with C++**, Windows SDK 10.0.26100+, CMake 3.25+, and the .NET 10 SDK. A real
+`svn.exe` 1.10+ is needed to use the app; the build and unit tests use
+`fake_svn.exe`.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\bootstrap-windows.ps1
+powershell -ExecutionPolicy Bypass -File scripts\build-windows.ps1 -Configuration Debug
+```
+
+The app lands under
+`apps/windows/src/ui/OpenSVN.App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/`.
+It is unpackaged and self-contained in the Windows App SDK/.NET sense; the native
+bridge still links the MSVC runtime, so a machine without Visual Studio needs the
+VC++ 2015-2022 Redistributable (x64). There is no MSIX package or installer yet;
+the packaging format is provisional. [apps/windows/README.md](apps/windows/README.md)
+documents the architecture, native bridge, safety invariants, app data paths and
+what has not been implemented.
+
 ## Safety principles
 
 1. Subprocesses are always launched with an argument array — never a shell string.
-2. Passwords never appear in argv, logs, or settings; they go through stdin and the macOS Keychain.
+2. Passwords never appear in argv, logs, or settings; they go through stdin and the macOS Keychain or Windows Credential Manager.
 3. Destructive operations (`revert`, `delete`, conflict resolution) require an explicit confirmation flag at
    the service layer, not only in the UI.
 4. Writes on the same working copy are serialized.

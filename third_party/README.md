@@ -50,12 +50,26 @@ ls build/OpenSVN.app/Contents/Resources/licenses    # must exist before release
 | Swift Testing | Apache-2.0 WITH Swift-exception | test target only, not linked into the app |
 | GitHub Actions runner images | vendor terms | CI only |
 
-## Windows
+## Windows (current build)
 
-Not started. `apps/windows` is an empty placeholder as of 2026-10-18. The
-expected inventory is Subversion for Windows (`svn.exe`, Apache-2.0) plus its
-runtime DLLs; APR-iconv and the Microsoft C runtime will need the same treatment.
-Record the real list when the port starts — do not copy this table.
+The Windows app is unpackaged and self-contained but does **not** bundle Subversion:
+it requires `svn.exe` 1.10+ on the machine (or an explicit path in Settings).
+Components present in the app output:
+
+| Component | License | Why it is present | Obligation |
+| --- | --- | --- | --- |
+| .NET 10 runtime | MIT | self-contained runtime | ship license text |
+| Windows App SDK 2.5.1 / WinUI 3 | Microsoft Windows App SDK license (not OSS) | UI framework, self-contained | ship Microsoft's license/notices; distributable code terms apply |
+| MSVC C++ runtime (`MSVCP140`, `VCRUNTIME140`) | Microsoft Distributable Code | linked by `OpenSVN.Native.dll`; not bundled yet | install the Visual C++ Redistributable (x64) on the target, or bundle/static-link it before packaging |
+| Windows SDK BuildTools | Microsoft SDK terms | build-time only | not redistributed |
+| pugixml 1.14 | MIT | XML parsing, statically linked into `OpenSVN.Native.dll` | reproduce copyright + license |
+| nlohmann/json 3.11.3 | MIT | C ABI JSON, statically linked | reproduce copyright + license |
+| GoogleTest 1.14.0 | BSD-3-Clause | tests only, not shipped | none for binaries |
+
+Before any public Windows release, record the runtime distribution strategy.
+If Subversion is bundled, add `svn.exe` and its DLLs (Apache-2.0 and the APR/OpenSSL
+closure) to the inventory, copy their license texts, and record a provenance
+manifest. Do not reuse the macOS table above — the Windows closure is different.
 
 ## Rules for adding a dependency
 

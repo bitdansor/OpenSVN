@@ -5,6 +5,7 @@
 ## Scope
 
 - [ ] macOS (`apps/macos`)
+- [ ] Windows (`apps/windows`)
 - [ ] Shared behaviour contract (`specifications/`)
 - [ ] Tests only (`tests/`)
 - [ ] Tooling / CI / docs (no product code)
@@ -44,6 +45,7 @@ the reviewer notes — a violation means the change gets rolled back, not patche
 ```text
 swift build && swift test          # paste the suite/test counts
 scripts/build-macos-app.sh         # if the app bundle changed
+powershell -File scripts\build-windows.ps1 -Configuration Debug   # if apps/windows changed
 python3 scripts/verify-release.py  # if metadata or fixtures changed
 ```
 

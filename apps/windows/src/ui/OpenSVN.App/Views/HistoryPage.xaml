@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Page
+    x:Class="OpenSVN.App.Views.HistoryPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:models="using:OpenSVN.App.Models"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <DataTemplate x:Key="LogTemplate" x:DataType="models:LogEntryDto">
+            <Grid Padding="4,7" ColumnSpacing="10">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="58" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{x:Bind RevisionText}" FontWeight="SemiBold"
+                           VerticalAlignment="Top" />
+                <StackPanel Grid.Column="1" Spacing="2">
+                    <TextBlock Text="{x:Bind MessageFirstLine}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock Text="{x:Bind MetaDisplay}" FontSize="12"
+                               Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+            </Grid>
+        </DataTemplate>
+
+        <DataTemplate x:Key="ChangedPathTemplate" x:DataType="models:ChangedPathDto">
+            <Grid Padding="2,3" ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="44" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock Text="{x:Bind ActionDisplay}" FontSize="12"
+                           Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" />
+                <TextBlock Grid.Column="1" Text="{x:Bind DisplayText}" FontSize="12"
+                           TextWrapping="Wrap" />
+            </Grid>
+        </DataTemplate>
+    </Page.Resources>
+
+    <Grid Padding="16,8,16,12" RowSpacing="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Spacing="2">
+                <TextBlock Text="历史" Style="{StaticResource SectionTitleStyle}" />
+                <TextBlock Text="按修订分页加载，不会一次拉取整个仓库历史。"
+                           FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <ProgressRing x:Name="LoadingRing" Width="18" Height="18" IsActive="False"
+                              AutomationProperties.Name="正在加载历史记录" />
+                <Button Content="刷新" Click="Refresh_Click" />
+            </StackPanel>
+        </Grid>
+
+        <InfoBar x:Name="ErrorBar" Grid.Row="1" Severity="Error" IsOpen="False"
+                 IsClosable="True" Title="历史加载失败" Message="" />
+
+        <Grid Grid.Row="2" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.1*" MinWidth="240" />
+                <ColumnDefinition Width="2*" MinWidth="280" />
+            </Grid.ColumnDefinitions>
+
+            <Border CornerRadius="6" BorderThickness="1"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}">
+                <Grid>
+                    <ListView x:Name="LogList" ItemTemplate="{StaticResource LogTemplate}"
+                              SelectionMode="Single" SelectionChanged="LogList_SelectionChanged" />
+                    <StackPanel x:Name="EmptyLogState" HorizontalAlignment="Center"
+                                VerticalAlignment="Center" Spacing="6" Visibility="Collapsed">
+                        <TextBlock Text="暂无历史记录" FontSize="16" HorizontalAlignment="Center" />
+                        <TextBlock Text="刷新后仍为空，可能是当前路径没有提交历史。"
+                                   FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="1" CornerRadius="6" BorderThickness="1"
+                    BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}"
+                    Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
+                    Padding="16">
+                <Grid>
+                    <StackPanel x:Name="EmptyDetail" HorizontalAlignment="Center"
+                                VerticalAlignment="Center" Spacing="6">
+                        <TextBlock Text="选择一个修订" FontSize="16" HorizontalAlignment="Center" />
+                        <TextBlock Text="这里会显示作者、时间、提交说明和变更路径。"
+                                   FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+
+                    <ScrollViewer x:Name="DetailScroll" Visibility="Collapsed"
+                                  VerticalScrollBarVisibility="Auto">
+                        <StackPanel Spacing="10">
+                            <TextBlock x:Name="DetailHeader" FontSize="18" FontWeight="SemiBold" />
+                            <TextBlock x:Name="DetailMeta" FontSize="12"
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                            <TextBlock x:Name="DetailMessage" TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+                            <TextBlock Text="变更路径" FontWeight="SemiBold" Margin="0,8,0,0" />
+                            <ListView x:Name="ChangedPathsList" MaxHeight="280"
+                                      SelectionMode="None"
+                                      ItemTemplate="{StaticResource ChangedPathTemplate}" />
+                            <Button x:Name="ViewDiffButton" Content="查看此修订的差异" Margin="0,8,0,0"
+                                    Click="ViewDiff_Click" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Button x:Name="LoadMoreButton" Grid.Row="3" Content="加载更多" HorizontalAlignment="Center"
+                Visibility="Collapsed" Click="LoadMore_Click" />
+    </Grid>
+</Page>

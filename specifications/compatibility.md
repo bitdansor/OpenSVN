@@ -28,9 +28,13 @@
 | 平台 | 最低版本 | 架构 | 状态 |
 |---|---|---|---|
 | macOS | 14.0 | arm64（首期），x86_64 后续 | 已实现 |
-| Windows | Windows 11 | x64 | 未开始 |
+| Windows | Windows 11 | x64 | 已实现；运行时待真实 svn 验证 |
 
 macOS 不启用 App Sandbox：需要任意路径的工作副本访问与子进程执行。代价是无法上架 Mac App Store，分发走 Developer ID + 公证（阶段 6）。
+
+Windows 端已实现（C++20 核心 + C# WinUI 3，unpackaged），原生测试通过，但只用
+`fake_svn.exe` 做过运行时验证；安装包、内置运行时与真实 `svn.exe` 的兼容性验证尚未完成。
+状态与缺口见 `apps/windows/README.md`。
 
 ## 4. locale 与编码
 

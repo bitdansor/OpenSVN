@@ -1,7 +1,7 @@
 name: macOS CI
 
 # R8: `main` must always be buildable. This workflow is the gate that enforces it
-# for the macOS half of the tree. Windows CI lands with the Windows port (S1-6).
+# for the macOS half of the tree. The Windows half is `.github/workflows/windows-ci.yml`.
 
 on:
   push:

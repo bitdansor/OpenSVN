@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="ov-title ov-desc">
+<title id="ov-title">OpenSVN small application icon</title><desc id="ov-desc">Optically simplified version of the open project folder, with solid revision nodes for small display sizes.</desc>
+
+<path d="M80 160V145C80 131 91 120 105 120H188C199 120 207 124 214 132L234 154H407C421 154 432 165 432 179V378C432 394 419 407 403 407H109C93 407 80 394 80 378Z" fill="#1556C7"/><g transform="rotate(-12 210 201)">
+<path d="M144 104Q144 92 156 92H244L280 128V298Q280 310 268 310H156Q144 310 144 298Z" fill="#D2E7FF"/>
+<path d="M244 92V116Q244 128 256 128H280" fill="#9AC9FA"/>
+</g><g transform="rotate(8 296 202)">
+<path d="M218 102Q218 89 231 89H330L369 128V303Q369 317 355 317H232Q218 317 218 303Z" fill="#F3FAFF"/>
+<path d="M330 89V115Q330 128 343 128H369" fill="#B6D8FF"/>
+</g><path d="M94 207H407Q424 207 430 226H76Q79 207 94 207Z" fill="#1059BE"/><g><path d="M85 218H417C436 218 450 235 445 254L420 395C417 414 402 428 383 428H116C97 428 82 415 78 397L53 254C49 235 63 218 85 218Z" fill="#2176E6"/></g><g fill="none" stroke-linejoin="round">
+<path d="M310 294V301C310 316 298 328 280 334L202 359" stroke="#B8F4FF" stroke-width="23"/>
+<path d="M202 276V363" stroke="#FFFFFF" stroke-width="23"/>
+<circle cx="202" cy="266" r="16" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="0"/><circle cx="310" cy="284" r="16" fill="#B8F4FF" stroke="#B8F4FF" stroke-width="0"/><circle cx="202" cy="373" r="16" fill="#FFFFFF" stroke="#FFFFFF" stroke-width="0"/></g>
+</svg>

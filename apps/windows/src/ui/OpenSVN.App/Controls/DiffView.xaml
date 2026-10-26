@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="OpenSVN.App.Controls.DiffView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border x:Name="Surface">
+        <ScrollViewer x:Name="Scroller" HorizontalScrollBarVisibility="Auto"
+                      VerticalScrollBarVisibility="Auto" Padding="8">
+            <StackPanel>
+                <RichTextBlock x:Name="Block" IsTextSelectionEnabled="True" TextWrapping="NoWrap"
+                               FontFamily="Cascadia Mono, Consolas" FontSize="12" LineHeight="18" />
+                <Button x:Name="LoadMoreButton" Content="显示更多行" Visibility="Collapsed"
+                        Margin="0,8,0,0" Padding="10,4" FontSize="12"
+                        Click="LoadMore_Click"
+                        AutomationProperties.Name="继续加载差异内容" />
+            </StackPanel>
+        </ScrollViewer>
+    </Border>
+</UserControl>

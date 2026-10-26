@@ -22,6 +22,12 @@ NOTE: `libintl` is the one compliance-sensitive dependency. The preferred fix is
 to build the bundled runtime with `--disable-nls`, removing the dependency
 entirely (SVN's own message catalogues are not used by OpenSVN's UI).
 
+The Windows build currently bundles no Subversion runtime. Its native core links
+pugixml (MIT) and nlohmann/json (MIT); the app uses the Microsoft .NET runtime
+(MIT) and the Microsoft Windows App SDK (Microsoft license, not OSS). A public
+Windows release must add the bundled `svn.exe` inventory, license texts and a
+provenance manifest — see `third_party/README.md`.
+
 --------------------------------------------------------------------------------
 Trademarks
 

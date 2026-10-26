@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <RootNamespace>OpenSVN.App</RootNamespace>
+    <AssemblyName>OpenSVN</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SelfContained>true</SelfContained>
+    <UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <EnableMsixTooling>false</EnableMsixTooling>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <ApplicationIcon>Assets\opensvn.ico</ApplicationIcon>
+    <OpenSVNNativeDir Condition="'$(OpenSVNNativeDir)' == ''">$(MSBuildProjectDirectory)\..\..\..\build\$(Configuration)</OpenSVNNativeDir>
+    <!-- The repository root VERSION file is the only place the app version is
+         written down; the UI reads it back from the assembly metadata. -->
+    <OpenSVNVersionFile>$(MSBuildProjectDirectory)\..\..\..\..\..\VERSION</OpenSVNVersionFile>
+    <OpenSVNVersion Condition="Exists('$(OpenSVNVersionFile)')">$([System.IO.File]::ReadAllText('$(OpenSVNVersionFile)').Trim())</OpenSVNVersion>
+    <OpenSVNVersion Condition="'$(OpenSVNVersion)' == ''">0.1.0-dev</OpenSVNVersion>
+    <Version>$(OpenSVNVersion)</Version>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="2.5.1" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2705" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\opensvn.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\opensvn-icon.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\opensvn-icon-small.png" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(OpenSVNNativeDir)\OpenSVN.Native.dll')">
+    <None Include="$(OpenSVNNativeDir)\OpenSVN.Native.dll"
+          Link="OpenSVN.Native.dll"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="$(OpenSVNNativeDir)\OpenSVN.Native.pdb"
+          Link="OpenSVN.Native.pdb"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('$(OpenSVNNativeDir)\OpenSVN.Native.pdb')" />
+  </ItemGroup>
+</Project>

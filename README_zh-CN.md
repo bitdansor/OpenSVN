@@ -2,17 +2,18 @@
 
 现代化、免费、开源、原生的 Apache Subversion（SVN）图形客户端。
 
-macOS 端使用 Swift 6 + SwiftUI/AppKit；Windows 端（规划中）使用 C++20 + WinUI 3。
+macOS 端使用 Swift 6 + SwiftUI/AppKit；Windows 端使用 C++20 核心 + C ABI + C# WinUI 3 应用。
 不使用 Electron、Qt 或内嵌浏览器。
 
-> 当前状态：`v0.1.0-dev`，macOS 核心层与界面正在开发。Windows 端已于 2026-10-18
-> 清空，后续从零重做。
+> 当前状态：`v0.1.0-dev`，macOS 核心层与界面正在开发。Windows 核心层与应用可以构建，
+> 原生测试全部通过；但运行时只用 `fake_svn` 验证过，尚未在真实 Subversion 上运行。
+> Windows 安装包尚未实现。详见 [apps/windows/README.md](apps/windows/README.md)。
 
 ## 仓库结构
 
 ```text
 apps/macos/            Swift Package（OpenSVNCore + SwiftUI 应用）与 Xcode 工程
-apps/windows/          预留给 Windows 端，当前刻意保持为空
+apps/windows/          C++20 核心 + C ABI + C# WinUI 3 应用（未打包）
 specifications/        跨平台行为契约（唯一事实来源）
 tests/fixtures/        采集的 `svn --xml` 输出，用于契约测试
 tests/scenarios/       故障注入场景目录（F1–F15）与将来的执行器
@@ -22,10 +23,9 @@ packaging/{macos,windows}/  签名、公证、安装包定义（阶段 6）
 third_party/           第三方依赖清单与许可证义务
 ```
 
-哪些是真的验证过的，写在 [apps/macos/README.md](apps/macos/README.md)（已实现、有测试）。
-`apps/windows/` 只剩占位文件：之前那套 C++/WinUI 骨架一次都没编译通过，
-所以直接删掉，而不是留一份没人能验证的声明。`windows-ci.yml` 与
-`bootstrap-windows.ps1` 已随之移除，将来必须与代码一起回来。
+哪些是真的验证过的，分别写在 [apps/macos/README.md](apps/macos/README.md) 与
+[apps/windows/README.md](apps/windows/README.md)。上一套 C++/WinUI 骨架从未编译通过，
+Windows 端已从零重做；现在代码、CI 与引导脚本必须在同一次提交里出现。
 
 ## 构建与运行（macOS）
 
@@ -81,10 +81,28 @@ HOME="$PWD/.build-home" swift test
 
 `.build-home` 已被 git 忽略。
 
+## 构建与运行（Windows）
+
+依赖：Windows 11 x64、装有 **Desktop development with C++** 的 Visual Studio
+2022/2026、Windows SDK 10.0.26100+、CMake 3.25+、.NET 10 SDK。应用需要
+`svn.exe` 1.10+ 才能工作；构建与单元测试使用 `fake_svn.exe`，不需要真实 svn。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\bootstrap-windows.ps1
+powershell -ExecutionPolicy Bypass -File scripts\build-windows.ps1 -Configuration Debug
+```
+
+产物位于
+`apps/windows/src/ui/OpenSVN.App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64/`。
+应用在 Windows App SDK/.NET 意义上自包含；原生桥仍链接 MSVC 运行库，目标机若未装
+Visual Studio，需要 VC++ 2015-2022 Redistributable（x64）。MSIX 与安装器尚未实现，
+打包形式仍待实测定稿。架构、原生桥、安全约束、数据目录与未实现项见
+[apps/windows/README.md](apps/windows/README.md)。
+
 ## 安全原则
 
 1. 子进程一律以独立参数数组启动，禁止拼接 Shell 字符串。
-2. 密码不出现在命令行参数、日志或设置中；通过 stdin 与 macOS Keychain 传递与保存。
+2. 密码不出现在命令行参数、日志或设置中；通过 stdin 与 macOS Keychain / Windows Credential Manager 传递与保存。
 3. 危险操作（`revert`、`delete`、冲突解决）必须在**服务层**要求显式确认，不能只靠界面拦截。
 4. 同一工作副本上的写操作串行化。
 5. 所有长耗时任务异步执行、可取消、有进度。

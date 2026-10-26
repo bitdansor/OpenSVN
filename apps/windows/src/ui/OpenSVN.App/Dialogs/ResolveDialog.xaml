@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="OpenSVN.App.Dialogs.ResolveDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="解决冲突"
+    PrimaryButtonText="解决"
+    CloseButtonText="取消"
+    DefaultButton="Close"
+    MinWidth="620">
+
+    <StackPanel Spacing="10">
+        <TextBlock x:Name="PathsText" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                   TextWrapping="Wrap" IsTextSelectionEnabled="True" />
+        <StackPanel Spacing="4">
+            <RadioButton x:Name="WorkingOption" GroupName="strategy" Tag="0" IsChecked="True" Checked="Strategy_Changed">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="保留当前内容，仅清除冲突标记" FontWeight="SemiBold" />
+                    <TextBlock Text="保留磁盘上的当前内容（可能仍含冲突标记），仅清除冲突状态。"
+                               FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+            </RadioButton>
+            <RadioButton GroupName="strategy" Tag="1" Checked="Strategy_Changed">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="用我的版本覆盖（丢弃服务器改动）" FontWeight="SemiBold" />
+                    <TextBlock Text="丢弃服务器带来的修改，只保留本地版本。此操作不可撤销。"
+                               FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+            </RadioButton>
+            <RadioButton GroupName="strategy" Tag="2" Checked="Strategy_Changed">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="用服务器版本覆盖（丢弃我的改动）" FontWeight="SemiBold" />
+                    <TextBlock Text="丢弃全部本地修改，改用服务器版本。此操作不可撤销。"
+                               FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+            </RadioButton>
+            <RadioButton GroupName="strategy" Tag="3" Checked="Strategy_Changed">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="恢复基线版本（丢弃双方改动）" FontWeight="SemiBold" />
+                    <TextBlock Text="还原到冲突前的基线版本，本地与该次服务器修改都会被丢弃。"
+                               FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                </StackPanel>
+            </RadioButton>
+        </StackPanel>
+        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                   Text="解决前会备份冲突文件。若选择「保留当前内容」，备份和残留标记检查仍会执行。" />
+    </StackPanel>
+</ContentDialog>
