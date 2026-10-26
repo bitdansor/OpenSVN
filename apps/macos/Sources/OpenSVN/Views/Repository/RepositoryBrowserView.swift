@@ -10,13 +10,32 @@ struct RepositoryBrowserView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
             breadcrumb
             Divider()
+            // Same reason as the changes list: the status bar is pinned to the
+            // bottom only if what sits above it claims the leftover height.
             content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             Divider()
             statusBar
+        }
+        // Same chrome rule as the working-copy detail: name in the title bar,
+        // path underneath it, actions in the toolbar. A repository and a working
+        // copy are two views of one thing, so they must not wear two different
+        // headers.
+        .navigationSubtitle(subtitle)
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    Task { await browser.refresh() }
+                } label: {
+                    Label("刷新", systemImage: "arrow.clockwise")
+                }
+                .keyboardShortcut("r", modifiers: .command)
+                .disabled(browser.isLoading)
+
+                actionsMenu
+            }
         }
         .task {
             if browser.listing == nil {
@@ -40,47 +59,12 @@ struct RepositoryBrowserView: View {
         }
     }
 
-    // MARK: - Header
-
-    private var header: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "shippingbox")
-                .font(.system(size: 22))
-                .foregroundStyle(.tint)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(browser.displayName)
-                    .font(.title3.weight(.semibold))
-                Text(browser.location.url)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .textSelection(.enabled)
-            }
-
-            Spacer()
-
-            if browser.isLoading || browser.isPerforming {
-                ProgressView().controlSize(.small)
-            }
-            if let revision = browser.revision {
-                Text("r\(revision)")
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundStyle(.secondary)
-            }
-
-            Button {
-                Task { await browser.refresh() }
-            } label: {
-                Label("刷新", systemImage: "arrow.clockwise")
-            }
-            .disabled(browser.isLoading)
-
-            actionsMenu
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+    private var subtitle: String {
+        guard let revision = browser.revision else { return browser.location.url }
+        return "\(browser.location.url) · r\(revision)"
     }
+
+    // MARK: - Actions
 
     private var actionsMenu: some View {
         Menu {
@@ -90,10 +74,9 @@ struct RepositoryBrowserView: View {
             Button("导出此目录…") { exportCurrent() }
             Button("导入本地目录…") { promptImport() }
         } label: {
-            Label("操作", systemImage: "ellipsis.circle")
+            Label("仓库操作", systemImage: "ellipsis.circle")
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
+        .help("新建目录、打 tag、导出、导入")
     }
 
     // MARK: - Breadcrumb
@@ -125,6 +108,12 @@ struct RepositoryBrowserView: View {
                 .foregroundStyle(isLast ? Color.primary : Color.accentColor)
             }
             Spacer()
+
+            // The header used to own the progress spinner. Moving it here keeps
+            // it next to the path being read, which is what it is about.
+            if browser.isLoading || browser.isPerforming {
+                ProgressView().controlSize(.small)
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 7)

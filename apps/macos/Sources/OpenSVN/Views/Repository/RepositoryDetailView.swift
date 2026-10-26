@@ -36,21 +36,10 @@ struct RepositoryDetailView: View {
     @Environment(AppState.self) private var appState
     @Bindable var session: RepositorySession
     @State private var tab: RepositoryTab = .changes
-    @State private var showingTaskCenter = false
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
-            Picker("", selection: $tab) {
-                ForEach(RepositoryTab.allCases) { tab in
-                    Label(tab.title, systemImage: tab.systemImage).tag(tab)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelStyle(.titleAndIcon)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            sectionBar
             Divider()
 
             // A plain `.frame(maxHeight: .infinity)` is not enough here: the file
@@ -64,6 +53,11 @@ struct RepositoryDetailView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        // The working copy's identity lives in the window chrome, where the name
+        // of the thing you are looking at belongs. Repeating it as a card above
+        // the file list cost about ninety points of height and said nothing the
+        // window title and the sidebar row had not already said.
+        .navigationSubtitle(subtitle)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
@@ -162,74 +156,56 @@ struct RepositoryDetailView: View {
         }
     }
 
-    private var header: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: "externaldrive.fill.badge.checkmark")
-                .font(.system(size: 26))
-                .foregroundStyle(.tint)
-                .padding(.top, 2)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(session.displayName)
-                    .font(.title3.weight(.semibold))
-                Text((session.bookmark.path as NSString).abbreviatingWithTildeInPath)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
+    /// One thin band: the section switcher on the left, the state of the last
+    /// read on the right.
+    ///
+    /// Two stacked bars above the content (a title card, then a switcher) is one
+    /// bar too many on a window that already names the working copy in its
+    /// title bar. What is left here is the only thing that has to be visible at
+    /// all times — which page you are on, and how old it is.
+    private var sectionBar: some View {
+        HStack(spacing: 12) {
+            Picker("", selection: $tab) {
+                ForEach(RepositoryTab.allCases) { candidate in
+                    Label(candidate.title, systemImage: candidate.systemImage)
+                        .tag(candidate)
+                }
             }
+            .pickerStyle(.segmented)
+            .labelStyle(.titleAndIcon)
+            .fixedSize()
 
-            Spacer()
+            Spacer(minLength: 8)
 
-            VStack(alignment: .trailing, spacing: 3) {
-                if let info = session.info {
-                    Text("r\(info.revision.map(String.init) ?? "?")")
-                        .font(.system(.body, design: .monospaced))
-                    if let author = info.lastChangedAuthor {
-                        Text("最后修改：\(author)")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                } else if session.isLoading {
-                    ProgressView().controlSize(.small)
-                }
-                if let refreshed = session.lastRefreshedAt {
-                    Text("刷新于 \(refreshed.formatted(date: .omitted, time: .standard))")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-                connectionIndicator
+            if session.isLoading {
+                ProgressView().controlSize(.small)
+            }
+            if let refreshed = session.lastRefreshedAt {
+                Text("刷新于 \(refreshed.formatted(date: .omitted, time: .shortened))")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .help("自动刷新会更新这个时间；⌘R 手动重读")
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(.bar)
     }
 
-    /// Shown only when there is something to say.
+    /// Window subtitle: where this working copy is, and which revision it is at.
     ///
-    /// "Reachable" is a dot, because it is the normal case and does not deserve
-    /// a sentence; the two problems get words, because a coloured dot alone
-    /// would leave the user guessing which one it is.
-    @ViewBuilder
-    private var connectionIndicator: some View {
-        switch session.connection {
-        case .unknown:
-            EmptyView()
-        case .reachable:
-            Image(systemName: "circle.fill")
-                .font(.system(size: 6))
-                .foregroundStyle(.green)
-                .help(session.connection.summary)
-        case .needsAuthentication:
-            Label("需要认证", systemImage: "person.badge.key")
-                .font(.caption2)
-                .foregroundStyle(.orange)
-                .help(session.connection.summary)
-        case .unreachable:
-            Label("服务器不可达", systemImage: "bolt.horizontal.circle")
-                .font(.caption2)
-                .foregroundStyle(.red)
-                .help(session.connection.summary)
+    /// Connection problems stay out of it on purpose — the sidebar row already
+    /// carries that badge, and a second copy of the same warning in the title
+    /// bar only makes the chrome louder.
+    private var subtitle: String {
+        var parts = [(session.bookmark.path as NSString).abbreviatingWithTildeInPath]
+        if let revision = session.info?.revision {
+            parts.append("r\(revision)")
         }
+        if let author = session.info?.lastChangedAuthor {
+            parts.append(author)
+        }
+        return parts.joined(separator: " · ")
     }
 
     @ViewBuilder
