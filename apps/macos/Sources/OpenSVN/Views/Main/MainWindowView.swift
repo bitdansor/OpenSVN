@@ -42,26 +42,19 @@ struct MainWindowView: View {
             }
         }
         .navigationTitle(appState.selectedBookmark?.name ?? "OpenSVN")
-        // One material across the whole toolbar, so the two columns meet on one
-        // line at the top.
+        // Deliberately no `.toolbarBackground` here.
         //
-        // By default the toolbar draws a sidebar-shaped background that stops
-        // 2 pt short of the sidebar column, while the divider between the
-        // columns only starts below the toolbar. Measured on screen: the colour
-        // change at the top sat at x=496 and the divider below it at x=500, so
-        // the seam stepped sideways exactly at the toolbar's bottom edge.
+        // The system's own toolbar background is what lets the sidebar reach the
+        // window's top edge — its material runs on behind the traffic lights, so
+        // the source list is one surface from y=0 to the bottom, and the toolbar
+        // only carries its own shading over the content column.
         //
-        // Painting the toolbar with a single material makes that top edge one
-        // surface with nothing to line up against, and the divider simply begins
-        // below it the way it does in Finder.
-        //
-        // It has to be a material, not `.hidden`: the content really does live
-        // under the toolbar (AppKit insets it, the toolbar's background is what
-        // hides it). Hiding the background let the split view's divider and its
-        // drag zone reach up into the titlebar, so dragging the history
-        // splitter painted a line across the toolbar icons and stole their
-        // clicks.
-        .toolbarBackground(.regularMaterial, for: .windowToolbar)
+        // Both alternatives have been measured and rejected: one material across
+        // the whole toolbar (`RegularMaterial`) levels the seam but caps the
+        // sidebar with a band, and `.hidden` is worse — the content really does
+        // live under the titlebar (AppKit insets it, the toolbar background is
+        // what hides it), so hiding the background let the history page's
+        // splitter paint its divider across the toolbar icons and steal clicks.
         .animation(.easeOut(duration: 0.18), value: showsRecoveryBanner)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
