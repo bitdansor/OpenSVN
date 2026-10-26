@@ -5,6 +5,7 @@ import OpenSVNCore
 struct MainWindowView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openSettings) private var openSettings
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     /// `safeAreaInset` on a `NavigationSplitView` does not reserve space here:
     /// both columns keep their own scroll views and the inset view is painted
@@ -19,7 +20,7 @@ struct MainWindowView: View {
     var body: some View {
         @Bindable var appState = appState
 
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView()
                 .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 340)
         } detail: {
@@ -40,21 +41,22 @@ struct MainWindowView: View {
                     WelcomeView()
                 }
             }
+            // The content genuinely lives under the titlebar, and the toolbar's
+            // own background is what hides it. So the detail column puts a
+            // background back for itself: without one, the history page's
+            // splitter drew its divider across the toolbar icons and its drag
+            // zone swallowed their clicks.
+            .toolbarBackground(.visible, for: .windowToolbar)
         }
         .navigationTitle(appState.selectedBookmark?.name ?? "OpenSVN")
-        // Deliberately no `.toolbarBackground` here.
+        // Off for the window, so the sidebar's material runs all the way to the
+        // top edge and the column divider is a single line from y=0 down:
+        // measured, it sits at x=518 at every height, with no 2 pt step where the
+        // toolbar ends. The detail column restores a background for itself above.
         //
-        // The system's own toolbar background is what lets the sidebar reach the
-        // window's top edge — its material runs on behind the traffic lights, so
-        // the source list is one surface from y=0 to the bottom, and the toolbar
-        // only carries its own shading over the content column.
-        //
-        // Both alternatives have been measured and rejected: one material across
-        // the whole toolbar (`RegularMaterial`) levels the seam but caps the
-        // sidebar with a band, and `.hidden` is worse — the content really does
-        // live under the titlebar (AppKit insets it, the toolbar background is
-        // what hides it), so hiding the background let the history page's
-        // splitter paint its divider across the toolbar icons and steal clicks.
+        // Known gap: this leaves the sidebar unmasked, so a list long enough to
+        // scroll will slide under the traffic lights.
+        .toolbarBackground(.hidden, for: .windowToolbar)
         .animation(.easeOut(duration: 0.18), value: showsRecoveryBanner)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
