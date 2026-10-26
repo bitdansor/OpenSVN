@@ -70,50 +70,29 @@ struct SidebarView: View {
                 } actions: {
                     Button("添加…") { appState.presentAddWorkingCopyPanel() }
                     Button("检出…") { appState.showingCheckoutSheet = true }
+                    Button("只看仓库…") { appState.promptForRepositoryBookmark() }
                 }
             }
         }
+        // No command buttons in this strip. A row of 16pt glyphs tucked into
+        // the bottom corner of the sidebar is where a command goes to be
+        // missed: adding a working copy, checking one out and browsing a
+        // repository all belong in the toolbar with the rest of the window's
+        // actions. What is left here reports something instead of doing
+        // something — which svn this app is actually running.
         .safeAreaInset(edge: .bottom) {
-            HStack(spacing: 6) {
-                Button {
-                    appState.presentAddWorkingCopyPanel()
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .buttonStyle(.borderless)
-                .help("添加工作副本")
-
-                Button {
-                    appState.showingCheckoutSheet = true
-                } label: {
-                    // Deliberately not `arrow.down.circle`: that one means "update an
-                    // existing working copy". Checking out creates the working copy,
-                    // and two different actions sharing a glyph is how a toolbar
-                    // becomes guesswork.
-                    Image(systemName: "square.and.arrow.down")
-                }
-                .buttonStyle(.borderless)
-                .help("检出仓库")
-
-                Button {
-                    appState.promptForRepositoryBookmark()
-                } label: {
-                    Image(systemName: "shippingbox")
-                }
-                .buttonStyle(.borderless)
-                .help("只看仓库（不检出）")
-
-                Spacer()
-
-                if let installation = appState.installation {
+            if let installation = appState.installation {
+                HStack(spacing: 0) {
+                    Spacer()
                     Text("svn \(installation.version.description)")
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
+                        .help("当前使用的 svn：\(installation.executableURL.path)")
                 }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(.bar)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(.bar)
         }
     }
 }

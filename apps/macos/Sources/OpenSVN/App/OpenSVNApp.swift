@@ -24,6 +24,13 @@ struct OpenSVNApp: App {
                     appState.showingCheckoutSheet = true
                 }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
+
+                // Browsing a repository costs no working copy, so it belongs
+                // next to the two actions that do create one — not hidden
+                // behind a checkbox in a checkout dialog.
+                Button("只看仓库（不检出）…") {
+                    appState.promptForRepositoryBookmark()
+                }
             }
             CommandMenu("仓库") {
                 Button("刷新状态") {
