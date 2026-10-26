@@ -105,6 +105,10 @@ UNPUBLISHED_DIRS = [
 # Only `apps/windows` itself is listed for the Windows side: its subtree was
 # removed on 2026-10-18 and will be rebuilt from scratch, so asserting the old
 # Model/Services/Views layout now would just encode a plan we no longer follow.
+#
+# `assets/` is not listed at all. It held three directories whose only content was
+# a placeholder README, which made the tree promise artwork that does not exist;
+# it is git-ignored now and returns when stage 6 generates an icon worth shipping.
 LAYOUT_DIRS = [
     ".github/workflows",
     ".github/ISSUE_TEMPLATE",
@@ -125,9 +129,6 @@ LAYOUT_DIRS = [
     "docs/development/decisions",
     "docs/user-guide",
     "docs/releases",
-    "assets/icons",
-    "assets/branding",
-    "assets/screenshots",
     "third_party",
 ]
 
@@ -146,7 +147,6 @@ LAYOUT_FILES = [
     "packaging/windows/README.md",
     "docs/user-guide/README.md",
     "docs/releases/README.md",
-    "assets/README.md",
 ]
 
 

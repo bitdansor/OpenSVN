@@ -114,6 +114,7 @@ be tested without a window; it is `@MainActor` and has no SwiftUI dependency.
 | `apps/macos/OpenSVNTests/` | `apps/macos/Tests/OpenSVNCoreTests/` | Swift Testing |
 | `apps/macos/OpenSVNUITests/` | 暂无 | 界面测试要等打包稳定（阶段 6） |
 | `apps/windows/**` | 暂无（2026-10-18 清空） | 重做时按 ADR-0007 记录的原定布局；不要为了对齐目录而提前建空壳 |
+| `assets/{branding,icons,screenshots}` | 不入库（`.gitignore` 里 `/assets/`，本地保留） | 三个目录里各只有一个占位 README，等于向读者承诺并不存在的美术资源。阶段 6 真做出图标与截图时再放回来 |
 
 `python3 scripts/verify-release.py --layout` 会逐项检查这张表对应的目录与锚点文件是否**被 git 跟踪**。只检查"存在"还不够：文件被挪进被忽略的目录、或还没 `git add` 时，本地看着齐全，CI 的干净 checkout 里却没有它——2026-10-22 那次红灯就是这么来的。同理，`internal/` 下任何被跟踪的文件都会直接判失败。
 

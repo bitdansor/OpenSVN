@@ -11,6 +11,15 @@ Stage 6. What ships today, and what is still missing:
 | `notarize.sh` | **done** — `notarytool submit --wait`, rejection-log retrieval, `stapler staple`, `spctl` check |
 | `dmg.json` | **missing** — `create-dmg` layout. S6-7 renames the artifact from `-UNSIGNED.zip` to `OpenSVN-<ver>-macos-<arch>.dmg` at the same time. |
 
+## The app icon
+
+The bundle currently has none: there is no `.icns` in the tree and `Info.plist`
+declares no `CFBundleIconFile`, so macOS draws its generic application icon. The
+icon is generated at stage 6 from source artwork that is not published here
+(`/assets/` is ignored). Two rules outlive that directory: the `.icns` is
+**generated**, never hand-edited; and a placeholder icon must never be committed
+— it has a way of surviving into a release.
+
 ## How the runtime gets in
 
 ```bash

@@ -6,6 +6,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed (assets: promises of artwork that did not exist)
+
+- **`assets/` is no longer published.** Its three directories — `branding/`,
+  `icons/`, `screenshots/` — each held nothing but a placeholder README, so the
+  repository tree advertised brand sources, generated icons and screenshots that
+  do not exist. It is git-ignored now and stays on disk; `verify-release.py
+  --layout` drops the four assertions that kept it alive, `docs/architecture/
+  overview.md` records the deviation from ADR-0007, and the two rules worth
+  keeping moved to where they still apply: the icon is generated rather than
+  hand-edited and is never committed as a placeholder
+  (`packaging/macos/README.md`), and screenshots live beside the chapter that
+  uses them and must not show a real repository URL, user name or private commit
+  message (`docs/user-guide/README.md`).
+
 ### Fixed (two actions, one glyph)
 
 - **Checking out and updating no longer share an icon.** Both used

@@ -21,7 +21,6 @@ tests/integration/     Slow cross-platform working-copy scenarios
 scripts/               Bootstrap, test repo, fixtures, app bundling, release checks
 packaging/{macos,windows}/  Signing, notarisation, installer definitions (stage 6)
 docs/                  Architecture, ADRs, user guide, release notes
-assets/                Branding sources; generated icons; screenshots
 third_party/           Dependency inventory and licence obligations
 ```
 

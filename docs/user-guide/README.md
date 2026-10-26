@@ -11,5 +11,7 @@ in the order a new user needs them:
 6. **出错时怎么办** — 用错误码（`SVN-0004` 等）对照 `specifications/error-codes.md` 的处理建议。
 7. **凭据与隐私** — 密码存在哪里、什么时候会被删除、日志里能看到什么。
 
-Screenshots go in `assets/screenshots/`. Do not write chapters for features that
-do not exist yet.
+Screenshots live in `docs/user-guide/images/`, next to the chapter that uses them.
+Do not write chapters for features that do not exist yet, and do not capture a
+window that shows a real repository URL, user name, or commit message from a
+private repository.

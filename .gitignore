@@ -63,3 +63,8 @@ credentials.json
 # `Sources/.../.vscode/` is not swallowed. Note that an ignore rule cannot untrack
 # a file git already follows — `git rm --cached` is the other half.
 /.vscode/
+
+# Branding sources and generated icons — local until stage 6 actually produces one.
+# The three subdirectories held nothing but a placeholder README each, and a
+# published placeholder directory promises artwork that does not exist.
+/assets/
