@@ -32,8 +32,9 @@ struct SettingsView: View {
         // No `.navigationTitle` here: a `Settings` scene takes its window title
         // from the selected tab's label regardless, so the title bar reads "SVN"
         // or "操作". Naming the pane is not wrong — it matches where you are.
-        // Fixed so the window does not resize as the user moves between panes.
-        // Panes that outgrow it scroll inside their own form.
+        //
+        // Fixed size so the window does not resize as the user moves between
+        // panes. Panes that outgrow it scroll inside their own form.
         .frame(width: 520, height: 380)
     }
 }
@@ -145,7 +146,7 @@ private struct SVNSettingsPane: View {
             } header: {
                 Text("svn 运行时")
             } footer: {
-                SettingsFooter("留空则按「应用内置 → PATH → 常见位置」的顺序查找。从 Finder 启动的应用不继承 Homebrew 的 PATH，所以显式路径优先。")
+                SettingsFooter(runtimeFooter)
             }
 
             Section {
@@ -179,7 +180,6 @@ private struct SVNSettingsPane: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
-                .help(installation.executableURL.path)
         } else if appState.isStarting {
             ProgressView().controlSize(.small)
         } else {
@@ -188,6 +188,18 @@ private struct SVNSettingsPane: View {
                 .foregroundStyle(.red)
                 .lineLimit(3)
         }
+    }
+
+    /// The one place that says which `svn` is actually running.
+    ///
+    /// This used to be a permanent `svn 1.14.5` strip in the sidebar's bottom
+    /// corner. A build number parked in the corner of the navigation is a fact
+    /// you cannot act on; here it sits next to the control that decides it, and
+    /// the full path comes with it.
+    private var runtimeFooter: String {
+        let hint = "留空则按「应用内置 → PATH → 常见位置」的顺序查找——从 Finder 启动的应用不继承 Homebrew 的 PATH，所以显式路径优先。"
+        guard let installation = appState.installation else { return hint }
+        return "当前使用 \(installation.executableURL.path)。" + hint
     }
 
     private func load() {

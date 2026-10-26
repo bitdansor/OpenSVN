@@ -74,26 +74,6 @@ struct SidebarView: View {
                 }
             }
         }
-        // No command buttons in this strip. A row of 16pt glyphs tucked into
-        // the bottom corner of the sidebar is where a command goes to be
-        // missed: adding a working copy, checking one out and browsing a
-        // repository all belong in the toolbar with the rest of the window's
-        // actions. What is left here reports something instead of doing
-        // something — which svn this app is actually running.
-        .safeAreaInset(edge: .bottom) {
-            if let installation = appState.installation {
-                HStack(spacing: 0) {
-                    Spacer()
-                    Text("svn \(installation.version.description)")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .help("当前使用的 svn：\(installation.executableURL.path)")
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(.bar)
-            }
-        }
     }
 }
 
