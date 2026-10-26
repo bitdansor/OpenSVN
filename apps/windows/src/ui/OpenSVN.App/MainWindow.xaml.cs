@@ -269,21 +269,39 @@ public sealed partial class MainWindow : Window
 
         if (ViewModel.Settings.AutoPreviewUpdate)
         {
-            RemotePreviewDto? preview = null;
-            OpenSVNException? error = null;
+            UpdatePreviewAttempt attempt;
             try
             {
-                preview = await ViewModel.FetchRemotePreviewAsync();
+                attempt = await ViewModel.PreviewUpdateAsync();
             }
-            catch (OpenSVNException exception)
+            catch (Exception exception)
             {
-                error = exception;
+                ViewModel.Notify(NotificationSeverity.Error, "无法预览更新", exception.Message);
+                return;
             }
 
-            var dialog = new UpdatePreviewDialog(preview, error, ViewModel.ChangedCount,
-                ViewModel.HasConflicts);
+            if (!ViewModel.IsCurrentWorkingCopy(attempt.WorkingCopy, attempt.Session))
+            {
+                ViewModel.Notify(NotificationSeverity.Warning, "工作副本已切换",
+                    "旧的更新预览已丢弃，请对当前工作副本重新发起更新。");
+                return;
+            }
+
+            var dialog = new UpdatePreviewDialog(attempt.Preview, attempt.Error,
+                ViewModel.ChangedCount, ViewModel.HasConflicts);
             var result = await ShowDialogAsync(dialog);
             if (result != ContentDialogResult.Primary) return;
+
+            if (!ViewModel.IsCurrentWorkingCopy(attempt.WorkingCopy, attempt.Session))
+            {
+                ViewModel.Notify(NotificationSeverity.Warning, "工作副本已切换",
+                    "旧的更新确认已丢弃，请对当前工作副本重新发起更新。");
+                return;
+            }
+
+            await ViewModel.UpdateAsync(attempt.Preview?.ServerRevision,
+                attempt.WorkingCopy, attempt.Session);
+            return;
         }
 
         await ViewModel.UpdateAsync();

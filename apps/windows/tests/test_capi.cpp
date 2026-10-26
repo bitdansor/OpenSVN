@@ -6,9 +6,13 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdlib>
+#include <future>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <thread>
@@ -158,6 +162,156 @@ TEST_F(CapiTest, CancellationStopsTheChildAndReturnsCancelled) {
     ASSERT_TRUE(response->error) << (response->value ? response->value->dump() : "no result");
     EXPECT_TRUE((*response->error)["cancelled"].get<bool>());
     EXPECT_LT(elapsed, std::chrono::seconds(4));
+}
+
+TEST_F(CapiTest, CancelledRegisteredRequestNeverLaunchesTheChild) {
+    Json config = base_config_;
+    const auto log_path = directory_->path() / "argv.log";
+    config["environment"]["OPENSVN_FAKE_ARGV_LOG"] = text::path_to_utf8(log_path);
+
+    opensvn_service* cancellable = nullptr;
+    char* creation_error = nullptr;
+    ASSERT_EQ(opensvn_create_service(config.dump().c_str(), &cancellable, &creation_error), 1)
+        << (creation_error ? creation_error : "");
+    if (creation_error) opensvn_free_string(creation_error);
+
+    std::filesystem::remove(log_path);
+    char* register_error = nullptr;
+    ASSERT_EQ(opensvn_register_request(cancellable, 99, &register_error), 1)
+        << (register_error ? register_error : "");
+    if (register_error) opensvn_free_string(register_error);
+
+    opensvn_cancel(cancellable, 99);
+    const auto response = invoke(
+        cancellable, "delete",
+        Json{{"paths", Json::array({text::path_to_utf8(directory_->path() / "docs" / "a.txt")})},
+             {"confirmed", true}},
+        99);
+    ASSERT_TRUE(response.error);
+    EXPECT_TRUE((*response.error)["cancelled"].get<bool>());
+    EXPECT_FALSE(std::filesystem::exists(log_path));
+
+    ASSERT_EQ(opensvn_register_request(cancellable, 100, nullptr), 1);
+    opensvn_release_request(cancellable, 100);
+    opensvn_destroy_service(cancellable);
+}
+
+TEST_F(CapiTest, RegisteredRequestCanBeConsumedAndStopsOnCancel) {
+    char* register_error = nullptr;
+    ASSERT_EQ(opensvn_register_request(service_, 101, &register_error), 1)
+        << (register_error ? register_error : "");
+    if (register_error) opensvn_free_string(register_error);
+
+    const auto response = invoke(
+        service_, "status", Json{{"path", text::path_to_utf8(directory_->path())}}, 101);
+    ASSERT_TRUE(response.value) << response.error->dump();
+    EXPECT_FALSE((*response.value)["entries"].empty());
+}
+
+TEST_F(CapiTest, EarlyInvokeValidationReleasesTheRegistration) {
+    opensvn_service* isolated = nullptr;
+    char* creation_error = nullptr;
+    ASSERT_EQ(opensvn_create_service(base_config_.dump().c_str(), &isolated, &creation_error), 1)
+        << (creation_error ? creation_error : "");
+    if (creation_error) opensvn_free_string(creation_error);
+
+    char* register_error = nullptr;
+    ASSERT_EQ(opensvn_register_request(isolated, 77, &register_error), 1)
+        << (register_error ? register_error : "");
+    if (register_error) opensvn_free_string(register_error);
+
+    const auto response = invoke(isolated, "", Json::object(), 77);
+    ASSERT_TRUE(response.error);
+    EXPECT_EQ((*response.error)["identifier"], "SVN-9001");
+
+    // The failed invocation must leave no slot behind, so the id is reusable.
+    const int32_t reregistered = opensvn_register_request(isolated, 77, &register_error);
+    if (register_error) opensvn_free_string(register_error);
+    EXPECT_EQ(reregistered, 1);
+    opensvn_release_request(isolated, 77);
+
+    std::packaged_task<void()> destroy([isolated] { opensvn_destroy_service(isolated); });
+    auto destroyed = destroy.get_future();
+    std::thread destroyer(std::move(destroy));
+    if (destroyed.wait_for(std::chrono::seconds(2)) != std::future_status::ready) {
+        destroyer.detach();
+        FAIL() << "destroy_service still waits for a leaked registration";
+    }
+    destroyer.join();
+}
+
+TEST_F(CapiTest, ReleaseOfARunningRequestKeepsTheServiceAlive) {
+    Json config = base_config_;
+    opensvn_service* isolated = nullptr;
+    char* creation_error = nullptr;
+    ASSERT_EQ(opensvn_create_service(config.dump().c_str(), &isolated, &creation_error), 1)
+        << (creation_error ? creation_error : "");
+    if (creation_error) opensvn_free_string(creation_error);
+
+    char* register_error = nullptr;
+    ASSERT_EQ(opensvn_register_request(isolated, 123, &register_error), 1)
+        << (register_error ? register_error : "");
+    if (register_error) opensvn_free_string(register_error);
+
+    struct ProgressGate {
+        std::mutex mutex;
+        std::condition_variable condition;
+        bool entered = false;
+        bool release = false;
+    } gate;
+
+    const auto progress = [](const char*, void* data) {
+        auto* state = static_cast<ProgressGate*>(data);
+        std::unique_lock lock(state->mutex);
+        if (state->entered) return;
+        state->entered = true;
+        state->condition.notify_all();
+        state->condition.wait(lock, [&] { return state->release; });
+    };
+
+    std::optional<Response> response;
+    std::thread worker([&] {
+        response = invoke(isolated, "log",
+                          Json{{"target", "wc-a"}, {"limit", 10}}, 123, progress, &gate);
+    });
+
+    bool started = false;
+    {
+        std::unique_lock lock(gate.mutex);
+        started = gate.condition.wait_for(lock, std::chrono::seconds(5),
+                                          [&] { return gate.entered; });
+    }
+    if (!started) {
+        {
+            std::lock_guard lock(gate.mutex);
+            gate.release = true;
+        }
+        gate.condition.notify_all();
+        worker.join();
+        opensvn_destroy_service(isolated);
+        FAIL() << "svn log never delivered a progress line";
+    }
+
+    opensvn_release_request(isolated, 123);
+
+    std::atomic<bool> destroyed{false};
+    std::thread destroyer([&] {
+        opensvn_destroy_service(isolated);
+        destroyed.store(true);
+    });
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    const bool returned_early = destroyed.load();
+
+    {
+        std::lock_guard lock(gate.mutex);
+        gate.release = true;
+    }
+    gate.condition.notify_all();
+    worker.join();
+    destroyer.join();
+
+    EXPECT_FALSE(returned_early)
+        << "destroy_service freed the handle while opensvn_invoke was still running";
 }
 
 TEST_F(CapiTest, UnknownOperationIsAStructuredError) {

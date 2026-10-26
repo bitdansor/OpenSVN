@@ -56,17 +56,39 @@ TEST(JsonContract, InfoContainsRepositoryAndWorkingCopyFields) {
     EXPECT_TRUE(entry["repositoryLock"].is_null());
 }
 
+TEST(JsonContract, ChangelistMembersCarryTheContainerName) {
+    const Json json =
+        status_to_json(parsing::parse_status(test::fixture("svn-status-changelist.xml")));
+    ASSERT_EQ(json["entries"].size(), 2u);
+    bool found_listed = false;
+    for (const auto& entry : json["entries"]) {
+        if (entry["path"] == "trunk/readme.md") {
+            found_listed = true;
+            EXPECT_EQ(entry["changelist"], "ui-review");
+            EXPECT_EQ(entry["item"], "modified");
+        }
+    }
+    EXPECT_TRUE(found_listed);
+}
+
 TEST(JsonContract, PropertiesKeepNamesAndMultilineValues) {
     const std::string xml =
         "<properties><target path=\"wc\">"
         "<property name=\"svn:ignore\">build\n*.tmp</property>"
+        "<property name=\"empty\"></property>"
+        "<property name=\"custom:binary\" encoding=\"base64\">AAE=</property>"
         "</target></properties>";
     const Json json = properties_to_json(parsing::parse_properties(xml));
     ASSERT_EQ(json.size(), 1u);
     EXPECT_EQ(json[0]["path"], "wc");
-    ASSERT_EQ(json[0]["properties"].size(), 1u);
+    ASSERT_EQ(json[0]["properties"].size(), 3u);
     EXPECT_EQ(json[0]["properties"][0]["name"], "svn:ignore");
     EXPECT_EQ(json[0]["properties"][0]["value"], "build\n*.tmp");
+    EXPECT_TRUE(json[0]["properties"][0]["encoding"].is_null());
+    EXPECT_EQ(json[0]["properties"][1]["value"], "");
+    EXPECT_TRUE(json[0]["properties"][1]["encoding"].is_null());
+    EXPECT_EQ(json[0]["properties"][2]["value"], "AAE=");
+    EXPECT_EQ(json[0]["properties"][2]["encoding"], "base64");
 }
 
 TEST(JsonContract, RemotePreviewExposesConflictRiskAsBoolean) {

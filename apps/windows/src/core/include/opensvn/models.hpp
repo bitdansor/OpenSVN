@@ -233,9 +233,13 @@ struct InfoReport {
 struct SVNProperty {
     std::string name;
     std::string value;
+    /// Present when svn encoded the value (for example `base64`); such a value
+    /// is not text and must not be written back as if it were.
+    std::optional<std::string> encoding;
 
     bool is_reserved() const;
     bool is_ignore_list() const { return name == "svn:ignore"; }
+    bool is_encoded() const { return encoding && !encoding->empty(); }
     std::vector<std::string> ignore_entries() const;
 };
 
@@ -314,8 +318,11 @@ struct UpdateSummary {
     std::optional<std::int64_t> from_revision;
     std::optional<std::int64_t> to_revision;
     std::vector<std::string> updated_paths;
+    std::vector<std::string> added_paths;
+    std::vector<std::string> merged_paths;
     std::vector<std::string> conflicted_paths;
     std::vector<std::string> removed_paths;
+    bool conflicts_verified = true;
     std::string raw_output;
 };
 

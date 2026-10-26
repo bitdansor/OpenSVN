@@ -4,6 +4,8 @@
 
 #include <cctype>
 #include <regex>
+#include <unordered_map>
+#include <vector>
 
 namespace opensvn {
 
@@ -22,29 +24,74 @@ bool starts_with_ascii_case_insensitive(std::string_view text, std::string_view 
 } // namespace
 
 SVNOutputParser::UpdateOutput SVNOutputParser::parse_update(std::string_view output) {
+    struct Flags {
+        bool added = false;
+        bool deleted = false;
+        bool updated = false;
+        bool merged = false;
+        bool conflicted = false;
+    };
+
     UpdateOutput result;
+    std::unordered_map<std::string, std::size_t> positions;
+    std::vector<std::pair<std::string, Flags>> entries;
+
+    const auto is_column = [](char value, std::string_view allowed) {
+        return value == ' ' || allowed.find(value) != std::string_view::npos;
+    };
+
     for (const auto& line : text::split_lines(output)) {
-        if (line.empty()) continue;
-        const char first = line.front();
-        if (std::string_view("ADUCGER").find(first) == std::string_view::npos) continue;
-        // "Updating '.':" also starts with U; real status lines have a padding
-        // column after the letter.
-        if (line.size() < 2 || (line[1] != ' ' && line[1] != '	')) continue;
+        // svn's update notification is four status columns, one separator and
+        // the path: "UC   file", " C   file", "   C file".
+        if (line.size() < 6 || line[4] != ' ') continue;
+        const char content = line[0];
+        const char props = line[1];
+        const char tree = line[3];
+        if (!is_column(content, "ADUCGER") || !is_column(props, "CUG") ||
+            !is_column(tree, "C")) {
+            continue;
+        }
+        if (content == ' ' && props == ' ' && tree == ' ') continue;
 
-        std::size_t position = 1;
-        while (position < line.size() && line[position] == ' ') ++position;
-        if (position >= line.size() || line[position] == '\'') continue;
-        const std::string path = line.substr(position);
+        const std::string path = line.substr(5);
+        if (path.empty()) continue;
 
-        switch (first) {
-        case 'A': result.added.push_back(path); break;
-        case 'D': result.deleted.push_back(path); break;
-        case 'C': result.conflicted.push_back(path); break;
-        case 'G': result.merged.push_back(path); break;
+        const auto found = positions.find(path);
+        std::size_t index = 0;
+        if (found == positions.end()) {
+            index = entries.size();
+            positions.emplace(path, index);
+            entries.emplace_back(path, Flags{});
+        } else {
+            index = found->second;
+        }
+        Flags& flags = entries[index].second;
+
+        switch (content) {
+        case 'A': flags.added = true; break;
+        case 'D': flags.deleted = true; break;
+        case 'G': flags.merged = true; break;
+        case 'C': flags.conflicted = true; break;
         case 'U':
         case 'E':
-        case 'R': result.updated.push_back(path); break;
+        case 'R': flags.updated = true; break;
         default: break;
+        }
+        if (props == 'U' || props == 'G') flags.updated = true;
+        if (props == 'C' || tree == 'C') flags.conflicted = true;
+    }
+
+    for (const auto& [path, flags] : entries) {
+        if (flags.conflicted) {
+            result.conflicted.push_back(path);
+        } else if (flags.merged) {
+            result.merged.push_back(path);
+        } else if (flags.added) {
+            result.added.push_back(path);
+        } else if (flags.deleted) {
+            result.deleted.push_back(path);
+        } else if (flags.updated) {
+            result.updated.push_back(path);
         }
     }
     return result;

@@ -10,6 +10,73 @@
 namespace opensvn {
 namespace {
 
+TEST(StatusParsing, ChangelistMembersAreNotLost) {
+    const auto status = parsing::parse_status(test::fixture("svn-status-changelist.xml"));
+    ASSERT_EQ(status.entries.size(), 2u);
+
+    const auto regular = std::find_if(status.entries.begin(), status.entries.end(),
+                                      [](const StatusEntry& entry) {
+                                          return entry.path == "trunk/sub/b.txt";
+                                      });
+    ASSERT_NE(regular, status.entries.end());
+    EXPECT_TRUE(regular->item.is(WCItemStatus::Kind::modified));
+    EXPECT_FALSE(regular->changelist.has_value());
+
+    const auto listed = std::find_if(status.entries.begin(), status.entries.end(),
+                                     [](const StatusEntry& entry) {
+                                         return entry.path == "trunk/readme.md";
+                                     });
+    ASSERT_NE(listed, status.entries.end());
+    EXPECT_TRUE(listed->item.is(WCItemStatus::Kind::modified));
+    EXPECT_EQ(listed->changelist.value_or(""), "ui-review");
+    EXPECT_EQ(listed->revision.value_or(0), 1);
+}
+
+TEST(StatusParsing, MultipleChangelistsMergeDuplicatesAndKeepConflicts) {
+    const std::string xml =
+        "<status>"
+        "<changelist name=\"one\">"
+        "<entry path=\"a\"><wc-status item=\"modified\" revision=\"2\" props=\"modified\"/>"
+        "</entry>"
+        "<entry path=\"conflict\"><wc-status item=\"conflicted\" revision=\"2\" "
+        "tree-conflicted=\"true\"/></entry>"
+        "</changelist>"
+        "<changelist name=\"two\">"
+        "<entry path=\"b\"><wc-status item=\"modified\" revision=\"3\"/></entry>"
+        "</changelist>"
+        "<target path=\".\">"
+        "<entry path=\"a\"><wc-status item=\"normal\" revision=\"4\">"
+        "<commit revision=\"4\"><author>fixture</author></commit>"
+        "</wc-status></entry>"
+        "</target>"
+        "</status>";
+    const auto status = parsing::parse_status(xml);
+    ASSERT_EQ(status.entries.size(), 3u);
+
+    const auto a = std::find_if(status.entries.begin(), status.entries.end(),
+                                [](const StatusEntry& entry) { return entry.path == "a"; });
+    ASSERT_NE(a, status.entries.end());
+    EXPECT_TRUE(a->item.is(WCItemStatus::Kind::modified));
+    EXPECT_TRUE(a->properties.is(WCItemStatus::Kind::modified));
+    EXPECT_EQ(a->revision.value_or(0), 4);
+    EXPECT_EQ(a->changelist.value_or(""), "one");
+    ASSERT_TRUE(a->commit.has_value());
+    EXPECT_EQ(a->commit->author.value_or(""), "fixture");
+
+    const auto conflict = std::find_if(
+        status.entries.begin(), status.entries.end(),
+        [](const StatusEntry& entry) { return entry.path == "conflict"; });
+    ASSERT_NE(conflict, status.entries.end());
+    EXPECT_TRUE(has_flag(conflict->conflicts, ConflictFlags::text));
+    EXPECT_TRUE(has_flag(conflict->conflicts, ConflictFlags::tree));
+    EXPECT_EQ(conflict->changelist.value_or(""), "one");
+
+    const auto b = std::find_if(status.entries.begin(), status.entries.end(),
+                                [](const StatusEntry& entry) { return entry.path == "b"; });
+    ASSERT_NE(b, status.entries.end());
+    EXPECT_EQ(b->changelist.value_or(""), "two");
+}
+
 TEST(StatusParsing, CleanWorkingCopyHasTargetButNoEntries) {
     const StatusSnapshot snapshot = parsing::parse_status(test::fixture("svn-status-clean.xml"));
     ASSERT_TRUE(snapshot.target.has_value());

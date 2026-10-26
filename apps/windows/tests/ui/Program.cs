@@ -74,6 +74,9 @@ using (var center = new TaskCenter())
     Check("success has no retry", !record.IsRetryVisible);
 }
 
+var nativeFailures = await OpenSVN.App.Tests.NativeBridgeChecks.RunAsync();
+if (nativeFailures > 0) failures.Add($"{nativeFailures} native bridge checks failed");
+
 if (failures.Count > 0)
 {
     foreach (var failure in failures) Console.Error.WriteLine("FAIL: " + failure);

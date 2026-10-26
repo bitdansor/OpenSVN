@@ -39,11 +39,26 @@ OPENSVN_CAPI int32_t opensvn_create_service(const char* config_json_utf8,
 /// returns (for example, a hung child process) will block destruction.
 OPENSVN_CAPI void opensvn_destroy_service(opensvn_service* service);
 
+/// Registers a request id before arguments are serialized, so a cancellation
+/// that arrives during serialization cannot be lost. A registered request must
+/// be consumed by opensvn_invoke or released with opensvn_release_request;
+/// otherwise opensvn_destroy_service waits. Returns 1 on success, or 0 with a
+/// JSON error in out_error_json.
+OPENSVN_CAPI int32_t opensvn_register_request(opensvn_service* service,
+                                              uint64_t request_id,
+                                              char** out_error_json);
+
+/// Abandons a request registered by opensvn_register_request without invoking
+/// it. Stops any work already associated with the id. Late calls are harmless.
+OPENSVN_CAPI void opensvn_release_request(opensvn_service* service,
+                                          uint64_t request_id);
+
 /// Runs one operation. `request_id` may be 0; otherwise it can be passed to
 /// opensvn_cancel from another thread and must be unique among in-flight
-/// requests. Returns a JSON string owned by the caller (free with
-/// opensvn_free_string), or NULL with out_error_json set. out_error_json, when
-/// set, is also freed with opensvn_free_string.
+/// requests. If the id was registered with opensvn_register_request, this call
+/// consumes that registration. Returns a JSON string owned by the caller (free
+/// with opensvn_free_string), or NULL with out_error_json set. out_error_json,
+/// when set, is also freed with opensvn_free_string.
 OPENSVN_CAPI char* opensvn_invoke(opensvn_service* service, uint64_t request_id,
                                   const char* operation_utf8,
                                   const char* parameters_json_utf8,
