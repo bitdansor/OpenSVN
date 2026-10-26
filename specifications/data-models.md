@@ -102,7 +102,7 @@
 5. 路径不做 `realpath` 归一化（保留 svn 原样输出）；
 6. 布尔值用 `true/false`，不用 0/1。
 
-fixture 采集时必须记录 `svn --version --quiet`；不同 svn 版本不得混用同一组 fixture。当前记录版本见 `tests/fixtures/README.md`。
+fixture 采集时必须记录 `svn --version --quiet`；不同 svn 版本不得混用同一组 fixture。当前记录版本见 `testdata/README.md`。
 
 ## 8. 模型演进规则
 

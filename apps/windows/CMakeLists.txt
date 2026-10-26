@@ -115,7 +115,7 @@ if(OPENSVN_BUILD_TESTS)
     target_compile_options(opensvn_tests PRIVATE /W4 /utf-8 /permissive- /Zc:__cplusplus /FS)
     target_link_libraries(opensvn_tests PRIVATE OpenSVN::Core OpenSVN::CAPI GTest::gtest_main)
     target_compile_definitions(opensvn_tests PRIVATE
-        OPENSVN_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../tests/fixtures"
+        OPENSVN_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../testdata"
         OPENSVN_FAKE_SVN_PATH="$<TARGET_FILE:fake_svn>"
     )
     add_dependencies(opensvn_tests fake_svn opensvn_capi)

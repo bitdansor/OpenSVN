@@ -36,8 +36,13 @@ __pycache__/
 # Local test working copies and repositories
 tmp/
 .local-test/
-tests/.work/
 *.wc-backup
+
+# The fault-injection harness, its integration notes and the scratch trees it
+# creates stay local. The recorded `svn --xml` outputs are deliberately NOT in
+# this rule: the Swift test target and the Windows native tests both parse them,
+# so they live in `/testdata/`, where a fresh clone still has them.
+/tests/
 
 # Credentials / secrets — never commit
 .env

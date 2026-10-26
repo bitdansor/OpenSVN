@@ -51,7 +51,7 @@ If `swift build` fails with `Invalid manifest` or a security-directory error in 
 locked-down environment, prefix the command with `HOME="$PWD/.build-home"`; see
 the README section "Sandboxed environments".
 
-If you change a parser, add or update a fixture under `tests/fixtures/` and note
+If you change a parser, add or update a fixture under `testdata/` and note
 the `svn --version` used to record it. Contract tests must stay green.
 
 ## Documentation and screenshots

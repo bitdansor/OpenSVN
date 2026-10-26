@@ -17,9 +17,7 @@ No Electron, no Qt, no embedded browser.
 apps/macos/            Swift Package (OpenSVNCore + SwiftUI app) and Xcode project
 apps/windows/          C++20 core + C ABI + C# WinUI 3 app (unpackaged)
 specifications/        Cross-platform behaviour contracts (the source of truth)
-tests/fixtures/        Recorded `svn --xml` outputs used by contract tests
-tests/scenarios/       Fault-injection catalogue (F1-F15) and its future harness
-tests/integration/     Slow cross-platform working-copy scenarios
+testdata/              Recorded `svn --xml` outputs parsed by the contract tests
 scripts/               Bootstrap, test repo, fixtures, app bundling, release checks
 packaging/{macos,windows}/  Signing, notarisation, installer definitions (stage 6)
 third_party/           Dependency inventory and licence obligations

@@ -84,6 +84,6 @@ svn: E000022: Can't convert string from native encoding to 'UTF-8'
 
 修改本文时同步更新：
 
-1. `tests/fixtures/README.md` 中记录的 svn 版本；
+1. `testdata/README.md` 中记录的 svn 版本；
 2. `.github/workflows/macos-ci.yml` 里钉住的工具链基线；
 3. 若改变支持区间，`CHANGELOG.md` 必须写明影响。

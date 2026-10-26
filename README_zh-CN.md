@@ -15,9 +15,7 @@ macOS 端使用 Swift 6 + SwiftUI/AppKit；Windows 端使用 C++20 核心 + C AB
 apps/macos/            Swift Package（OpenSVNCore + SwiftUI 应用）与 Xcode 工程
 apps/windows/          C++20 核心 + C ABI + C# WinUI 3 应用（未打包）
 specifications/        跨平台行为契约（唯一事实来源）
-tests/fixtures/        采集的 `svn --xml` 输出，用于契约测试
-tests/scenarios/       故障注入场景目录（F1–F15）与将来的执行器
-tests/integration/     跨平台的慢速工作副本场景
+testdata/              采集的 `svn --xml` 输出，契约测试的解析样本
 scripts/               环境引导、测试仓库、fixture 采集、打包与发布自检
 packaging/{macos,windows}/  签名、公证、安装包定义（阶段 6）
 third_party/           第三方依赖清单与许可证义务

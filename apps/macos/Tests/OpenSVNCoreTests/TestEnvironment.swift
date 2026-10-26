@@ -11,7 +11,7 @@ enum TestEnvironment {
         return url
     }()
 
-    static let fixtureDirectory: URL = repoRoot.appendingPathComponent("tests/fixtures", isDirectory: true)
+    static let fixtureDirectory: URL = repoRoot.appendingPathComponent("testdata", isDirectory: true)
 
     static func fixture(_ name: String) throws -> Data {
         try Data(contentsOf: fixtureDirectory.appendingPathComponent(name))

@@ -181,7 +181,7 @@ back to display it.
 ## What is tested
 
 - `opensvn_tests`: 110 GoogleTest tests across 29 suites. They cover models, XML
-  parsing against the recorded fixtures in `tests/fixtures/`, the error mapper,
+  parsing against the recorded fixtures in `testdata/`, the error mapper,
   process handling, journal recovery, cancellable write-gate waits, credential
   origin isolation, bounded diff capture, discovery, service orchestration, the
   JSON contract and the C ABI.

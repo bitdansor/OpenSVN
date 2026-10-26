@@ -3,10 +3,10 @@ import OpenSVNCore
 
 /// Classifies a raw `svn` failure the way the app would.
 ///
-/// The S5-5 scenarios under `tests/scenarios/failure/` drive real svn processes
-/// and assert on observable state. The *classification* of a failure, however,
-/// lives in Swift (`SVNErrorMapper`). This command is the bridge, so a shell
-/// scenario can close the loop honestly — real fault, real stderr, real mapping:
+/// The classification of a failure lives in Swift (`SVNErrorMapper`), which a
+/// shell script cannot reach. This command is the bridge: feed it a real stderr
+/// capture and it prints the identifier the app would show, so a fault can be
+/// checked end to end without a GUI.
 ///
 ///     opensvn-probe map-error --exit 1 < stderr.txt
 ///

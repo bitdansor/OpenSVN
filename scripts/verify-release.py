@@ -38,7 +38,7 @@ ROOT = Path(__file__).resolve().parent.parent
 VERSION_FILE = ROOT / "VERSION"
 CHANGELOG = ROOT / "CHANGELOG.md"
 INFO_PLIST = ROOT / "apps" / "macos" / "Resources" / "Info.plist"
-FIXTURES = ROOT / "tests" / "fixtures"
+FIXTURES = ROOT / "testdata"
 
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z.-]+)?$")
 
@@ -106,7 +106,8 @@ UNPUBLISHED_DIRS = [
 # (see apps/windows/README.md). Only the layers are asserted, not every folder:
 # the platform is allowed to evolve faster than this list.
 #
-# Root `assets/` and `docs/` remain git-ignored and are not asserted here.
+# Root `assets/`, `docs/` and `tests/` remain git-ignored and are not asserted
+# here.
 # Windows artwork and runtime icons live under apps/windows/src/ with the app.
 # Architecture notes and decision records stay local; published behaviour
 # contracts live in specifications/.
@@ -125,9 +126,7 @@ LAYOUT_DIRS = [
     "apps/windows/src/ui/OpenSVN.App",
     "apps/windows/tests",
     "specifications",
-    "tests/fixtures",
-    "tests/scenarios",
-    "tests/integration",
+    "testdata",
     "scripts",
     "packaging/macos",
     "packaging/windows",
@@ -555,14 +554,16 @@ def check_fixtures(report: Report) -> None:
     report.section("XML fixtures")
 
     if not FIXTURES.is_dir():
-        report.fail("tests/fixtures/ is missing")
+        report.fail(f"{FIXTURES.relative_to(ROOT)}/ is missing")
         return
 
     recorded = fixture_version()
     if recorded:
         report.ok(f"fixtures recorded with svn {recorded}")
     else:
-        report.fail("tests/fixtures/README.md does not record the svn version used to capture")
+        report.fail(
+            f"{FIXTURES.relative_to(ROOT)}/README.md does not record the svn version used to capture"
+        )
 
     seen = set()
     for name, expected_root in FIXTURE_ROOTS.items():
@@ -883,7 +884,10 @@ def check_scenarios(report: Report) -> None:
     report.section("Fault-injection scenarios (S5-5)")
 
     if not SCENARIO_DIR.is_dir():
-        report.ok("no scenarios yet")
+        # The harness is kept out of the published tree; a clone will not have it.
+        # Reported as a warning, not an `ok`: a check that verified nothing must
+        # not look like a check that passed.
+        report.warn("scenario harness not present (kept local; nothing verified here)")
         return
 
     broken = []

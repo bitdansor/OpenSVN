@@ -140,8 +140,8 @@ struct ErrorMappingTests {
 
     @Test("a connection reset mid-transfer is a network failure, not a bug report")
     func connectionReset() throws {
-        // Verbatim from svn 1.14.5 while building tests/scenarios/failure/F10:
-        // the proxy severed the connection partway through an update.
+        // Verbatim from svn 1.14.5 with the connection severed partway through
+        // an update.
         let error = try #require(SVNErrorMapper.error(from: result(
             stderr: "svn: E000054: Can't read from connection: Connection reset by peer\n"
         )))
@@ -171,9 +171,10 @@ struct ErrorMappingTests {
         #expect(SVNErrorMapper.error(from: SVNProcessResult(exitCode: 0, standardOutput: "", standardError: "", duration: 0)) == nil)
     }
 
-    // Both `stderr` blocks below are copied verbatim from svn 1.14.5 while
-    // building tests/scenarios/failure/F11 and /F12. They are the reason the two
-    // cases exist: the token svn prints *first* is not the cause.
+    // Both `stderr` blocks below are copied verbatim from svn 1.14.5 against a
+    // read-only working copy and a repository whose format is too new. They are
+    // the reason the two cases exist: the token svn prints *first* is not the
+    // cause.
 
     @Test("a read-only working copy is a permission problem, not a lock")
     func readOnlyWorkingCopy() throws {

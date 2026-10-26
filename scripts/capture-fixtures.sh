@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Re-records the XML fixtures used by the contract tests from a freshly created
 # local repository. Run scripts/setup-test-repo.sh first (or let this script do
-# it). The svn version is written to tests/fixtures/README.md — never edit the
+# it). The svn version is written to testdata/README.md — never edit the
 # fixtures by hand, and never mix fixtures from different svn versions.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORK="$ROOT/tests/.work"
-FIXTURES="$ROOT/tests/fixtures"
+FIXTURES="$ROOT/testdata"
 SVN="${SVN:-$(command -v svn)}"
 
 # Must mirror SVNProcessRunner.pinnedEnvironment: fixture bytes are compared
