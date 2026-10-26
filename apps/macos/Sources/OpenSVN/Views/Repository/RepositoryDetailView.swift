@@ -33,37 +33,58 @@ enum RepositoryTab: String, CaseIterable, Identifiable {
 }
 
 struct RepositoryDetailView: View {
-    @Environment(AppState.self) private var appState
     @Bindable var session: RepositorySession
     @State private var tab: RepositoryTab = .changes
 
     var body: some View {
-        VStack(spacing: 0) {
-            sectionBar
-            Divider()
-
-            // A plain `.frame(maxHeight: .infinity)` is not enough here: the file
-            // list inside would size itself from its content, report a much taller
-            // ideal height than the window, and scroll to a position that leaves
-            // only the tail of the list visible. Giving the column its measured
-            // size makes the list a bounded scroll view again.
-            GeometryReader { proxy in
-                content
-                    .frame(width: proxy.size.width, height: proxy.size.height)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // No band above the content. A 37 pt strip holding the section switcher
+        // pushed this column's first row 22 pt below the sidebar's, which made
+        // the two halves of the window look like two different layouts stuck
+        // together. The switcher lives in the toolbar instead, the way the
+        // section switcher does in every other macOS client of this kind, and
+        // both columns now start directly under the toolbar.
+        //
+        // A plain `.frame(maxHeight: .infinity)` is not enough here: the file
+        // list inside would size itself from its content, report a much taller
+        // ideal height than the window, and scroll to a position that leaves
+        // only the tail of the list visible. Giving the column its measured size
+        // makes the list a bounded scroll view again.
+        GeometryReader { proxy in
+            content
+                .frame(width: proxy.size.width, height: proxy.size.height)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         // The working copy's identity lives in the window chrome, where the name
-        // of the thing you are looking at belongs. Repeating it as a card above
-        // the file list cost about ninety points of height and said nothing the
-        // window title and the sidebar row had not already said.
+        // of the thing you are looking at belongs. The path is not repeated here:
+        // the sidebar row already carries it on its second line.
         .navigationSubtitle(subtitle)
         .toolbar {
+            // Trailing, next to the actions it switches between. Leading (`nav`)
+            // puts the tabs before the window title, which makes the title read
+            // like a caption for them.
+            ToolbarItem(placement: .primaryAction) {
+                Picker("分区", selection: $tab) {
+                    ForEach(RepositoryTab.allCases) { candidate in
+                        Label(candidate.title, systemImage: candidate.systemImage)
+                            .tag(candidate)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelStyle(.titleAndIcon)
+                .fixedSize()
+                .help("切换工作副本的分区")
+            }
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     Task { await session.refresh() }
                 } label: {
-                    Label("刷新", systemImage: "arrow.clockwise")
+                    // The spinner used to live in the band that is gone; without
+                    // it a slow re-read looks like a click that did nothing.
+                    if session.isLoading {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label("刷新", systemImage: "arrow.clockwise")
+                    }
                 }
                 .keyboardShortcut("r", modifiers: .command)
                 .help("重新读取工作副本状态")
@@ -156,49 +177,15 @@ struct RepositoryDetailView: View {
         }
     }
 
-    /// One thin band: the section switcher on the left, the state of the last
-    /// read on the right.
+    /// Window subtitle: which revision this working copy is at, and who left it
+    /// there.
     ///
-    /// Two stacked bars above the content (a title card, then a switcher) is one
-    /// bar too many on a window that already names the working copy in its
-    /// title bar. What is left here is the only thing that has to be visible at
-    /// all times — which page you are on, and how old it is.
-    private var sectionBar: some View {
-        HStack(spacing: 12) {
-            Picker("", selection: $tab) {
-                ForEach(RepositoryTab.allCases) { candidate in
-                    Label(candidate.title, systemImage: candidate.systemImage)
-                        .tag(candidate)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelStyle(.titleAndIcon)
-            .fixedSize()
-
-            Spacer(minLength: 8)
-
-            if session.isLoading {
-                ProgressView().controlSize(.small)
-            }
-            if let refreshed = session.lastRefreshedAt {
-                Text("刷新于 \(refreshed.formatted(date: .omitted, time: .shortened))")
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
-                    .help("自动刷新会更新这个时间；⌘R 手动重读")
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(.bar)
-    }
-
-    /// Window subtitle: where this working copy is, and which revision it is at.
-    ///
-    /// Connection problems stay out of it on purpose — the sidebar row already
-    /// carries that badge, and a second copy of the same warning in the title
-    /// bar only makes the chrome louder.
+    /// The path is deliberately absent — the sidebar row carries it, and a
+    /// subtitle that long competes with the section switcher for the same
+    /// toolbar space. Connection problems stay out of it too: the sidebar row
+    /// already carries that badge.
     private var subtitle: String {
-        var parts = [(session.bookmark.path as NSString).abbreviatingWithTildeInPath]
+        var parts: [String] = []
         if let revision = session.info?.revision {
             parts.append("r\(revision)")
         }

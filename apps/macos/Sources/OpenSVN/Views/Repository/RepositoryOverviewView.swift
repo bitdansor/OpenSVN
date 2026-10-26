@@ -22,6 +22,10 @@ struct RepositoryOverviewView: View {
                         row("节点类型", info.kind.rawValue)
                         row("深度", info.depth ?? "—")
                         row("计划", info.schedule ?? "—")
+                        // The "refreshed at HH:MM" caption used to sit in the tab
+                        // band; the band is gone, and this is where a fact about
+                        // the working copy belongs.
+                        row("最后刷新", session.lastRefreshedAt.map(RelativeTime.absolute) ?? "—")
                     }
 
                     card("最后修改") {
