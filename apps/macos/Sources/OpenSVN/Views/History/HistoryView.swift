@@ -6,6 +6,17 @@ struct HistoryView: View {
     @Bindable var session: RepositorySession
     @Binding var tab: RepositoryTab
     @State private var selectedRevision: Int64?
+    /// Where the current drag started, so the divider follows the pointer instead
+    /// of accumulating the gesture's translation frame by frame.
+    @State private var dragStartWidth: CGFloat?
+
+    /// The list keeps this much room; the detail pane absorbs whatever is left.
+    private static let minListWidth: CGFloat = 300
+    private static let maxListWidth: CGFloat = 520
+    private static let minDetailWidth: CGFloat = 340
+    /// A 1 pt line nobody can hit is a line nobody drags, so the grab area is
+    /// wider than the mark it draws.
+    private static let dividerHitWidth: CGFloat = 9
 
     var body: some View {
         VStack(spacing: 0) {
@@ -15,12 +26,7 @@ struct HistoryView: View {
             if session.logIsServerSearch {
                 serverSearchBanner
             }
-            HSplitView {
-                list
-                    .frame(minWidth: 300, idealWidth: 360, maxWidth: 520)
-                detail
-                    .frame(minWidth: 340)
-            }
+            splitPanes
         }
         .task {
             if session.log.isEmpty {
@@ -35,6 +41,76 @@ struct HistoryView: View {
                 selectedRevision = revision
             }
         }
+    }
+
+    /// The list/detail split.
+    ///
+    /// Hand-built rather than `HSplitView`: that one is an `NSSplitView`, and in
+    /// this window — whose toolbar background is deliberately off — its divider
+    /// reached up into the titlebar, drawing a line across the toolbar icons and
+    /// swallowing their clicks. A `DragGesture` divider only exists where it is
+    /// drawn, so it cannot escape into the chrome.
+    private var splitPanes: some View {
+        GeometryReader { proxy in
+            HStack(spacing: 0) {
+                list
+                    .frame(width: session.historyListWidth)
+
+                divider(available: proxy.size.width)
+
+                detail
+                    .frame(maxWidth: .infinity)
+            }
+            // Dragging is not the only way the width can become wrong: a window
+            // resize can leave the detail pane below its minimum.
+            .onChange(of: proxy.size.width) { _, newWidth in
+                session.historyListWidth = clampedWidth(session.historyListWidth, in: newWidth)
+            }
+        }
+    }
+
+    private func divider(available: CGFloat) -> some View {
+        Rectangle()
+            .fill(Color(nsColor: .separatorColor))
+            .frame(width: 1)
+            .frame(width: Self.dividerHitWidth)
+            .contentShape(Rectangle())
+            // `NSSplitView` hands out this cursor for free; a divider drawn by
+            // hand has to ask for it, or nothing advertises that it can be dragged.
+            .onHover { inside in
+                if inside {
+                    NSCursor.resizeLeftRight.push()
+                } else {
+                    NSCursor.pop()
+                }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        if dragStartWidth == nil {
+                            dragStartWidth = session.historyListWidth
+                        }
+                        let base = dragStartWidth ?? session.historyListWidth
+                        session.historyListWidth = clampedWidth(
+                            base + value.translation.width,
+                            in: available
+                        )
+                    }
+                    .onEnded { _ in dragStartWidth = nil }
+            )
+    }
+
+    /// Keeps the list between 300 and 520 pt and the detail at 340 or more.
+    ///
+    /// When the window is too narrow to honour both floors the list keeps its
+    /// 300: the detail pane is where the diff is actually read, and the list
+    /// scrolls without losing anything.
+    private func clampedWidth(_ width: CGFloat, in available: CGFloat) -> CGFloat {
+        let ceiling = max(
+            Self.minListWidth,
+            min(Self.maxListWidth, available - Self.minDetailWidth)
+        )
+        return min(max(width, Self.minListWidth), ceiling)
     }
 
     // MARK: - Banners

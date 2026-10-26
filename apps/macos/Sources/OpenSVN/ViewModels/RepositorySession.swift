@@ -172,6 +172,12 @@ final class RepositorySession: Identifiable {
     var logIsServerSearch = false
     var logServerSearchText = ""
     var isLogSearching = false
+    /// Width of the history page's list pane, in points.
+    ///
+    /// Kept here rather than in the view because `HistoryView` is rebuilt every
+    /// time the section switcher moves: a `@State` would hand back a reset split
+    /// each time the user came back to look at history.
+    var historyListWidth: CGFloat = 360
     var blameState: BlameState?
     var isLoading = false
     var isLogLoading = false

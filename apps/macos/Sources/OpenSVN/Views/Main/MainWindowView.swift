@@ -41,21 +41,21 @@ struct MainWindowView: View {
                     WelcomeView()
                 }
             }
-            // The content genuinely lives under the titlebar, and the toolbar's
-            // own background is what hides it. So the detail column puts a
-            // background back for itself: without one, the history page's
-            // splitter drew its divider across the toolbar icons and its drag
-            // zone swallowed their clicks.
+            // The content column puts its own toolbar background back, because
+            // the window-level one is off: content is laid out under the titlebar
+            // here, and without a background a long list scrolled upwards shows
+            // its rows behind the title text. It costs nothing in alignment — the
+            // column divider sits at the same x above and below the toolbar.
             .toolbarBackground(.visible, for: .windowToolbar)
         }
         .navigationTitle(appState.selectedBookmark?.name ?? "OpenSVN")
         // Off for the window, so the sidebar's material runs all the way to the
-        // top edge and the column divider is a single line from y=0 down:
-        // measured, it sits at x=518 at every height, with no 2 pt step where the
-        // toolbar ends. The detail column restores a background for itself above.
+        // top edge (behind the traffic lights) and the column divider is a single
+        // line from y=0 down, with no step where the toolbar ends.
         //
-        // Known gap: this leaves the sidebar unmasked, so a list long enough to
-        // scroll will slide under the traffic lights.
+        // Safe now that the history page draws its own splitter: the previous
+        // `NSSplitView` divider was the thing that reached into the titlebar and
+        // stole clicks from the toolbar icons.
         .toolbarBackground(.hidden, for: .windowToolbar)
         .animation(.easeOut(duration: 0.18), value: showsRecoveryBanner)
         .toolbar {
