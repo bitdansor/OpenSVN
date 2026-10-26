@@ -6,7 +6,7 @@ This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 --------------------------------------------------------------------------------
 Third-party components
 
-OpenSVN bundles an Apache Subversion runtime on macOS (strategy: ADR-0003).
+OpenSVN bundles an Apache Subversion runtime on macOS (see third_party/README.md).
 The bundled binaries and libraries remain under their own licenses; the full
 text of each license must be shipped inside the application bundle under
 `Contents/Resources/licenses/` before any public release.

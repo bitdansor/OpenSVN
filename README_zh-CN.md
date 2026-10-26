@@ -19,7 +19,6 @@ tests/scenarios/       故障注入场景目录（F1–F15）与将来的执行�
 tests/integration/     跨平台的慢速工作副本场景
 scripts/               环境引导、测试仓库、fixture 采集、打包与发布自检
 packaging/{macos,windows}/  签名、公证、安装包定义（阶段 6）
-docs/                  架构、ADR、用户手册、发布说明
 third_party/           第三方依赖清单与许可证义务
 ```
 

@@ -30,7 +30,7 @@ representing OpenSVN.
 ## Reporting
 
 Report to `conduct@opensvn.example` (placeholder domain until the project
-publishes its real contact — track this in `docs/development/decisions/`).
+publishes its real contact — track this as an open item in the issue tracker).
 Reports are read by the maintainers only. Include what happened, where, and who
 was involved; screenshots or links help.
 

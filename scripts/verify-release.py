@@ -3,7 +3,7 @@
 
 Modes (any combination, default = --layout --metadata --fixtures --scenarios):
 
-  --layout          the planned tree recorded in ADR-0007 exists and is tracked
+  --layout          the planned tree in LAYOUT_DIRS / LAYOUT_FILES exists and is tracked
   --metadata        VERSION / CHANGELOG / Info.plist / governance files agree
   --fixtures        every recorded `svn --xml` fixture is well-formed and typed
   --scenarios       every fault-injection scenario has its four files and is runnable
@@ -80,8 +80,6 @@ REQUIRED_FILES = [
     "specifications/error-codes.md",
     "specifications/compatibility.md",
     "specifications/ui-behavior.md",
-    "docs/architecture/overview.md",
-    "docs/development/toolchain.md",
     "packaging/macos/entitlements.plist",
     "packaging/macos/notarize.sh",
     "scripts/sign-macos-app.sh",
@@ -97,18 +95,22 @@ UNPUBLISHED_DIRS = [
 ]
 
 
-# The planned tree, adjusted by ADR-0007 for the macOS SwiftPM
-# layout (Sources/ + Tests/ instead of a pure Xcode-native tree). Every entry here
-# must exist and carry at least one file: an empty directory is not tracked by git,
-# so "the folder exists" is only true if something inside it is committed.
+# The planned tree. It is not the one drawn before the first commit: the macOS
+# side ended up as a SwiftPM package (Sources/ + Tests/) rather than the
+# Xcode-native tree originally assumed, and `apps/macos/README.md` says why. Every
+# entry here must exist and carry at least one tracked file: an empty directory is
+# not tracked by git, so "the folder exists" is only true if something inside it
+# is committed.
 #
 # Only `apps/windows` itself is listed for the Windows side: its subtree was
 # removed on 2026-10-18 and will be rebuilt from scratch, so asserting the old
 # Model/Services/Views layout now would just encode a plan we no longer follow.
 #
-# `assets/` is not listed at all. It held three directories whose only content was
-# a placeholder README, which made the tree promise artwork that does not exist;
-# it is git-ignored now and returns when stage 6 generates an icon worth shipping.
+# `assets/` and `docs/` are not listed at all. `assets/` held three directories
+# whose only content was a placeholder README, which made the tree promise
+# artwork that does not exist. `docs/` holds the architecture notes and decision
+# records, which are kept locally: what the product must do lives in
+# `specifications/`, and that is what gets published.
 LAYOUT_DIRS = [
     ".github/workflows",
     ".github/ISSUE_TEMPLATE",
@@ -125,10 +127,6 @@ LAYOUT_DIRS = [
     "scripts",
     "packaging/macos",
     "packaging/windows",
-    "docs/architecture",
-    "docs/development/decisions",
-    "docs/user-guide",
-    "docs/releases",
     "third_party",
 ]
 
@@ -145,8 +143,6 @@ LAYOUT_FILES = [
     ".github/workflows/codeql.yml",
     "packaging/macos/README.md",
     "packaging/windows/README.md",
-    "docs/user-guide/README.md",
-    "docs/releases/README.md",
 ]
 
 
@@ -199,12 +195,12 @@ class GitIndex:
     """The paths a fresh clone would actually contain.
 
     Existence on this machine is not the property that matters. The red build of
-    2026-10-22 was `docs/releases/app-store-readiness.md`: it had been moved into
-    the ignored `internal/` tree while `REQUIRED_FILES` still listed it. The tree
-    looked complete to whoever made the move; a clone had nothing at that path,
-    so `verify-release.py` failed on CI and nowhere else. Hence "is it tracked?"
-    is the check, and "is it ignored?" is what the message has to say when the
-    answer is no — those two want different fixes.
+    2026-10-22 was a required path that had been moved into the ignored `internal/`
+    tree while `REQUIRED_FILES` still listed it. The tree looked complete to
+    whoever made the move; a clone had nothing at that path, so
+    `verify-release.py` failed on CI and nowhere else. Hence "is it tracked?" is
+    the check, and "is it ignored?" is what the message has to say when the answer
+    is no — those two want different fixes.
     """
 
     tracked: frozenset[str]
@@ -341,11 +337,11 @@ def check_metadata(report: Report, index: GitIndex | None) -> None:
                 "(run scripts/build-macos-app.sh to resync, then commit)"
             )
         if plist.get("LSMinimumSystemVersion") == "14.0":
-            report.ok("Info.plist LSMinimumSystemVersion == 14.0 (ADR-0004)")
+            report.ok("Info.plist LSMinimumSystemVersion == 14.0 (pinned deployment target)")
         else:
             report.warn(
                 f"LSMinimumSystemVersion is {plist.get('LSMinimumSystemVersion')!r}, "
-                "ADR-0004 pins 14.0"
+                "the deployment target is pinned at 14.0"
             )
         if plist.get("CFBundleIdentifier") == "cn.opensvn.app":
             report.ok("Info.plist CFBundleIdentifier == cn.opensvn.app")
@@ -418,7 +414,7 @@ def check_metadata(report: Report, index: GitIndex | None) -> None:
 # layout
 # ---------------------------------------------------------------------------
 def check_layout(report: Report, index: GitIndex | None) -> None:
-    report.section("Repository layout (ADR-0007)")
+    report.section("Repository layout")
 
     missing_dirs = []
     for relative in LAYOUT_DIRS:
@@ -667,7 +663,7 @@ def check_bundle(report: Report, bundle_arg: str, require_bundled_svn: bool = Fa
     else:
         message = (
             "no bundled svn runtime — the app relies on a system installation "
-            "(allowed for local builds, not for a public release: ADR-0003)"
+            "(allowed for local builds, not for a public release: see packaging/macos/README.md)"
         )
         if require_bundled_svn:
             report.fail(message + "; --require-bundled-svn was requested")

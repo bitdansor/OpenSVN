@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 env:
-  # Actual CI toolchain — recorded from the runner, see docs/development/toolchain.md.
+  # Actual CI toolchain — recorded from the runner; this file is the record.
   # This is the *strictest* compiler the code must satisfy: Swift 6.2 changed the
   # default actor isolation of nonisolated async functions (SE-0461), so newer
   # local toolchains accept code that 6.1 rejects. Never assume a green local
@@ -45,7 +45,7 @@ jobs:
           # is exactly how the 6.4-vs-6.1 divergence went unnoticed. Match major.minor
           # and update this file plus toolchain.md in the same PR when the runner moves.
           if ! swift --version | grep -q "Swift version ${EXPECTED_SWIFT}\."; then
-            echo "::warning::runner Swift is not the pinned ${EXPECTED_SWIFT} baseline — update docs/development/toolchain.md if this is intentional"
+            echo "::warning::runner Swift is not the pinned ${EXPECTED_SWIFT} baseline — update EXPECTED_SWIFT here if this is intentional"
           fi
           if [[ "$(sw_vers -productVersion)" != ${EXPECTED_MACOS}.* ]]; then
             echo "::warning::runner macOS is not the pinned ${EXPECTED_MACOS} baseline"

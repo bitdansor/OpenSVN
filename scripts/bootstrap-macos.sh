@@ -35,7 +35,7 @@ macos_major="${macos_version%%.*}"
 if (( macos_major >= MIN_MACOS_MAJOR )); then
   ok "macOS $macos_version (>= ${MIN_MACOS_MAJOR}.0 required)"
 else
-  miss "macOS $macos_version is below the ${MIN_MACOS_MAJOR}.0 deployment target (ADR-0004)"
+  miss "macOS $macos_version is below the ${MIN_MACOS_MAJOR}.0 deployment target"
 fi
 
 case "$(uname -m)" in
@@ -64,7 +64,7 @@ if command -v swift >/dev/null 2>&1; then
   if [[ "$swift_version" == *"Swift version 6"* ]]; then
     ok "Swift 6 language mode available"
   else
-    miss "Swift 6 toolchain required (docs/development/toolchain.md)"
+    miss "Swift 6 toolchain required (pinned in .github/workflows/macos-ci.yml)"
   fi
 else
   miss "swift not on PATH"

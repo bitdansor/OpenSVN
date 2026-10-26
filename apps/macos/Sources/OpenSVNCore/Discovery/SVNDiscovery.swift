@@ -70,7 +70,7 @@ public struct SVNInstallation: Sendable, Hashable {
 
 /// Resolves which `svn` executable to use.
 ///
-/// Order (see ADR-0003): explicit setting → bundled runtime → `PATH` →
+/// Order: explicit setting → bundled runtime → `PATH` →
 /// well-known locations → a hard error. Silently falling back to the user's
 /// shell environment is explicitly not allowed: a GUI app started from Finder
 /// does not inherit Homebrew's `PATH`.

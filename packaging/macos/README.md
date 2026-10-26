@@ -89,8 +89,8 @@ install, which is S6-6's last mile and needs a VM or spare machine.
 
 ## Known gap
 
-No Developer ID Application certificate exists in this project's possession yet
-(ADR-0003 open item 1), so every path above is exercised only with an Apple
+No Developer ID Application certificate exists in this project's possession yet,
+so every path above is exercised only with an Apple
 Development identity: signing and manifest refresh are verified, notarisation is
 not. `notarize.sh` refuses such a signature explicitly instead of failing later
 inside `notarytool`.

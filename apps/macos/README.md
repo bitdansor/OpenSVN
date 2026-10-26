@@ -27,10 +27,10 @@ apps/macos/
   OpenSVN.xcodeproj/            thin Xcode shell that references the local package
 ```
 
-This differs from the planned tree (which assumed a pure Xcode-native layout). The reasons
-and the trade-offs are recorded in
-`docs/development/decisions/ADR-0007-macos-source-layout.md`; the mapping between
-the two layouts is in `docs/architecture/overview.md`.
+This is a SwiftPM package rather than the Xcode-native tree assumed before the
+first commit: the core has to be testable without a running app, and `swift test`
+gives that for free. `Package.swift` is the authority for targets and paths;
+`OpenSVN.xcodeproj` exists so the app can be opened, run and instrumented in Xcode.
 
 ## Build
 

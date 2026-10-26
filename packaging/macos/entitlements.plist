@@ -7,7 +7,7 @@
 
 	  The two things that usually force an entitlement here do not apply:
 
-	  1. The app is not sandboxed (ADR-0003). It has to reach working copies
+	  1. The app is not sandboxed. It has to reach working copies
 	     the user picks anywhere on disk, and a sandbox would turn every
 	     checkout into a security-scoped bookmark problem without adding
 	     protection to a tool whose job is running svn on user files.

@@ -6,6 +6,29 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed (docs: design reasoning kept out of the published tree)
+
+- **`docs/` is no longer published.** Architecture notes, the seven decision
+  records and the toolchain baseline stay local (`/docs/` is ignored); what the
+  product *must do* was already published in `specifications/`, and that is the
+  half a reader needs. The cost is deliberate and worth stating: the reasoning
+  itself is no longer readable from the repository.
+- **33 references had to become statements.** Every `see ADR-0003` in a script
+  comment, every `docs/development/decisions/...` path and every `ADR-0007` in
+  `verify-release.py` pointed at something a reader can no longer open, so each one
+  was replaced by the rule it stood for — "a release ships its own runtime",
+  "the deployment target is pinned at 14.0", "`Package.swift` is the authority for
+  targets and paths" — or by a pointer to a published file
+  (`packaging/macos/README.md`, `specifications/compatibility.md`). CHANGELOG
+  entries below are left as written: a history that quietly rewrites its own
+  references is worse than one with dead links.
+- **Six assertions dropped** from `verify-release.py`: the two required files and
+  four anchor entries under `docs/`. `docs/` is gone from `LAYOUT_DIRS`, so the
+  layout check no longer claims a tree that is not shipped.
+- The two rules that lived only in a `docs/` file moved to `CONTRIBUTING.md`:
+  images beside the text that uses them, no screenshots of real repository URLs or
+  private commit messages, and no placeholder application icon.
+
 ### Removed (assets: promises of artwork that did not exist)
 
 - **`assets/` is no longer published.** Its three directories — `branding/`,

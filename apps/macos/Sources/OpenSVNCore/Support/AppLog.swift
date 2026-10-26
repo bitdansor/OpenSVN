@@ -66,7 +66,7 @@ public actor AppLog {
     public static let shared = AppLog(level: .off)
 
     /// `~/Library/Logs/OpenSVN`, the conventional location for a non-sandboxed
-    /// app. The sandbox is off by design (ADR-0003), so `~/Library` is writable.
+    /// app. The sandbox is off by design, so `~/Library` is writable.
     public static var defaultDirectory: URL {
         let library = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library")

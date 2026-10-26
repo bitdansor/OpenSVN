@@ -43,3 +43,17 @@ the README section "Sandboxed environments".
 
 If you change a parser, add or update a fixture under `tests/fixtures/` and note
 the `svn --version` used to record it. Contract tests must stay green.
+
+## Documentation and screenshots
+
+What the product must do lives in `specifications/` and is published with the
+code. Design reasoning — why a decision was made, what was rejected — is kept out
+of this repository, so a comment should state the rule rather than point at a
+document that a reader cannot open.
+
+If a change adds user-visible documentation, put the images beside the text that
+uses them. Do not write chapters for features that do not exist yet, and do not
+capture a window showing a real repository URL, user name, or a commit message
+from a private repository. An application icon is generated from source artwork,
+never hand-edited, and a placeholder icon is never committed — it survives into a
+release.

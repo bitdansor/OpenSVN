@@ -7,8 +7,7 @@ PR.
 
 ## Runtime: bundled Subversion (macOS)
 
-Strategy decided in `docs/development/decisions/ADR-0003-svn-runtime.md`: ship a
-relocatable `svn` runtime inside `OpenSVN.app/Contents/Resources/svn/`, with a
+Strategy: ship a relocatable `svn` runtime inside `OpenSVN.app/Contents/Resources/svn/`, with a
 fallback to a system installation when the bundle is missing or unusable.
 
 Measured inventory (macOS arm64, Homebrew svn 1.14.5, 2026-10-18):
@@ -67,4 +66,5 @@ Record the real list when the port starts — do not copy this table.
    (`--disable-nls` rather than shipping `libintl`).
 4. Unknown or "custom" licenses: blocked until reviewed.
 5. Any dependency that would make OpenSVN phone home, embed a browser engine, or
-   handle credentials differently from `ADR-0006` is blocked regardless of license.
+   handle credentials differently from the rules in `specifications/data-models.md`
+   is blocked regardless of license.

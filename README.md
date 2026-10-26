@@ -20,7 +20,6 @@ tests/scenarios/       Fault-injection catalogue (F1-F15) and its future harness
 tests/integration/     Slow cross-platform working-copy scenarios
 scripts/               Bootstrap, test repo, fixtures, app bundling, release checks
 packaging/{macos,windows}/  Signing, notarisation, installer definitions (stage 6)
-docs/                  Architecture, ADRs, user guide, release notes
 third_party/           Dependency inventory and licence obligations
 ```
 

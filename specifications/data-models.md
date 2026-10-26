@@ -1,7 +1,7 @@
 # 数据模型契约
 
 > 状态：v0.1（与 `apps/macos/Sources/OpenSVNCore/Models/` 一致）
-> 关联：`specifications/svn-operations.md`（产生这些模型的调用）、`docs/architecture/overview.md`
+> 关联：`specifications/svn-operations.md`（产生这些模型的调用）、`specifications/ui-behavior.md`（这些字段在界面上怎么呈现）
 
 本文件定义两端共享的**字段语义**。字段名可随语言习惯调整（Swift 的 `item`，C++ 的 `text_status`），但含义、取值集合、组合规则必须一致。
 

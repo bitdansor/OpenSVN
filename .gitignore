@@ -68,3 +68,8 @@ credentials.json
 # The three subdirectories held nothing but a placeholder README each, and a
 # published placeholder directory promises artwork that does not exist.
 /assets/
+
+# Architecture notes, decision records and the toolchain baseline — local.
+# What must be true of the product lives in `specifications/` (published); what
+# was argued at the time stays here, next to the planning notes.
+/docs/

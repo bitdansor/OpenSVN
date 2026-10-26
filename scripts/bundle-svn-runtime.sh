@@ -17,7 +17,7 @@
 # the machine this bundle exists for.
 #
 # Each third-party dylib is copied under the *name referenced by the parent*
-# (symlinked Homebrew libs break realpath-based rewriting, see ADR-0003), all
+# (symlinked Homebrew libs break realpath-based rewriting), all
 # install names become @rpath/<name>, and everything is re-signed from the
 # inside out — install_name_tool invalidates signatures, and on Apple Silicon an
 # invalid signature means SIGKILL at launch.
@@ -207,7 +207,7 @@ SVN_VERSION="$("$BIN_DIR/svn" --version --quiet 2>&1)"
 # ---------------------------------------------------------------------------
 # Licences and provenance
 #
-# The runtime is 20+ third-party binaries, and ADR-0003 flags libintl (LGPL) as
+# The runtime is 20+ third-party binaries, and libintl (LGPL, from gettext) is
 # the one that actually obliges us to ship texts. Copying whatever Homebrew kept
 # next to each formula is best-effort: it is not a substitute for the S7-2 audit,
 # but it turns "we should collect licences later" into a machine-checkable
@@ -339,7 +339,7 @@ with open(readme, "w", encoding="utf-8") as handle:
     handle.write("formulae with no text available: " + (", ".join(texts_missing) or "none") + "\n")
     handle.write("formulae with no SPDX id: " + (", ".join(missing_identifiers) or "none") + "\n\n")
     handle.write("A missing text is a real gap and is listed above rather than glossed over;\n")
-    handle.write("see third_party/README.md and ADR-0003. Resolving it is the S7-2 audit.\n")
+    handle.write("see third_party/README.md. Resolving it is the S7-2 audit.\n")
 
 manifest = {
     "schemaVersion": 1,

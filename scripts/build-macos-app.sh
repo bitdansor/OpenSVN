@@ -7,11 +7,12 @@
 #   BUNDLE_SVN=0 CONFIG=release ...         # release build that still needs a host svn
 #
 # The bundled runtime defaults ON for release and OFF for debug. A release that
-# depends on the build host having svn violates the rule ADR-0003 settled, so the
+# depends on the build host having svn violates the rule this project settled —
+# a release ships its own runtime — so the
 # opt-out is explicit and the build says so out loud.
 #
 # The produced bundle is ad-hoc signed. Developer ID signing and notarisation are
-# stage 6 work (see docs/development/decisions/ADR-0003-svn-runtime.md).
+# stage 6 work (see packaging/macos/README.md).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -61,7 +62,7 @@ if [[ "$BUNDLE_SVN" == "1" ]]; then
 else
   echo "== no bundled svn runtime: this build needs svn on PATH =="
   if [[ "$CONFIG" == "release" ]]; then
-    echo "   (a release build without the runtime is not shippable — see ADR-0003)"
+    echo "   (a release build without the runtime is not shippable — see packaging/macos/README.md)"
   fi
 fi
 

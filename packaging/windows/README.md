@@ -1,9 +1,8 @@
 # Windows packaging
 
-Stage 6 work. The packaging format decision (MSIX vs an EXE installer) is
-recorded in `docs/development/decisions/ADR-0005-windows-packaging.md`; this
-directory holds the implementation once W1–W3 in that ADR have been measured on a
-real Windows machine.
+Stage 6 work. The packaging format (MSIX vs an EXE installer) is **not settled**:
+MSIX is the working assumption and has not been measured on a clean Windows
+machine. This directory holds the implementation once that measurement exists.
 
 Expected contents:
 

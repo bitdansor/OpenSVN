@@ -9,7 +9,7 @@
 | 最低版本 | **1.10.0** | `--password-from-stdin` 自 1.10 起可用，是“密码不进 argv”红线的唯一实现方式 |
 | 最高版本 | `< 2.0.0`（不含） | 1.x 内 XML 结构稳定；2.x 必须重新验证 |
 | 首选版本 | 1.14.x | 当前测试与 fixture 采集版本 |
-| 打包策略 | 内置运行时（macOS） | 见 ADR-0003 |
+| 打包策略 | 内置运行时（macOS） | 见 `packaging/macos/README.md` |
 
 版本校验在启动时执行 `svn --version --quiet`，解析失败或越界即报 `SVN-0002`，不静默降级。
 
@@ -81,5 +81,5 @@ svn: E000022: Can't convert string from native encoding to 'UTF-8'
 修改本文时同步更新：
 
 1. `tests/fixtures/README.md` 中记录的 svn 版本；
-2. `docs/development/toolchain.md`；
+2. `.github/workflows/macos-ci.yml` 里钉住的工具链基线；
 3. 若改变支持区间，`CHANGELOG.md` 必须写明影响。
