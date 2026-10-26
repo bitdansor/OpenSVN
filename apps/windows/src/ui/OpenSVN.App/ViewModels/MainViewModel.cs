@@ -29,6 +29,14 @@ public sealed class RecentWorkingCopyItem
     public string StatusText => IsAvailable ? "可用" : "目录不存在，点击可重新定位";
 }
 
+public sealed class UpdatePreviewAttempt
+{
+    public RemotePreviewDto? Preview { get; init; }
+    public OpenSVNException? Error { get; init; }
+    public required string WorkingCopy { get; init; }
+    public required long Session { get; init; }
+}
+
 public sealed class MainViewModel : ObservableObject, IDisposable
 {
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
@@ -49,6 +57,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     private JournalDto? _journal;
     private List<StatusItem> _selectedItems = new();
     private long? _lastCommitRevision;
+    private long _sessionVersion;
 
     public MainViewModel()
     {
@@ -316,6 +325,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         PropertiesTarget = root;
         _repositoryUrl = null;
         _repositoryHost = null;
+        _sessionVersion++;
         StatusError = null;
         Connection = ConnectionState.Unknown;
         SetSelection(Array.Empty<StatusItem>());
@@ -357,6 +367,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _repositoryHost = null;
         _workingCopyRevisionText = null;
         PropertiesTarget = "";
+        _sessionVersion++;
         StatusError = null;
         StatusItems.Clear();
         StatusGroups.Clear();
@@ -659,32 +670,78 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
     }
 
-    public async Task<RemotePreviewDto> FetchRemotePreviewAsync()
+    public async Task<UpdatePreviewAttempt> PreviewUpdateAsync()
     {
-        if (_client is null || string.IsNullOrWhiteSpace(_workingCopyPath))
+        var workingCopy = _workingCopyPath;
+        var client = _client;
+        var session = _sessionVersion;
+        if (client is null || string.IsNullOrWhiteSpace(workingCopy))
             throw new InvalidOperationException("没有打开工作副本。");
+
+        bool Current() =>
+            session == _sessionVersion &&
+            ReferenceEquals(client, _client) &&
+            SamePath(workingCopy, _workingCopyPath);
+
         try
         {
-            var preview = await WithAuthAsync(credential => _client.InvokeAsync<RemotePreviewDto>(
-                "remote_preview", new { path = _workingCopyPath }, null,
-                CancellationToken.None, credential));
-            Connection = ConnectionState.Reachable;
-            return preview;
+            var preview = await WithAuthAsync(
+                credential => client.InvokeAsync<RemotePreviewDto>(
+                    "remote_preview", new { path = workingCopy }, null,
+                    CancellationToken.None, credential),
+                allowPrompt: true, stillCurrent: Current);
+            if (Current()) Connection = ConnectionState.Reachable;
+            return new UpdatePreviewAttempt
+            {
+                Preview = preview,
+                WorkingCopy = workingCopy,
+                Session = session,
+            };
         }
         catch (OpenSVNException exception)
         {
-            UpdateConnection(exception);
-            throw;
+            if (Current()) UpdateConnection(exception);
+            return new UpdatePreviewAttempt
+            {
+                Error = exception,
+                WorkingCopy = workingCopy,
+                Session = session,
+            };
+        }
+        catch (Exception) when (!Current())
+        {
+            return new UpdatePreviewAttempt
+            {
+                WorkingCopy = workingCopy,
+                Session = session,
+            };
         }
     }
 
-    public async Task<bool> UpdateAsync(long? revision = null)
+    public bool IsCurrentWorkingCopy(string path, long session) =>
+        session == _sessionVersion && SamePath(path, _workingCopyPath);
+
+    public async Task<bool> UpdateAsync(long? revision = null, string? expectedWorkingCopy = null,
+        long? expectedSession = null)
     {
         if (!HasWorkingCopy) return false;
-        Func<Task> retry = async () => { await UpdateAsync(revision); };
+        if (expectedWorkingCopy is not null &&
+            ((expectedSession is long session && session != _sessionVersion) ||
+             !SamePath(expectedWorkingCopy, _workingCopyPath)))
+        {
+            Notify(NotificationSeverity.Warning, "工作副本已切换",
+                "旧的更新确认已丢弃，请重新发起更新。");
+            return false;
+        }
+
+        var workingCopy = expectedWorkingCopy ?? _workingCopyPath;
+        var client = _client;
+        if (client is null || string.IsNullOrWhiteSpace(workingCopy)) return false;
+        Func<Task> retry = BoundRetry(workingCopy,
+            async () => { await UpdateAsync(revision, workingCopy, expectedSession); });
         var summary = await RunWriteAsync("更新 " + WorkingCopyName,
-            (credential, progress, cancellationToken) => _client!.InvokeAsync<UpdateSummaryDto>(
-                "update", new { path = _workingCopyPath, revision }, progress, cancellationToken,
+            (credential, progress, cancellationToken) => client.InvokeAsync<UpdateSummaryDto>(
+                "update", new { path = workingCopy, revision }, progress, cancellationToken,
                 credential), retry, null, true,
             "工作副本可能处于中间状态，必要时执行 Cleanup。");
         if (summary is null) return false;
@@ -697,12 +754,19 @@ public sealed class MainViewModel : ObservableObject, IDisposable
             Notify(NotificationSeverity.Warning, revisionText + "，但产生了冲突",
                 $"有 {summary.ConflictedPaths.Count} 个路径冲突：" +
                 string.Join("、", summary.ConflictedPaths.Take(5)) +
-                (summary.ConflictedPaths.Count > 5 ? " 等" : ""));
+                (summary.ConflictedPaths.Count > 5 ? " 等" : "") +
+                (summary.ConflictsVerified ? "" : "\n无法读取更新后的状态，冲突列表可能不完整。"));
+        }
+        else if (!summary.ConflictsVerified)
+        {
+            Notify(NotificationSeverity.Warning, revisionText + "，但冲突状态未知",
+                "更新已完成，但无法读取更新后的工作副本状态。请刷新变更列表确认是否产生冲突。");
         }
         else
         {
             Notify(NotificationSeverity.Success, revisionText,
-                $"更新了 {summary.UpdatedPaths.Count} 个路径，删除 {summary.RemovedPaths.Count} 个路径。");
+                $"更新 {summary.UpdatedPaths.Count} 个路径，合并 {summary.MergedPaths.Count} 个，" +
+                $"新增 {summary.AddedPaths.Count} 个，删除 {summary.RemovedPaths.Count} 个。");
         }
         return true;
     }
@@ -1000,7 +1064,8 @@ public sealed class MainViewModel : ObservableObject, IDisposable
     }
 
     private async Task<T> WithAuthAsync<T>(
-        Func<SVNCredential?, Task<T>> action, bool allowPrompt = true)
+        Func<SVNCredential?, Task<T>> action, bool allowPrompt = true,
+        Func<bool>? stillCurrent = null)
     {
         try
         {
@@ -1008,10 +1073,12 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         }
         catch (OpenSVNException exception) when (exception.AuthenticationRequired)
         {
+            if (stillCurrent is not null && !stillCurrent()) throw;
             UpdateConnection(exception);
             if (!allowPrompt || CredentialRequested is null) throw;
             var credential = await CredentialRequested(RepositoryHost);
             if (credential is null) throw;
+            if (stillCurrent is not null && !stillCurrent()) throw;
             return await action(credential);
         }
     }
@@ -1200,6 +1267,7 @@ public sealed class MainViewModel : ObservableObject, IDisposable
         _client = client;
         previous?.Dispose();
         _settings = candidate;
+        _sessionVersion++;
         OnPropertyChanged(nameof(HasSvn));
         RefreshRecentWorkingCopies();
         Installation = installation;

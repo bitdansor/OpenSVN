@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <map>
 #include <string>
 
 namespace opensvn::parsing {
@@ -162,6 +163,57 @@ StatusEntry parse_status_entry(const pugi::xml_node& entry_node) {
     return entry;
 }
 
+void merge_status_entry(StatusEntry& into, StatusEntry extra) {
+    const auto is_stronger = [](const WCItemStatus& status) {
+        return !status.is(WCItemStatus::Kind::none) &&
+               !status.is(WCItemStatus::Kind::normal);
+    };
+    if ((into.item.is(WCItemStatus::Kind::none) ||
+         into.item.is(WCItemStatus::Kind::normal)) &&
+        is_stronger(extra.item)) {
+        into.item = extra.item;
+    }
+    if ((into.properties.is(WCItemStatus::Kind::none) ||
+         into.properties.is(WCItemStatus::Kind::normal)) &&
+        is_stronger(extra.properties)) {
+        into.properties = extra.properties;
+    }
+    into.conflicts = into.conflicts | extra.conflicts;
+    if (!into.revision ||
+        (*into.revision < 0 && extra.revision && *extra.revision >= 0)) {
+        into.revision = extra.revision;
+    }
+    into.is_copied = into.is_copied || extra.is_copied;
+    if (!into.repository_lock && extra.repository_lock) {
+        into.repository_lock = std::move(extra.repository_lock);
+    }
+    if (!into.remote_lock && extra.remote_lock) {
+        into.remote_lock = std::move(extra.remote_lock);
+    }
+    if (!into.remote_item && extra.remote_item) {
+        into.remote_item = std::move(extra.remote_item);
+    }
+    if (!into.remote_properties && extra.remote_properties) {
+        into.remote_properties = std::move(extra.remote_properties);
+    }
+    into.is_working_copy_locked = into.is_working_copy_locked || extra.is_working_copy_locked;
+    if (!into.changelist && extra.changelist) {
+        into.changelist = std::move(extra.changelist);
+    }
+    if (!into.commit ||
+        (into.commit->revision <= 0 && extra.commit && extra.commit->revision > 0)) {
+        into.commit = std::move(extra.commit);
+    }
+    if (!into.depth && extra.depth) into.depth = std::move(extra.depth);
+}
+
+std::string status_entry_key(const std::string& path) {
+    std::string key = text::lower_ascii(path);
+    std::replace(key.begin(), key.end(), '\\', '/');
+    while (key.size() > 1 && key.back() == '/') key.pop_back();
+    return key;
+}
+
 } // namespace
 
 StatusSnapshot parse_status(std::string_view xml) {
@@ -178,15 +230,41 @@ StatusSnapshot parse_status(std::string_view xml) {
 
     std::optional<std::int64_t> working_copy_revision;
     std::optional<std::int64_t> server_revision;
+    std::map<std::string, std::size_t> positions;
+    const auto append_entry = [&](StatusEntry entry,
+                                  const std::optional<std::string>& changelist) {
+        if (!entry.changelist && changelist && !changelist->empty()) {
+            entry.changelist = *changelist;
+        }
+        const std::string key = status_entry_key(entry.path);
+        const auto found = positions.find(key);
+        if (found == positions.end()) {
+            positions.emplace(key, snapshot.entries.size());
+            snapshot.entries.push_back(std::move(entry));
+        } else {
+            merge_status_entry(snapshot.entries[found->second], std::move(entry));
+        }
+    };
 
     for (const pugi::xml_node target : root.children("target")) {
         for (const pugi::xml_node entry : target.children("entry")) {
-            snapshot.entries.push_back(parse_status_entry(entry));
+            append_entry(parse_status_entry(entry), std::nullopt);
         }
         if (const pugi::xml_node against = target.child("against")) {
             if (const auto revision = optional_i64(against, "revision")) {
                 server_revision = std::max(server_revision.value_or(*revision), *revision);
             }
+        }
+    }
+
+    // `svn status --xml` puts changelist members in sibling <changelist>
+    // containers, not under <target>.
+    for (const pugi::xml_node changelist : root.children("changelist")) {
+        const std::string name = attribute(changelist, "name");
+        const std::optional<std::string> list_name =
+            name.empty() ? std::nullopt : std::optional<std::string>(name);
+        for (const pugi::xml_node entry : changelist.children("entry")) {
+            append_entry(parse_status_entry(entry), list_name);
         }
     }
 
@@ -309,7 +387,12 @@ std::vector<PropertyTarget> parse_properties(std::string_view xml) {
         for (const pugi::xml_node property : target.children("property")) {
             const std::string name = attribute(property, "name");
             if (name.empty()) continue;
-            parsed.properties.push_back(SVNProperty{name, property.text().as_string()});
+            SVNProperty parsed_property{name, property.text().as_string()};
+            if (const auto encoding = optional_attribute(property, "encoding");
+                encoding && !encoding->empty()) {
+                parsed_property.encoding = encoding;
+            }
+            parsed.properties.push_back(std::move(parsed_property));
         }
         targets.push_back(std::move(parsed));
     }

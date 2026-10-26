@@ -34,11 +34,18 @@ std::string path_text(const std::filesystem::path& path) {
     return text::path_to_utf8(path);
 }
 
+// svn parses the last `@` in a target as a peg revision. A literal filename
+// such as `asset@2x.png` must be disambiguated with a trailing `@`.
+std::string literal_target(std::string target) {
+    if (target.find('@') != std::string::npos) target.push_back('@');
+    return target;
+}
+
 std::vector<std::string> absolute_texts(
     const std::vector<std::filesystem::path>& paths) {
     std::vector<std::string> result;
     result.reserve(paths.size());
-    for (const auto& path : paths) result.push_back(path_text(absolute_path(path)));
+    for (const auto& path : paths) result.push_back(literal_target(path_text(absolute_path(path))));
     return result;
 }
 
@@ -338,6 +345,7 @@ std::optional<std::string> SVNService::repository_url_for(const std::string& pat
                                                           std::stop_token stop) const {
     if (path.find("://") != std::string::npos) return path;
     try {
+        // `path` is a raw target here; info() applies the literal-@ escaping.
         const InfoReport report = info(path, std::nullopt, stop);
         if (report.primary()) return report.primary()->url;
     } catch (...) {
@@ -371,9 +379,11 @@ StatusSnapshot SVNService::status(const std::filesystem::path& target, bool incl
     std::vector<std::string> args = {"status", "--xml"};
     if (include_ignored) args.push_back("--no-ignore");
     if (check_repository) args.push_back("--show-updates");
-    const std::string target_text = path_text(absolute_path(target));
+    const std::string target_text = literal_target(path_text(absolute_path(target)));
     const auto repository_url =
-        check_repository ? repository_url_for(target_text, stop) : std::nullopt;
+        check_repository
+            ? repository_url_for(path_text(absolute_path(target)), stop)
+            : std::nullopt;
     const ProcessResult result = invoke(args, {target_text}, std::nullopt,
                                         std::move(credential), repository_url, nullptr, stop);
     return parsing::parse_status(result.standard_output);
@@ -390,7 +400,7 @@ InfoReport SVNService::info(const std::string& target,
                             std::stop_token stop) const {
     const bool is_url = target.find("://") != std::string::npos;
     const std::string path =
-        is_url ? target : path_text(absolute_path(text::path_from_utf8(target)));
+        is_url ? target : literal_target(path_text(absolute_path(text::path_from_utf8(target))));
     const ProcessResult result = invoke({"info", "--xml"}, {path}, std::nullopt,
                                         std::move(credential),
                                         is_url ? std::optional<std::string>(target)
@@ -406,7 +416,7 @@ LogPage SVNService::log(const std::string& target, int limit,
                         const SVNProgressCallback& progress, std::stop_token stop) const {
     const bool is_url = target.find("://") != std::string::npos;
     const std::string path =
-        is_url ? target : path_text(absolute_path(text::path_from_utf8(target)));
+        is_url ? target : literal_target(path_text(absolute_path(text::path_from_utf8(target))));
     std::vector<std::string> args = {"log", "--xml", "-v", "-l",
                                      std::to_string(std::max(1, limit))};
     if (start_revision && end_revision) {
@@ -439,8 +449,8 @@ DiffResult SVNService::diff_working_copy(const std::filesystem::path& target,
     const std::size_t capture_limit = max_bytes == 0 ? 2'000'000 : max_bytes;
     const ProcessResult result = invoke(
         {"diff", "--internal-diff", "-x", "-U" + std::to_string(std::max(0, context_lines))},
-        {path_text(absolute_path(target))}, std::nullopt, std::nullopt, std::nullopt, nullptr,
-        stop, capture_limit);
+        {literal_target(path_text(absolute_path(target)))}, std::nullopt, std::nullopt,
+        std::nullopt, nullptr, stop, capture_limit);
     DiffResult diff;
     diff.byte_count = result.standard_output_bytes;
     const std::size_t display_limit = max_bytes == 0 ? capture_limit : max_bytes;
@@ -460,13 +470,14 @@ DiffResult SVNService::diff_revision(const std::filesystem::path& target,
                                      std::optional<SVNCredential> credential,
                                      int context_lines, std::size_t max_bytes,
                                      std::stop_token stop) const {
-    const auto repository_url = repository_url_for(path_text(absolute_path(target)), stop);
+    const auto repository_url =
+        repository_url_for(path_text(absolute_path(target)), stop);
     const std::size_t capture_limit = max_bytes == 0 ? 2'000'000 : max_bytes;
     const ProcessResult result = invoke(
         {"diff", "-c", std::to_string(revision), "--internal-diff", "-x",
          "-U" + std::to_string(std::max(0, context_lines))},
-        {path_text(absolute_path(target))}, std::nullopt, std::move(credential),
-        repository_url, nullptr, stop, capture_limit);
+        {literal_target(path_text(absolute_path(target)))}, std::nullopt,
+        std::move(credential), repository_url, nullptr, stop, capture_limit);
     DiffResult diff;
     diff.byte_count = result.standard_output_bytes;
     const std::size_t display_limit = max_bytes == 0 ? capture_limit : max_bytes;
@@ -542,9 +553,10 @@ UpdateSummary SVNService::update(const std::filesystem::path& target,
                 args.push_back("-r");
                 args.push_back(std::to_string(*revision));
             }
-            const std::string target_text = path_text(absolute_path(target));
+            const std::string target_text = literal_target(path_text(absolute_path(target)));
 
-            const auto repository_url = repository_url_for(target_text, stop);
+            const auto repository_url =
+                repository_url_for(path_text(absolute_path(target)), stop);
             const ProcessResult result = invoke(args, {target_text}, std::nullopt, credential,
                                                 repository_url,
                                                 progress ? &progress : nullptr, stop);
@@ -554,6 +566,8 @@ UpdateSummary SVNService::update(const std::filesystem::path& target,
             result_summary.to_revision =
                 SVNOutputParser::parse_updated_revision(result.standard_output);
             result_summary.updated_paths = parsed.updated;
+            result_summary.added_paths = parsed.added;
+            result_summary.merged_paths = parsed.merged;
             result_summary.conflicted_paths = parsed.conflicted;
             result_summary.removed_paths = parsed.deleted;
             result_summary.raw_output = LogRedactor::redact(result.standard_output);
@@ -561,6 +575,23 @@ UpdateSummary SVNService::update(const std::filesystem::path& target,
                 const InfoReport report = info(path_text(target), std::nullopt, stop);
                 if (report.primary()) result_summary.to_revision = report.primary()->revision;
             } catch (...) {
+            }
+            try {
+                if (stop.stop_requested()) {
+                    result_summary.conflicts_verified = false;
+                } else {
+                    const StatusSnapshot after =
+                        status(target, false, false, std::nullopt, stop);
+                    result_summary.conflicted_paths.clear();
+                    for (const auto& entry : after.conflicted()) {
+                        result_summary.conflicted_paths.push_back(entry.path);
+                    }
+                    result_summary.conflicts_verified = true;
+                }
+            } catch (...) {
+                // The update itself succeeded. Without a readable status the
+                // caller must not be told "no conflicts".
+                result_summary.conflicts_verified = false;
             }
             return result_summary;
         });
@@ -727,20 +758,41 @@ CommitSummary SVNService::commit(const std::vector<std::filesystem::path>& paths
     const auto ticket = begin_journal(OperationJournal::EntryKind::commit,
                                       text::path_from_utf8(key),
                                       "提交 " + std::to_string(paths.size()) + " 个路径");
+    bool command_started = false;
     try {
         CommitSummary summary = gate_.with_lock(key, stop, [&] {
+            bool has_directory = false;
             for (const auto& path : paths) {
-                const StatusSnapshot snapshot = status(path);
+                if (stop.stop_requested()) {
+                    throw_svn_error(SVNErrorCode::cancelled, "提交已取消");
+                }
+                const StatusSnapshot snapshot =
+                    status(path, false, false, std::nullopt, stop);
                 const auto conflicted = snapshot.conflicted();
                 if (!conflicted.empty()) {
                     throw_svn_error(SVNErrorCode::conflict_remains,
                                     "存在未解决的冲突：" + conflicted.front().path,
                                     "请先解决冲突并标记 resolve 后再提交。");
                 }
+                std::error_code error_code;
+                if (std::filesystem::is_directory(path, error_code)) has_directory = true;
+            }
+            if (stop.stop_requested()) {
+                throw_svn_error(SVNErrorCode::cancelled, "提交已取消");
             }
             const auto repository_url =
                 repository_url_for(path_text(absolute_path(paths.front())), stop);
             std::vector<std::string> args = {"commit", "-m", trimmed, "--encoding", "UTF-8"};
+            // A directory target would otherwise commit every modified
+            // descendant. The depth applies to the whole command, so keep it
+            // empty for all targets. SVN still performs copies recursively,
+            // while plain added children must be among the explicit targets;
+            // unselected children are left out.
+            if (has_directory) {
+                args.push_back("--depth");
+                args.push_back("empty");
+            }
+            command_started = true;
             const ProcessResult result = invoke(args, absolute_texts(paths), std::nullopt,
                                                 credential, repository_url,
                                                 progress ? &progress : nullptr, stop);
@@ -762,7 +814,7 @@ CommitSummary SVNService::commit(const std::vector<std::filesystem::path>& paths
         finish_journal(ticket);
         return summary;
     } catch (const SVNException& exception) {
-        if (!remote_outcome_unknown(exception.error().code)) {
+        if (!command_started || !remote_outcome_unknown(exception.error().code)) {
             finish_journal(ticket);
             throw;
         }
@@ -884,8 +936,8 @@ void SVNService::cleanup(const std::filesystem::path& target, std::stop_token st
                                       "清理 " + path_text(target.filename()));
     try {
         gate_.with_lock(key, stop, [&] {
-            invoke({"cleanup"}, {path_text(absolute_path(target))}, std::nullopt,
-                   std::nullopt, std::nullopt, nullptr, stop);
+            invoke({"cleanup"}, {literal_target(path_text(absolute_path(target)))},
+                   std::nullopt, std::nullopt, std::nullopt, nullptr, stop);
         });
         finish_journal(ticket);
     } catch (...) {
@@ -941,8 +993,9 @@ std::vector<PropertyTarget> SVNService::properties(const std::filesystem::path& 
                                                    std::stop_token stop) const {
     std::vector<std::string> args = {"proplist", "--xml", "--verbose"};
     if (recursive) args.push_back("--recursive");
-    const ProcessResult result = invoke(args, {path_text(absolute_path(target))}, std::nullopt,
-                                        std::nullopt, std::nullopt, nullptr, stop);
+    const ProcessResult result = invoke(
+        args, {literal_target(path_text(absolute_path(target)))}, std::nullopt,
+        std::nullopt, std::nullopt, nullptr, stop);
     return parsing::parse_properties(result.standard_output);
 }
 
@@ -959,6 +1012,18 @@ void SVNService::set_property(const std::string& name, const std::string& value,
                               std::stop_token stop) {
     if (targets.empty()) return;
     SVNPropertyName::validate(name);
+    for (const auto& target : targets) {
+        for (const auto& holder : properties(target, false, stop)) {
+            for (const auto& property : holder.properties) {
+                if (property.name != name || !property.is_encoded()) continue;
+                throw_svn_error(
+                    SVNErrorCode::invalid_invocation,
+                    "属性「" + name + "」是 " + *property.encoding +
+                        " 编码的二进制值，不能用文本编辑器覆盖",
+                    "请使用能够写入原始字节的 SVN 工具修改该属性。");
+            }
+        }
+    }
     write_property({"propset", name}, value, targets, "设置属性 " + name, stop);
 }
 
@@ -1098,8 +1163,8 @@ void SVNService::write_property(const std::vector<std::string>& arguments,
 std::optional<ConflictArtifacts> SVNService::conflict_artifacts(
     const std::filesystem::path& target, std::stop_token stop) const {
     const ProcessResult result =
-        invoke({"info", "--xml"}, {path_text(absolute_path(target))}, std::nullopt,
-               std::nullopt, std::nullopt, nullptr, stop);
+        invoke({"info", "--xml"}, {literal_target(path_text(absolute_path(target)))},
+               std::nullopt, std::nullopt, std::nullopt, nullptr, stop);
     return parsing::parse_conflict_artifacts(result.standard_output);
 }
 

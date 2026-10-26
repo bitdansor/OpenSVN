@@ -127,6 +127,7 @@ public sealed class SVNPropertyDto
 {
     public string Name { get; set; } = "";
     public string Value { get; set; } = "";
+    public string? Encoding { get; set; }
 }
 
 public sealed class PropertyTargetDto
@@ -175,8 +176,11 @@ public sealed class UpdateSummaryDto
     public long? FromRevision { get; set; }
     public long? ToRevision { get; set; }
     public List<string> UpdatedPaths { get; set; } = new();
+    public List<string> AddedPaths { get; set; } = new();
+    public List<string> MergedPaths { get; set; } = new();
     public List<string> ConflictedPaths { get; set; } = new();
     public List<string> RemovedPaths { get; set; } = new();
+    public bool ConflictsVerified { get; set; } = true;
 }
 
 public sealed class CommitSummaryDto

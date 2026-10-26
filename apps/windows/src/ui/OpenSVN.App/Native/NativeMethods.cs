@@ -29,6 +29,15 @@ internal static class NativeMethods
         out IntPtr errorJson);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    internal static extern int opensvn_register_request(
+        IntPtr service,
+        ulong requestId,
+        out IntPtr errorJson);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
+    internal static extern void opensvn_release_request(IntPtr service, ulong requestId);
+
+    [DllImport(Library, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]
     internal static extern void opensvn_cancel(IntPtr service, ulong requestId);
 
     [DllImport(Library, CallingConvention = CallingConvention.Cdecl, ExactSpelling = true)]

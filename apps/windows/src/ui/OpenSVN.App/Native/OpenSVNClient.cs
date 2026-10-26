@@ -136,15 +136,31 @@ public sealed class OpenSVNClient : IDisposable
         IntPtr result = IntPtr.Zero;
         IntPtr error = IntPtr.Zero;
         var requestId = nextRequestId();
-        using var registration = cancellationToken.Register(
-            static state =>
-            {
-                var (client, id) = ((OpenSVNClient, ulong))state!;
-                client.Cancel(id);
-            }, (this, requestId));
-
+        var requestRegistered = false;
+        var cancellationRegistration = default(CancellationTokenRegistration);
         try
         {
+            // Register before serializing arguments. A cancellation that fires
+            // while a parameter getter is running now has a request id to stop,
+            // instead of being lost before opensvn_invoke starts.
+            if (NativeMethods.opensvn_register_request(_service, requestId, out error) == 0)
+            {
+                throw ParseNativeError(error);
+            }
+            requestRegistered = true;
+            cancellationRegistration = cancellationToken.Register(
+                static state =>
+                {
+                    var (client, id) = ((OpenSVNClient, ulong))state!;
+                    client.Cancel(id);
+                }, (this, requestId));
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                NativeMethods.opensvn_cancel(_service, requestId);
+                throw new OperationCanceledException(cancellationToken);
+            }
+
             JsonObject payload;
             if (parameters is JsonObject existing)
             {
@@ -213,6 +229,14 @@ public sealed class OpenSVNClient : IDisposable
         }
         finally
         {
+            cancellationRegistration.Dispose();
+            if (requestRegistered)
+            {
+                // Harmless when opensvn_invoke already consumed and released
+                // the slot. It also covers native early-validation failures
+                // and exceptions before the native registration was consumed.
+                NativeMethods.opensvn_release_request(_service, requestId);
+            }
             if (result != IntPtr.Zero) NativeMethods.opensvn_free_string(result);
             if (error != IntPtr.Zero) NativeMethods.opensvn_free_string(error);
             if (progressHandle.IsAllocated) progressHandle.Free();

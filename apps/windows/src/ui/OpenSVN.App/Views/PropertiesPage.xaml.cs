@@ -13,14 +13,17 @@ public sealed class PropertyRow
     public required string TargetPath { get; init; }
     public required string Name { get; init; }
     public required string Value { get; init; }
+    public string Encoding { get; init; } = "";
     public required string DisplayPath { get; init; }
 
     public bool IsReserved => Name.StartsWith("svn:", StringComparison.OrdinalIgnoreCase);
+    public bool IsEncoded => !string.IsNullOrEmpty(Encoding);
     public Visibility ReservedVisibility => IsReserved ? Visibility.Visible : Visibility.Collapsed;
     public string ValuePreview
     {
         get
         {
+            if (IsEncoded) return $"（{Encoding} 编码的二进制属性，只读）";
             var text = Value.Replace("\r", "").Replace('\n', ' ').Trim();
             if (text.Length == 0) return "（空值）";
             return text.Length <= 120 ? text : text[..120] + "…";
@@ -92,6 +95,7 @@ public sealed partial class PropertiesPage : Page
                         TargetPath = target.Path,
                         Name = property.Name,
                         Value = property.Value,
+                        Encoding = property.Encoding ?? "",
                         DisplayPath = Relative(target.Path),
                     });
                 }
@@ -127,9 +131,16 @@ public sealed partial class PropertiesPage : Page
 
         NameBox.Text = row.Name;
         NameBox.IsReadOnly = true;
-        ValueBox.Text = row.Value;
+        ValueBox.Text = row.IsEncoded ? "" : row.Value;
+        ValueBox.IsReadOnly = row.IsEncoded;
+        ValueBox.PlaceholderText = row.IsEncoded
+            ? $"{row.Encoding} 编码的二进制属性，不能在此编辑"
+            : "";
         DeleteButton.IsEnabled = true;
-        EditorStatus.Text = $"编辑「{row.Name}」，应用于 {row.DisplayPath}";
+        ApplyButton.IsEnabled = !row.IsEncoded;
+        EditorStatus.Text = row.IsEncoded
+            ? $"「{row.Name}」使用 {row.Encoding} 编码；为避免把编码文本写回原始字节，编辑与应用已禁用。删除仍然可用。"
+            : $"编辑「{row.Name}」，应用于 {row.DisplayPath}";
     }
 
     private void New_Click(object sender, RoutedEventArgs e)
@@ -137,14 +148,24 @@ public sealed partial class PropertiesPage : Page
         PropertyList.SelectedItem = null;
         NameBox.IsReadOnly = false;
         NameBox.Text = "";
+        ValueBox.IsReadOnly = false;
+        ValueBox.PlaceholderText = "";
         ValueBox.Text = "";
         DeleteButton.IsEnabled = false;
+        ApplyButton.IsEnabled = true;
         EditorStatus.Text = $"新属性将应用到 {Relative(_target)}";
         NameBox.Focus(FocusState.Programmatic);
     }
 
     private async void Apply_Click(object sender, RoutedEventArgs e)
     {
+        if (PropertyList.SelectedItem is PropertyRow { IsEncoded: true } encoded)
+        {
+            EditorStatus.Text =
+                $"「{encoded.Name}」是 {encoded.Encoding} 编码的属性，不能用文本编辑器覆盖。";
+            return;
+        }
+
         var name = NameBox.Text.Trim();
         if (name.Length == 0)
         {
@@ -172,7 +193,8 @@ public sealed partial class PropertiesPage : Page
         }
         finally
         {
-            ApplyButton.IsEnabled = true;
+            ApplyButton.IsEnabled =
+                PropertyList.SelectedItem is not PropertyRow { IsEncoded: true };
         }
     }
 

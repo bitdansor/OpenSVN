@@ -28,12 +28,19 @@
 #include <utility>
 #include <vector>
 
+struct RegisteredRequest {
+    std::shared_ptr<std::stop_source> source;
+    /// A registered id may be claimed by exactly one invocation; a second
+    /// claim while the first is still running is a duplicate.
+    bool consumed = false;
+};
+
 struct opensvn_service {
     std::shared_ptr<opensvn::SVNService> service;
     std::shared_ptr<opensvn::OperationJournal> journal;
     std::mutex mutex;
     std::condition_variable idle;
-    std::unordered_map<std::uint64_t, std::shared_ptr<std::stop_source>> requests;
+    std::unordered_map<std::uint64_t, RegisteredRequest> requests;
     std::size_t active_invocations = 0;
     bool closing = false;
 };
@@ -54,13 +61,17 @@ struct InvocationRegistration {
 
     ~InvocationRegistration() {
         std::lock_guard lock(handle->mutex);
+        bool owns_count = request_id == 0;
         if (request_id != 0) {
             const auto iterator = handle->requests.find(request_id);
-            if (iterator != handle->requests.end() && iterator->second == source) {
+            if (iterator != handle->requests.end() && iterator->second.source == source) {
                 handle->requests.erase(iterator);
+                owns_count = true;
             }
         }
-        if (handle->active_invocations > 0) --handle->active_invocations;
+        // A concurrent opensvn_release_request may already have dropped the
+        // slot and its count; only the owner that removed it decrements.
+        if (owns_count && handle->active_invocations > 0) --handle->active_invocations;
         if (handle->active_invocations == 0) handle->idle.notify_all();
     }
 };
@@ -447,8 +458,11 @@ Json dispatch(opensvn_service& handle, const std::string& operation,
             {"fromRevision", optional_json(summary.from_revision)},
             {"toRevision", optional_json(summary.to_revision)},
             {"updatedPaths", summary.updated_paths},
+            {"addedPaths", summary.added_paths},
+            {"mergedPaths", summary.merged_paths},
             {"conflictedPaths", summary.conflicted_paths},
             {"removedPaths", summary.removed_paths},
+            {"conflictsVerified", summary.conflicts_verified},
         };
     }
 
@@ -676,7 +690,7 @@ OPENSVN_CAPI void opensvn_destroy_service(opensvn_service* service) {
     try {
         std::unique_lock lock(service->mutex);
         service->closing = true;
-        for (auto& [id, source] : service->requests) source->request_stop();
+        for (auto& [id, request] : service->requests) request.source->request_stop();
         service->idle.wait(lock, [&] { return service->active_invocations == 0; });
     } catch (...) {
     }
@@ -703,38 +717,64 @@ OPENSVN_CAPI char* opensvn_invoke(opensvn_service* service, uint64_t request_id,
         }
         return nullptr;
     }
-    if (!operation_utf8 || !*operation_utf8) {
-        try {
-            set_error(out_error_json,
-                      opensvn::SVNError{opensvn::SVNErrorCode::invalid_invocation,
-                                        "操作名为空"});
-        } catch (...) {
-            set_fixed_error(out_error_json);
-        }
-        return nullptr;
-    }
 
     try {
-        auto stop_source = std::make_shared<std::stop_source>();
+        std::shared_ptr<std::stop_source> stop_source;
         {
             std::lock_guard lock(service->mutex);
             if (service->closing) {
+                // A registration made before the service started closing still
+                // holds a count that destroy_service is waiting on. Release it
+                // here unless an invocation already claimed it.
+                if (request_id != 0) {
+                    const auto registered = service->requests.find(request_id);
+                    if (registered != service->requests.end() &&
+                        !registered->second.consumed) {
+                        service->requests.erase(registered);
+                        if (service->active_invocations > 0) --service->active_invocations;
+                        if (service->active_invocations == 0) service->idle.notify_all();
+                    }
+                }
                 opensvn::SVNError error{opensvn::SVNErrorCode::invalid_invocation,
                                         "服务正在关闭"};
                 set_error(out_error_json, error);
                 return nullptr;
             }
-            if (request_id != 0 &&
-                !service->requests.emplace(request_id, stop_source).second) {
-                opensvn::SVNError error{opensvn::SVNErrorCode::invalid_invocation,
-                                        "request_id 已被使用"};
-                set_error(out_error_json, error);
-                return nullptr;
+            if (request_id != 0) {
+                if (const auto registered = service->requests.find(request_id);
+                    registered != service->requests.end()) {
+                    if (registered->second.consumed) {
+                        opensvn::SVNError error{opensvn::SVNErrorCode::invalid_invocation,
+                                                "request_id 已被使用"};
+                        set_error(out_error_json, error);
+                        return nullptr;
+                    }
+                    registered->second.consumed = true;
+                    stop_source = registered->second.source;
+                }
             }
-            ++service->active_invocations;
+            if (!stop_source) {
+                stop_source = std::make_shared<std::stop_source>();
+                // Insert before counting: if emplace throws, no count is leaked.
+                if (request_id != 0) {
+                    service->requests.emplace(request_id,
+                                              RegisteredRequest{stop_source, true});
+                }
+                ++service->active_invocations;
+            }
         }
 
         InvocationRegistration registration{service, request_id, stop_source};
+
+        if (!operation_utf8 || !*operation_utf8) {
+            invalid("操作名为空");
+        }
+
+        if (stop_source->get_token().stop_requested()) {
+            opensvn::SVNError error{opensvn::SVNErrorCode::cancelled, "操作已取消"};
+            set_error(out_error_json, error);
+            return nullptr;
+        }
 
         Json parameters = Json::object();
         if (parameters_json_utf8 && *parameters_json_utf8) {
@@ -774,6 +814,74 @@ OPENSVN_CAPI char* opensvn_invoke(opensvn_service* service, uint64_t request_id,
     return nullptr;
 }
 
+OPENSVN_CAPI int32_t opensvn_register_request(opensvn_service* service,
+                                              uint64_t request_id,
+                                              char** out_error_json) {
+    if (out_error_json) *out_error_json = nullptr;
+    if (!service || request_id == 0) {
+        try {
+            set_error(out_error_json,
+                      opensvn::SVNError{opensvn::SVNErrorCode::invalid_invocation,
+                                        "request_id 不能为 0"});
+        } catch (...) {
+            set_fixed_error(out_error_json);
+        }
+        return 0;
+    }
+
+    try {
+        auto source = std::make_shared<std::stop_source>();
+        {
+            std::lock_guard lock(service->mutex);
+            if (service->closing) {
+                opensvn::SVNError error{opensvn::SVNErrorCode::invalid_invocation,
+                                        "服务正在关闭"};
+                set_error(out_error_json, error);
+                return 0;
+            }
+            if (!service->requests.emplace(request_id, RegisteredRequest{source, false})
+                     .second) {
+                opensvn::SVNError error{opensvn::SVNErrorCode::invalid_invocation,
+                                        "request_id 已被使用"};
+                set_error(out_error_json, error);
+                return 0;
+            }
+            ++service->active_invocations;
+        }
+        return 1;
+    } catch (const std::exception& exception) {
+        set_error(out_error_json, fallback_error(exception));
+    } catch (...) {
+        set_fixed_error(out_error_json);
+    }
+    return 0;
+}
+
+OPENSVN_CAPI void opensvn_release_request(opensvn_service* service,
+                                          uint64_t request_id) {
+    if (!service || request_id == 0) return;
+    try {
+        std::shared_ptr<std::stop_source> source;
+        {
+            std::lock_guard lock(service->mutex);
+            const auto registered = service->requests.find(request_id);
+            if (registered == service->requests.end()) return;
+            source = registered->second.source;
+            // A claimed request still belongs to the running invocation: its
+            // RAII releases the slot and the in-flight count. Dropping them
+            // here would let opensvn_destroy_service free the handle while
+            // opensvn_invoke is still unwinding. Only ask it to stop.
+            if (!registered->second.consumed) {
+                service->requests.erase(registered);
+                if (service->active_invocations > 0) --service->active_invocations;
+                if (service->active_invocations == 0) service->idle.notify_all();
+            }
+        }
+        source->request_stop();
+    } catch (...) {
+    }
+}
+
 OPENSVN_CAPI void opensvn_cancel(opensvn_service* service, uint64_t request_id) {
     if (!service || request_id == 0) return;
     try {
@@ -782,7 +890,7 @@ OPENSVN_CAPI void opensvn_cancel(opensvn_service* service, uint64_t request_id) 
             std::lock_guard lock(service->mutex);
             const auto iterator = service->requests.find(request_id);
             if (iterator == service->requests.end()) return;
-            source = iterator->second;
+            source = iterator->second.source;
         }
         source->request_stop();
     } catch (...) {

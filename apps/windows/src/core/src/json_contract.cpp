@@ -123,8 +123,9 @@ Json properties_to_json(const std::vector<PropertyTarget>& targets) {
     for (const auto& target : targets) {
         Json properties = Json::array();
         for (const auto& property : target.properties) {
-            properties.push_back(
-                Json{{"name", property.name}, {"value", property.value}});
+            properties.push_back(Json{{"name", property.name},
+                                      {"value", property.value},
+                                      {"encoding", nullable_string(property.encoding)}});
         }
         json_targets.push_back(
             Json{{"path", target.path}, {"properties", std::move(properties)}});

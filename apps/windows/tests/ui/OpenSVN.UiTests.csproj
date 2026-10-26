@@ -9,6 +9,12 @@
 
   <ItemGroup>
     <Compile Include="Program.cs" />
+    <Compile Include="NativeBridgeTests.cs" />
+    <Compile Include="TestAppSettings.cs" />
+    <Compile Include="..\..\src\ui\OpenSVN.App\Models\Contracts.cs" Link="Contracts.cs" />
+    <Compile Include="..\..\src\ui\OpenSVN.App\Models\Display.cs" Link="Display.cs" />
+    <Compile Include="..\..\src\ui\OpenSVN.App\Native\OpenSVNClient.cs" Link="OpenSVNClient.cs" />
+    <Compile Include="..\..\src\ui\OpenSVN.App\Native\NativeMethods.cs" Link="NativeMethods.cs" />
     <Compile Include="..\..\src\ui\OpenSVN.App\Services\TaskCenter.cs" Link="TaskCenter.cs" />
     <Compile Include="..\..\src\ui\OpenSVN.App\ViewModels\ObservableObject.cs" Link="ObservableObject.cs" />
     <Compile Include="..\..\src\ui\OpenSVN.App\Native\OpenSVNException.cs" Link="OpenSVNException.cs" />
