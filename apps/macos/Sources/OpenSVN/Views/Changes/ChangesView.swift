@@ -11,30 +11,12 @@ struct ChangesView: View {
             if session.status != nil, !session.conflictedEntries.isEmpty {
                 ConflictGuideBanner(session: session)
             }
-            if session.status == nil {
-                ProgressView("正在读取工作副本…")
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if session.status?.isEmpty == true {
-                ContentUnavailableView {
-                    Label("工作副本干净", systemImage: "checkmark.seal")
-                } description: {
-                    Text("没有本地修改。")
-                } actions: {
-                    Button("更新") { Task { await session.requestUpdate() } }
-                }
-            } else if filteredEntries.isEmpty {
-                // Distinct from "clean": the working copy has changes, the
-                // filter is hiding them. Saying "干净" here would be a lie.
-                ContentUnavailableView {
-                    Label("没有匹配的文件", systemImage: "line.3.horizontal.decrease.circle")
-                } description: {
-                    Text("「\(session.filterText)」没有匹配任何变更。")
-                } actions: {
-                    Button("清除过滤") { session.filterText = "" }
-                }
-            } else {
-                list
-            }
+            // The status area claims the leftover height explicitly. Neither
+            // `ContentUnavailableView` nor `ProgressView` grows on its own, so a
+            // VStack that merely hugs its children leaves the action bar
+            // hovering in the middle of the window with dead space below it.
+            statusArea
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             Divider()
             actionBar
         }
@@ -43,6 +25,33 @@ struct ChangesView: View {
         }
         .sheet(item: $session.lockEditor) { _ in
             LockSheet(session: session)
+        }
+    }
+
+    @ViewBuilder
+    private var statusArea: some View {
+        if session.status == nil {
+            ProgressView("正在读取工作副本…")
+        } else if session.status?.isEmpty == true {
+            ContentUnavailableView {
+                Label("工作副本干净", systemImage: "checkmark.seal")
+            } description: {
+                Text("没有本地修改。")
+            } actions: {
+                Button("更新") { Task { await session.requestUpdate() } }
+            }
+        } else if filteredEntries.isEmpty {
+            // Distinct from "clean": the working copy has changes, the
+            // filter is hiding them. Saying "干净" here would be a lie.
+            ContentUnavailableView {
+                Label("没有匹配的文件", systemImage: "line.3.horizontal.decrease.circle")
+            } description: {
+                Text("「\(session.filterText)」没有匹配任何变更。")
+            } actions: {
+                Button("清除过滤") { session.filterText = "" }
+            }
+        } else {
+            list
         }
     }
 

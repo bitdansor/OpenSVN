@@ -22,12 +22,14 @@ struct DiffView: View {
                 } description: {
                     Text("差异由外部 diff 命令打开，窗口可能已经出现在前台。要改回内置视图，到设置里清空外部 diff 命令。")
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ContentUnavailableView {
                     Label("没有差异", systemImage: "plus.forwardslash.minus")
                 } description: {
                     Text("在「变更」页双击文件，或在「历史」页选择修订版本后查看差异。")
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
     }
