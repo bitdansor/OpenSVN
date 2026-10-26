@@ -4,6 +4,7 @@ import OpenSVNCore
 /// Root layout: repositories on the left, the selected working copy on the right.
 struct MainWindowView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.openSettings) private var openSettings
 
     /// `safeAreaInset` on a `NavigationSplitView` does not reserve space here:
     /// both columns keep their own scroll views and the inset view is painted
@@ -88,14 +89,13 @@ struct MainWindowView: View {
             ),
             presenting: appState.startupError
         ) { _ in
-            Button("打开设置") { appState.showingSettings = true }
+            // Settings is a scene with its own window (⌘,). Opening it as a
+            // sheet would put the fix for the problem behind a dialog that
+            // blocks the window describing it.
+            Button("打开设置…") { openSettings() }
             Button("好", role: .cancel) { appState.startupError = nil }
         } message: { error in
             Text(error.errorDescription ?? error.message)
-        }
-        .sheet(isPresented: $appState.showingSettings) {
-            SettingsView()
-                .environment(appState)
         }
         .sheet(isPresented: $appState.showingDemoSheet) {
             DemoWorkspaceSheet()

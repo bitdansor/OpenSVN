@@ -40,7 +40,6 @@ final class AppState {
     var authPrompt: AuthPrompt?
     var showingCheckoutSheet = false
     var showingTaskCenter = false
-    var showingSettings = false
     var showingDemoSheet = false
     private(set) var demoPhase: DemoPhase = .idle
     /// Set when a previously generated demo working copy is still on disk, so the
@@ -162,14 +161,26 @@ final class AppState {
         }
     }
 
-    func apply(settings newValue: AppSettings) async {
+    /// Applies settings and pushes them into everything already running.
+    ///
+    /// Rebuilding the service re-runs discovery and can drop `installation` for a
+    /// moment, so it is reserved for the one change that can actually pick a
+    /// different binary. A timeout, a toggle or a diff command is a live value on
+    /// the existing service; re-discovering `svn` for those would interrupt the
+    /// working copies on screen for nothing.
+    func apply(settings newValue: AppSettings, rebuildService: Bool = true) async {
+        let previousPath = settings.explicitSVNPath
         settings = newValue
         newValue.save()
         await AppLog.shared.configure(level: newValue.logLevel)
         AppLog.shared.record(.info, "设置已更新：日志级别 \(newValue.logLevel.rawValue)，写操作并发上限 \(newValue.maxConcurrentWrites)")
-        // Rebuild first: `apply` may start the file watcher, which needs a
-        // ready service to be worth anything.
-        await buildService()
+        // Rebuild first: starting the file watcher needs a ready service to be
+        // worth anything.
+        if rebuildService || newValue.explicitSVNPath != previousPath {
+            await buildService()
+        } else if let service {
+            await service.setMaxConcurrentWrites(newValue.maxConcurrentWrites)
+        }
         for session in sessions.values {
             session.updateTimeout(newValue.operationTimeout)
             session.apply(settings: newValue)
