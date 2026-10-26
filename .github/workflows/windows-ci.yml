@@ -1,0 +1,92 @@
+name: Windows CI
+
+# R8: `main` must always be buildable. This is the Windows half of that gate:
+# the native core with its tests, the C ABI, and the WinUI app. It does not
+# produce an installer or a signed artifact — packaging is not implemented yet,
+# and an unsigned package is not a shippable claim.
+#
+# The first run of this workflow establishes the GitHub-hosted baseline. Until
+# that has happened, apps/windows/README.md records the developer
+# toolchain only and says so.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: windows-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: '10.0.x'
+  CMAKE_MINIMUM: '3.25'
+
+jobs:
+  build:
+    name: Native core + WinUI app
+    runs-on: windows-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Report toolchain
+        shell: pwsh
+        run: |
+          cmake --version
+          dotnet --info
+          $cmake = ((cmake --version | Select-Object -First 1) -replace '^cmake version ', '').Trim()
+          $numeric = ($cmake -split '-')[0]
+          if ([version]$numeric -lt [version]$env:CMAKE_MINIMUM) {
+            throw "CMake $cmake is below the required $env:CMAKE_MINIMUM"
+          }
+          Write-Host "C++ compiler:"
+          Get-ChildItem Env:VCToolsVersion, Env:WindowsSdkDir -ErrorAction SilentlyContinue |
+            Format-Table -AutoSize | Out-String | Write-Host
+
+      # Same default checks the macOS gate runs: planned tree, VERSION /
+      # CHANGELOG / Info.plist agreement, fixtures and scenarios. It also asserts
+      # that Windows code, build scripts and this workflow exist together.
+      - name: Validate repository
+        run: python scripts/verify-release.py
+
+      # Exercise the same script developers run: CMake configure, native build,
+      # CTest and the WinUI build. Duplicating the commands here is how CI and
+      # local builds drift into two different definitions of "green".
+      - name: Build and test
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -Configuration Debug
+
+      # A build that reports success while the app cannot start because the
+      # native bridge was not copied is the exact failure the old skeleton had.
+      - name: Check app output
+        shell: pwsh
+        run: |
+          $app = "apps/windows/src/ui/OpenSVN.App/bin/x64/Debug/net10.0-windows10.0.26100.0/win-x64"
+          foreach ($file in @("OpenSVN.exe", "OpenSVN.Native.dll")) {
+            if (-not (Test-Path (Join-Path $app $file))) {
+              throw "$file is missing from the app output"
+            }
+          }
+          Get-ChildItem $app -Filter "OpenSVN.*" | Select-Object Name, Length
+
+      - name: Upload test log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-log
+          path: apps/windows/build/Testing/**/*.log
+          if-no-files-found: ignore
+          retention-days: 7

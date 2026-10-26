@@ -1,6 +1,6 @@
 # SVN 操作契约
 
-> 状态：v0.1（macOS 已实现，Windows 待实现）
+> 状态：v0.1（macOS 已实现；Windows 核心已实现，真实 svn 验证待补）
 > 关联：`specifications/data-models.md`（输出模型）、`specifications/error-codes.md`（失败语义）
 > 实现：`apps/macos/Sources/OpenSVNCore/Services/SVNService.swift`
 

@@ -141,6 +141,95 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   script's README template carries the same rows, because it regenerates that
   file and a row living only in the file would vanish on the next recording.
 
+### Fixed (follow-up review)
+
+- **Switching working copies can no longer show the old working copy's
+  status.** A refresh waits its turn and results are applied only if they still
+  belong to the open working copy; info results are checked the same way.
+- **`add` respects `svn:ignore` unless the caller explicitly asks otherwise.**
+  The UI and the C ABI no longer pass `--no-ignore` by default, so selecting a
+  directory cannot stage build output.
+- **Credential removal and listing report failures.** Deleting a credential no
+  longer shows success when the Credential Manager refused, and a failed list
+  keeps the previous list instead of claiming there are none.
+- **Deleting a property honours cancellation** and no longer turns a failed
+  property read into "nothing to delete".
+- **The operation journal is flushed before its atomic rename**, so a
+  write-ahead record survives a power loss, not only a process crash.
+- **Writes are serialized across OpenSVN instances** with a named kernel mutex,
+  not only within one process.
+- **A failed status read is visible.** The change list says the data may be
+  stale instead of showing "工作副本干净"; a failed history refresh keeps the
+  rows it already had.
+- **Diff panes follow the app theme.** Light and dark each get their own palette
+  instead of a hardcoded white surface; a hardcoded warning color in the revert
+  dialog is gone.
+
+### Added (Windows port)
+
+- **The Windows tree was rebuilt from a compiling core, not from a skeleton.**
+  A C++20 `OpenSVN::Core` now owns discovery, `svn.exe` invocation, XML parsing,
+  error mapping, the write gate, the operation journal and the Credential Manager
+  store. It is covered by the same recorded fixtures as macOS: 110 tests across
+  29 suites, all passing.
+- **`OpenSVN.Native.dll` is a C ABI, so the app is not the only thing that can
+  test the core.** Operations take UTF-8 JSON, return UTF-8 JSON, report progress
+  through a callback and can be cancelled by request id. The error object carries
+  the stable `SVN-*` identifier, remediation and authentication/cancelled flags.
+- **A WinUI 3 app covers the daily loop:** open a working copy, grouped and
+  filterable changes, diff preview, commit with candidate selection and recent
+  messages, update preview, history, properties, locks, conflict resolution with
+  backups, journal recovery and a task center with retry.
+- **Windows-specific safety work is in the same change as the UI.** Passwords go
+  through `--password-from-stdin` and the Credential Manager, never argv; children
+  run in a Job Object so cancel and timeout cannot leave an orphan holding a
+  working-copy lock; the manifest declares UTF-8 and long paths.
+- `scripts/bootstrap-windows.ps1`, `scripts/build-windows.ps1` and
+  `.github/workflows/windows-ci.yml` land with the code. The release verifier now
+  fails if Windows sources exist without the CI gate, and `apps/windows/README.md`
+  records what is actually verified — runtime testing used `fake_svn`, not a real
+  Subversion installation, and there is no installer or bundled runtime yet.
+
+### Fixed (Windows port hardening)
+
+- **The process runner cannot strand a suspended child.** Handles, the Job
+  Object and reader threads are owned by RAII objects, every Win32 call is
+  checked instead of falling back to unrestricted handle inheritance, and the
+  job is closed before the drain threads join so cancellation always terminates.
+- **Errors no longer echo secrets.** `svn` stderr and XML parse diagnostics pass
+  through the same redactor as the command line, so URLs with userinfo and
+  `--password` values never reach `SVNError.message` or the UI.
+- **The C ABI survives concurrent use.** `opensvn_destroy_service` stops
+  registered requests and waits for in-flight invocations, duplicate request ids
+  are rejected, and JSON parameters are range-checked at the boundary.
+- **Writes are serialized by working copy, not by spelling.** Working-copy keys
+  are case-folded, the gate cannot throw after taking a slot, and one write may
+  not span two working copies.
+- **Arguments are separated from options.** Every positional path or URL follows
+  `--` (with credential options inserted before it), local targets are absolute,
+  property names cannot start with `-`, and property values travel through an
+  exclusively created temporary file.
+- Discovery rethrows cancellation, the journal takes a cross-process lock around
+  each read-modify-write, and random identifiers come from `BCryptGenRandom`.
+- **Error serialization cannot unwind through the Windows C ABI.** Invalid UTF-8
+  and allocation failures fall back to a fixed JSON error, and every exported
+  boundary function contains its own failure.
+- **Unknown server outcomes are treated as unknown.** A timed-out or cancelled
+  commit keeps its journal record, its message says to check history first, and
+  the UI suppresses one-click retry when the outcome is timeout, cancellation,
+  network, parse or otherwise unclassified. Dangerous previews now propagate
+  status errors instead of inventing a low-risk result.
+- **Credentials are isolated by origin.** The key is
+  `scheme://host[:port]|[realm]`, so an HTTP, HTTPS or alternate-port repository
+  cannot receive another origin's password.
+- **Large work is bounded or deferred.** Diff capture stops at the requested
+  byte limit while still reporting the real size, history path lists and diffs
+  render in batches, and change filtering is debounced.
+- **State races no longer show stale data.** History responses are versioned by
+  working copy, file-watcher overflows and refresh contention requeue a refresh,
+  retries are bound to the original working copy, and a failed settings write is
+  reported instead of claiming success.
+
 ### Added (filtering, auto-refresh, update preview, per-host credentials)
 
 - **The change list can be filtered.** A system search field (⌘F) matches the

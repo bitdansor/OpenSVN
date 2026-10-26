@@ -4,10 +4,10 @@
 
 - Read `specifications/` first. Those documents, not the current implementation,
   define correct behaviour. If code and contract disagree, that is a bug.
-- macOS work lives in `apps/macos`. `apps/windows` is an empty placeholder: the
-  Windows port has not started, and when it does, code + CI + bootstrap script
-  must land in the same PR. Cross-platform behaviour changes require a contract
-  change first.
+- macOS work lives in `apps/macos`. Windows work lives in `apps/windows`: a C++20
+  core behind a C ABI, with a C# WinUI 3 app. Code, CI and bootstrap scripts must
+  stay together — `scripts/verify-release.py --layout` enforces it. Cross-platform
+  behaviour changes require a contract change first.
 
 ## Non-negotiable rules (PR checklist)
 
@@ -30,11 +30,21 @@ Every pull request must state that these hold:
 
 ## Local checks
 
+macOS:
+
 ```bash
 scripts/bootstrap-macos.sh
 cd apps/macos && swift build && swift test
 scripts/setup-test-repo.sh          # local repo + fixtures regeneration
 python3 scripts/verify-release.py   # metadata + fixture consistency
+```
+
+Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\bootstrap-windows.ps1
+powershell -ExecutionPolicy Bypass -File scripts\build-windows.ps1 -Configuration Debug
+python scripts\verify-release.py
 ```
 
 If `swift build` fails with `Invalid manifest` or a security-directory error in a

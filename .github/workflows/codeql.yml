@@ -1,8 +1,10 @@
 name: CodeQL
 
-# Swift is analysed today. C++ joins the matrix in the PR that makes the Windows
-# build green (CodeQL needs a compilable project; apps/windows is an empty
-# placeholder as of 2026-10-18).
+# Swift is analysed today. The Windows C++ core and C# UI are not in the matrix
+# yet: C++ CodeQL needs a Windows job that configures and compiles the CMake
+# project, and C# needs a restore/build step. Add those once windows-ci.yml has a
+# green baseline; until then this workflow deliberately does not claim coverage
+# of apps/windows.
 #
 # Code scanning is only available on private repositories with a GitHub Advanced
 # Security licence. This repository is private and has none, so the first run

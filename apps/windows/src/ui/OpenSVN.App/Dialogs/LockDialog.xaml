@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ContentDialog
+    x:Class="OpenSVN.App.Dialogs.LockDialog"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Title="锁定路径"
+    PrimaryButtonText="锁定"
+    CloseButtonText="取消"
+    DefaultButton="Primary"
+    MinWidth="520">
+
+    <StackPanel Spacing="10">
+        <TextBlock x:Name="SummaryText" TextWrapping="Wrap" />
+        <TextBox x:Name="CommentBox" Header="锁定说明（会写入仓库）"
+                 PlaceholderText="例如：正在重构此文件，请勿修改"
+                 AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" MaxHeight="160" />
+        <TextBlock FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"
+                   Text="说明是给被挡住的同事看的：他们会在自己的 svn 客户端里看到这段话。" />
+        <CheckBox x:Name="StealCheck" Content="抢占他人持有的锁（强制锁定）"
+                  Checked="Steal_Changed" Unchecked="Steal_Changed" />
+        <TextBlock x:Name="StealWarning" FontSize="12"
+                   Foreground="{ThemeResource SystemFillColorCriticalBrush}"
+                   TextWrapping="Wrap"
+                   Visibility="Collapsed"
+                   Text="持有者将无法提交，直到他发现锁已易主。这是一个会影响他人的操作。" />
+    </StackPanel>
+</ContentDialog>

@@ -102,15 +102,14 @@ UNPUBLISHED_DIRS = [
 # not tracked by git, so "the folder exists" is only true if something inside it
 # is committed.
 #
-# Only `apps/windows` itself is listed for the Windows side: its subtree was
-# removed on 2026-10-18 and will be rebuilt from scratch, so asserting the old
-# Model/Services/Views layout now would just encode a plan we no longer follow.
+# The Windows port uses a C++20 core behind a C ABI, with the WinUI app in C#
+# (see apps/windows/README.md). Only the layers are asserted, not every folder:
+# the platform is allowed to evolve faster than this list.
 #
-# `assets/` and `docs/` are not listed at all. `assets/` held three directories
-# whose only content was a placeholder README, which made the tree promise
-# artwork that does not exist. `docs/` holds the architecture notes and decision
-# records, which are kept locally: what the product must do lives in
-# `specifications/`, and that is what gets published.
+# Root `assets/` and `docs/` remain git-ignored and are not asserted here.
+# Windows artwork and runtime icons live under apps/windows/src/ with the app.
+# Architecture notes and decision records stay local; published behaviour
+# contracts live in specifications/.
 LAYOUT_DIRS = [
     ".github/workflows",
     ".github/ISSUE_TEMPLATE",
@@ -120,6 +119,11 @@ LAYOUT_DIRS = [
     "apps/macos/Resources",
     "apps/macos/OpenSVN.xcodeproj",
     "apps/windows",
+    "apps/windows/src/capi",
+    "apps/windows/src/core",
+    "apps/windows/src/probe",
+    "apps/windows/src/ui/OpenSVN.App",
+    "apps/windows/tests",
     "specifications",
     "tests/fixtures",
     "tests/scenarios",
@@ -133,12 +137,19 @@ LAYOUT_DIRS = [
 # Files whose absence would mean a platform or a packaging path is only nominal.
 LAYOUT_FILES = [
     "apps/macos/Package.swift",
+    "apps/windows/README.md",
+    "apps/windows/CMakeLists.txt",
+    "apps/windows/src/capi/include/opensvn/capi.h",
+    "apps/windows/src/ui/OpenSVN.App/OpenSVN.App.csproj",
     "scripts/bootstrap-macos.sh",
     "scripts/build-macos-app.sh",
+    "scripts/bootstrap-windows.ps1",
+    "scripts/build-windows.ps1",
     "scripts/setup-test-repo.sh",
     "scripts/capture-fixtures.sh",
     "scripts/verify-release.py",
     ".github/workflows/macos-ci.yml",
+    ".github/workflows/windows-ci.yml",
     ".github/workflows/release.yml",
     ".github/workflows/codeql.yml",
     "packaging/macos/README.md",
@@ -372,11 +383,14 @@ def check_metadata(report: Report, index: GitIndex | None) -> None:
         if not path.is_file():
             continue
         relative = path.relative_to(ROOT)
-        if any(part in {".git", ".build", ".build-home", "build", "DerivedData"} for part in relative.parts):
+        if any(part in {".git", ".build", ".build-home", "build", "DerivedData",
+                        "bin", "obj", ".vs", "CMakeFiles", "_deps", "x64", "ARM64",
+                        "internal", ".workbuddy"} for part in relative.parts):
             continue
         if relative.parts[:2] == ("tests", ".work"):
             continue
-        if path.suffix not in {".swift", ".md", ".sh", ".yml", ".yaml", ".json", ".xml", ".py", ".plist", ".pbxproj"}:
+        if path.suffix not in {".swift", ".md", ".sh", ".ps1", ".yml", ".yaml", ".json", ".xml",
+                               ".py", ".plist", ".pbxproj", ".cs", ".csproj", ".cpp", ".h", ".hpp"}:
             continue
         try:
             text = path.read_text(encoding="utf-8")
@@ -389,12 +403,13 @@ def check_metadata(report: Report, index: GitIndex | None) -> None:
             entry = f"{relative}: embedded credentials in URL ({match.group(0)[:48]})"
             # Test targets legitimately contain fake credentials to prove that
             # redaction works; flag them for a human, do not fail the build.
-            if "Tests" in relative.parts:
+            # Windows paths use `tests` (lowercase), so match any case.
+            if any(part.lower() in {"test", "tests"} for part in relative.parts):
                 suspects.append(f"{entry} — test fixture, confirm it is fake")
             else:
                 leaks.append(entry)
 
-        if path.suffix in {".sh", ".yml", ".yaml", ".json", ".plist"}:
+        if path.suffix in {".sh", ".ps1", ".yml", ".yaml", ".json", ".plist"}:
             for match in flag_literal.finditer(text):
                 if not looks_like_placeholder(match.group(1)):
                     suspects.append(f"{relative}: --password followed by a literal ({match.group(1)[:24]})")
@@ -483,21 +498,46 @@ def check_layout(report: Report, index: GitIndex | None) -> None:
         else:
             report.warn("apps/macos/README.md does not state a status")
 
-    # Windows was emptied on 2026-10-18 and will be rebuilt from scratch, so the
-    # old "the README must state a status" check no longer applies. What still
-    # matters is that code and CI never exist without each other: the previous
-    # skeleton shipped without either compiling or a working gate.
+    # Windows was rebuilt on 2026-10-19. The previous skeleton shipped code with
+    # no working build gate for a month, so code, CI and scripts are now required
+    # to exist together. Generated trees (build/, bin/, obj/) must not count:
+    # otherwise `--layout` passes on a machine that has never cloned cleanly.
+    windows_root = ROOT / "apps" / "windows"
+    generated_parts = {"build", "bin", "obj", ".vs", "CMakeFiles", "_deps", "x64", "ARM64"}
     windows_sources = [
-        p for p in (ROOT / "apps" / "windows").rglob("*")
-        if p.is_file() and p.suffix in {".sln", ".vcxproj", ".cpp", ".h", ".xaml", ".vcxproj.filters"}
+        path for path in windows_root.rglob("*")
+        if path.is_file()
+        and path.suffix.lower() in {".sln", ".vcxproj", ".vcxproj.filters", ".cpp", ".h",
+                                    ".hpp", ".cs", ".csproj", ".xaml"}
+        and not generated_parts.intersection(path.relative_to(windows_root).parts)
     ]
-    if windows_sources:
-        report.warn(
-            f"apps/windows holds {len(windows_sources)} source file(s) but no windows CI — "
-            "restore .github/workflows/windows-ci.yml in the same PR that adds them"
-        )
+
+    windows_readme = windows_root / "README.md"
+    if not windows_readme.is_file():
+        report.fail("apps/windows/README.md is missing — the platform state must be written down")
     else:
-        report.ok("apps/windows is an empty placeholder (no source files)")
+        text = windows_readme.read_text(encoding="utf-8").lower()
+        if "status" in text:
+            report.ok("apps/windows/README.md states its status")
+        else:
+            report.warn("apps/windows/README.md does not state a status")
+
+    windows_ci = ROOT / ".github" / "workflows" / "windows-ci.yml"
+    if windows_sources:
+        if windows_ci.is_file():
+            report.ok(f"apps/windows holds {len(windows_sources)} source file(s) and a CI workflow")
+        else:
+            report.fail(
+                f"apps/windows holds {len(windows_sources)} source file(s) but no "
+                ".github/workflows/windows-ci.yml — code must never land without its gate"
+            )
+    else:
+        if windows_ci.is_file():
+            report.fail(
+                ".github/workflows/windows-ci.yml exists but apps/windows has no source files"
+            )
+        else:
+            report.ok("apps/windows has no implementation yet")
 
 
 # ---------------------------------------------------------------------------
