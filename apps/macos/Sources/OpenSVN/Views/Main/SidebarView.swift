@@ -86,7 +86,11 @@ struct SidebarView: View {
                 Button {
                     appState.showingCheckoutSheet = true
                 } label: {
-                    Image(systemName: "arrow.down.circle")
+                    // Deliberately not `arrow.down.circle`: that one means "update an
+                    // existing working copy". Checking out creates the working copy,
+                    // and two different actions sharing a glyph is how a toolbar
+                    // becomes guesswork.
+                    Image(systemName: "square.and.arrow.down")
                 }
                 .buttonStyle(.borderless)
                 .help("检出仓库")

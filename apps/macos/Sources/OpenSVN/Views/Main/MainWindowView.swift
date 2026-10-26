@@ -54,7 +54,7 @@ struct MainWindowView: View {
                 Button {
                     appState.showingCheckoutSheet = true
                 } label: {
-                    Label("检出", systemImage: "arrow.down.circle")
+                    Label("检出", systemImage: "square.and.arrow.down")
                 }
                 .help("从仓库检出新的工作副本")
 

@@ -141,7 +141,7 @@ struct RecoveryBanner: View {
 
     private func icon(for kind: OperationJournal.Entry.Kind) -> String {
         switch kind {
-        case .checkout: return "arrow.down.circle"
+        case .checkout: return "square.and.arrow.down"
         case .update: return "arrow.triangle.2.circlepath"
         case .commit: return "arrow.up.circle"
         case .add: return "plus.circle"

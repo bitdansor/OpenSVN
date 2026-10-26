@@ -6,6 +6,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed (two actions, one glyph)
+
+- **Checking out and updating no longer share an icon.** Both used
+  `arrow.down.circle`, which drew "create a working copy from the repository" and
+  "pull new revisions into the one I already have" as the same symbol — in the
+  same toolbar. Checkout is now `square.and.arrow.down`; `arrow.down.circle`
+  means update, and nothing else. The consistency checklist in
+  `ui-behavior.md` gains the question that would have caught it.
+
 ### Added (repository side: browse, remote writes, externals, changelists, external diff)
 
 - **Repositories can be bookmarked and browsed without checking them out.**
