@@ -6,7 +6,7 @@
    line-number="1">
 <commit
    revision="1">
-<author>wanyingfei</author>
+<author>fixture</author>
 <date>2026-10-24T12:44:23.456406Z</date>
 </commit>
 </entry>
@@ -14,7 +14,7 @@
    line-number="2">
 <commit
    revision="4">
-<author>wanyingfei</author>
+<author>fixture</author>
 <date>2026-10-24T12:44:27.091272Z</date>
 </commit>
 </entry>
@@ -22,7 +22,7 @@
    line-number="3">
 <commit
    revision="1">
-<author>wanyingfei</author>
+<author>fixture</author>
 <date>2026-10-24T12:44:23.456406Z</date>
 </commit>
 </entry>
@@ -30,7 +30,7 @@
    line-number="4">
 <commit
    revision="4">
-<author>wanyingfei</author>
+<author>fixture</author>
 <date>2026-10-24T12:44:27.091272Z</date>
 </commit>
 </entry>

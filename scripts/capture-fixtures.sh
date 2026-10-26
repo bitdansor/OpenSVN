@@ -35,6 +35,36 @@ rm -rf wc-clean
 "$SVN" info "file://$WORK/repo/trunk/src/main.swift" --xml > "$FIXTURES/svn-info-url.xml"
 "$SVN" diff wc-a/src/main.swift > "$FIXTURES/svn-diff-text.patch" 2>/dev/null || true
 
+# --------------------------------------------------------------- normalisation
+# The recorded bytes carry two pieces of the capturing machine: the absolute path
+# of the work tree, which contains the developer's home directory, and the
+# author of every commit, which is the OS account name. Neither belongs in a
+# published fixture, and both make the bytes differ per machine. They are
+# rewritten to fixed values so re-recording anywhere produces the same files and
+# the test targets have one constant to match.
+CANONICAL_ROOT="/private/tmp/opensvn-fixtures"
+CANONICAL_AUTHOR="fixture"
+
+python3 - "$FIXTURES" "$WORK" "$CANONICAL_ROOT" "$CANONICAL_AUTHOR" <<'PY'
+import getpass
+import pathlib
+import sys
+
+fixtures, work, canonical_root, canonical_author = sys.argv[1:5]
+# `$WORK` may be reached through a symlink; normalise whichever form was recorded.
+roots = {work, str(pathlib.Path(work).resolve())}
+account = getpass.getuser()
+
+for path in sorted(pathlib.Path(fixtures).glob("*.xml")):
+    text = path.read_text(encoding="utf-8")
+    rewritten = text.replace(f"<author>{account}</author>", f"<author>{canonical_author}</author>")
+    for root in roots:
+        rewritten = rewritten.replace(root, canonical_root)
+    if rewritten != text:
+        path.write_text(rewritten, encoding="utf-8")
+        print(f"  normalised {path.name}")
+PY
+
 VERSION="$("$SVN" --version --quiet)"
 cat > "$FIXTURES/README.md" <<EOF
 # Recorded SVN fixtures
@@ -47,6 +77,10 @@ The recorded \`.xml\` fixtures in this directory share one environment:
   \`LC_ALL=C\` is wrong: svn 1.14 rejects non-ASCII paths with \`E000022\` there, so
   the fixtures would not represent what the app actually produces.
 - repository: a local \`file://\` repository created by \`scripts/setup-test-repo.sh\`
+- paths and authors are normalised: the work tree's absolute path becomes
+  \`$CANONICAL_ROOT\`, and the capturing account's name becomes
+  \`$CANONICAL_AUTHOR\`. A fixture must never contain a real home directory or
+  account name, and re-recording on another machine must produce the same bytes.
 
 | file | produced by | covers |
 |---|---|---|
@@ -70,9 +104,10 @@ agreement without breaking the build.
 \`svn-info-conflict.xml\` are not produced by that script — an inbound commit, a
 lock held by another user and a conflicted merge each need a second working copy
 or a second identity, which it does not set up. They are edited by hand when the
-contract changes. Keep their rows in the script's template too: it rewrites this
-file from a heredoc, so a row that only lives here disappears on the next
-recording.
+contract changes, and when they are, they use the same \`$CANONICAL_ROOT\` path
+and \`$CANONICAL_AUTHOR\` author as the recorded ones. Keep their rows in the
+script's template too: it rewrites this file from a heredoc, so a row that only
+lives here disappears on the next recording.
 EOF
 
 echo "== fixtures written to $FIXTURES (svn $VERSION)"

@@ -153,7 +153,7 @@ TEST(LogParsing, ReadsAuthorsDatesMessagesAndChangedPaths) {
     const auto entries = parsing::parse_log(test::fixture("svn-log.xml"));
     ASSERT_EQ(entries.size(), 4u);
     EXPECT_EQ(entries[0].revision, 4);
-    EXPECT_EQ(entries[0].author.value_or(""), "wanyingfei");
+    EXPECT_EQ(entries[0].author.value_or(""), "fixture");
     ASSERT_TRUE(entries[0].date.has_value());
     EXPECT_EQ(format_iso8601(*entries[0].date), "2026-10-18T04:35:56.116Z");
     EXPECT_EQ(entries[0].message, "wc-b：删除 tree-conflict.txt");
@@ -179,7 +179,7 @@ TEST(InfoParsing, WorkingCopyInfo) {
     EXPECT_EQ(info->kind, NodeKind::dir);
     EXPECT_EQ(info->revision.value_or(0), 4);
     EXPECT_EQ(info->repository_root.value_or(""),
-              "file:///Users/wanyingfei/Projects/OpenSVN/tests/.work/repo");
+              "file:///private/tmp/opensvn-fixtures/repo");
     ASSERT_TRUE(info->working_copy_root.has_value());
     EXPECT_EQ(info->schedule.value_or(""), "normal");
     EXPECT_EQ(info->depth.value_or(""), "infinity");

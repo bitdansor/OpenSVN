@@ -27,6 +27,12 @@ if [[ -z "$SVN" || -z "$SVNADMIN" ]]; then
 fi
 SVN_VERSION="$("$SVN" --version --quiet)"
 
+# Commits are authored by a fixed account rather than by whoever runs the script:
+# the recordings are published, and an OS account name does not belong in them.
+# `capture-fixtures.sh` normalises authors too, so this is the cheaper half of a
+# belt-and-braces rule rather than the only guard.
+AUTHOR=(--username fixture --password fixture --no-auth-cache)
+
 case "$WORK" in
   */tests/.work) ;;
   *) echo "refusing to remove unexpected path: $WORK" >&2; exit 1 ;;
@@ -71,7 +77,7 @@ echo "locked content" > "$SEED/trunk/docs/locked.txt"
 echo "tree conflict target" > "$SEED/trunk/docs/tree-conflict.txt"
 echo "repository lock target" > "$SEED/trunk/docs/repo-locked.txt"
 
-"$SVN" import "$SEED" "$REPO_URL" -m "初始导入：包含中文路径、空格与特殊字符" --no-auth-cache >/dev/null
+"$SVN" import "$SEED" "$REPO_URL" -m "初始导入：包含中文路径、空格与特殊字符" "${AUTHOR[@]}" >/dev/null
 
 # ------------------------------------------------------------------ work copies
 "$SVN" checkout "$REPO_URL/trunk" "$WC_A" --no-auth-cache >/dev/null
@@ -96,7 +102,7 @@ printf 'not scheduled\n' > "$WC_A/docs/未纳入版本控制.txt"
 
 # 6. text conflict: both sides edit the same file, b commits first.
 printf '// B change\n' >> "$WC_B/src/util.swift"
-"$SVN" commit "$WC_B" -m "wc-b：修改 util.swift" --no-auth-cache >/dev/null
+"$SVN" commit "$WC_B" -m "wc-b：修改 util.swift" "${AUTHOR[@]}" >/dev/null
 printf '// A change\n' >> "$WC_A/src/util.swift"
 "$SVN" update "$WC_A" --non-interactive --no-auth-cache >/dev/null
 
@@ -106,13 +112,13 @@ printf '// A change\n' >> "$WC_A/src/util.swift"
 # 8. text conflict on locked.txt (both sides changed the same lines).
 printf '\n// A edit before delete\n' >> "$WC_A/docs/locked.txt"
 printf '\n// B edit\n' >> "$WC_B/docs/locked.txt"
-"$SVN" commit "$WC_B" -m "wc-b：提交 locked.txt" --no-auth-cache >/dev/null
+"$SVN" commit "$WC_B" -m "wc-b：提交 locked.txt" "${AUTHOR[@]}" >/dev/null
 "$SVN" update "$WC_A" --non-interactive --no-auth-cache >/dev/null || true
 
 # 9. tree conflict: b deletes a file that a has modified locally.
 printf '\n// A local edit\n' >> "$WC_A/docs/tree-conflict.txt"
 "$SVN" delete "$WC_B/docs/tree-conflict.txt" --no-auth-cache >/dev/null
-"$SVN" commit "$WC_B" -m "wc-b：删除 tree-conflict.txt" --no-auth-cache >/dev/null
+"$SVN" commit "$WC_B" -m "wc-b：删除 tree-conflict.txt" "${AUTHOR[@]}" >/dev/null
 "$SVN" update "$WC_A" --non-interactive --no-auth-cache >/dev/null || true
 
 # 10. repository file lock (requires a username, even over file://).

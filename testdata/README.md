@@ -8,6 +8,10 @@ The recorded `.xml` fixtures in this directory share one environment:
   `LC_ALL=C` is wrong: svn 1.14 rejects non-ASCII paths with `E000022` there, so
   the fixtures would not represent what the app actually produces.
 - repository: a local `file://` repository created by `scripts/setup-test-repo.sh`
+- paths and authors are normalised: the work tree's absolute path becomes
+  `/private/tmp/opensvn-fixtures`, and the capturing account's name becomes
+  `fixture`. A fixture must never contain a real home directory or
+  account name, and re-recording on another machine must produce the same bytes.
 
 | file | produced by | covers |
 |---|---|---|
@@ -34,6 +38,7 @@ agreement without breaking the build.
 `svn-info-conflict.xml` are not produced by that script — an inbound commit, a
 lock held by another user and a conflicted merge each need a second working copy
 or a second identity, which it does not set up. They are edited by hand when the
-contract changes. Keep their rows in the script's template too: it rewrites this
-file from a heredoc, so a row that only lives here disappears on the next
-recording.
+contract changes, and when they are, they use the same `/private/tmp/opensvn-fixtures` path
+and `fixture` author as the recorded ones. Keep their rows in the
+script's template too: it rewrites this file from a heredoc, so a row that only
+lives here disappears on the next recording.

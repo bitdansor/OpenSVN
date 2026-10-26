@@ -18,7 +18,7 @@ struct RepositoryListingTests {
         #expect(readme.kind == .file)
         #expect(readme.size == 6)
         #expect(readme.revision == 1)
-        #expect(readme.author == "wanyingfei")
+        #expect(readme.author == "fixture")
         #expect(readme.isDirectory == false)
 
         let sub = try #require(listing.entries.first { $0.name == "sub" })

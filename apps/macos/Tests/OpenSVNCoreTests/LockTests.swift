@@ -12,11 +12,11 @@ struct LockTests {
     @Test("lock output names each path and the owner")
     func lockOutput() {
         let stdout = """
-        'src/a.swift' locked by user 'wanyingfei'.
-        'docs/说明文档.md' locked by user 'wanyingfei'.
+        'src/a.swift' locked by user 'fixture'.
+        'docs/说明文档.md' locked by user 'fixture'.
         """
         #expect(LockOutputParser.lockedPaths(in: stdout) == ["src/a.swift", "docs/说明文档.md"])
-        #expect(LockOutputParser.owner(in: stdout) == "wanyingfei")
+        #expect(LockOutputParser.owner(in: stdout) == "fixture")
         #expect(LockOutputParser.unlockedPaths(in: stdout).isEmpty)
     }
 

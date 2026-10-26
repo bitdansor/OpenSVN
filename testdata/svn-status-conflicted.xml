@@ -10,7 +10,7 @@
    props="modified">
 <commit
    revision="4">
-<author>wanyingfei</author>
+<author>fixture</author>
 <date>2026-10-18T04:35:56.116733Z</date>
 </commit>
 </wc-status>
@@ -23,7 +23,7 @@
    props="none">
 <commit
    revision="3">
-<author>wanyingfei</author>
+<author>fixture</author>
 <date>2026-10-18T04:35:54.118748Z</date>
 </commit>
 </wc-status>
@@ -57,7 +57,7 @@
    props="none">
 <commit
    revision="1">
-<author>wanyingfei</author>
+<author>fixture</author>
 <date>2026-10-18T04:35:50.404833Z</date>
 </commit>
 </wc-status>
@@ -71,7 +71,7 @@
    copied="true">
 <commit
    revision="1">
-<author>wanyingfei</author>
+<author>fixture</author>
 <date>2026-10-18T04:35:50.404833Z</date>
 </commit>
 </wc-status>
@@ -99,7 +99,7 @@
    props="none">
 <commit
    revision="1">
-<author>wanyingfei</author>
+<author>fixture</author>
 <date>2026-10-18T04:35:50.404833Z</date>
 </commit>
 </wc-status>
@@ -120,7 +120,7 @@
    revision="4">
 <commit
    revision="2">
-<author>wanyingfei</author>
+<author>fixture</author>
 <date>2026-10-18T04:35:52.167437Z</date>
 </commit>
 </wc-status>

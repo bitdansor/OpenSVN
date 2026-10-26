@@ -11,7 +11,7 @@ struct LogXMLTests {
         #expect(entries.map(\.revision) == [4, 3, 2, 1])
 
         let latest = try #require(entries.first)
-        #expect(latest.author == "wanyingfei")
+        #expect(latest.author == "fixture")
         #expect(latest.message == "wc-b：删除 tree-conflict.txt")
         #expect(latest.changedPaths.count == 1)
         #expect(latest.changedPaths[0].action == .deleted)
@@ -66,7 +66,7 @@ struct InfoXMLTests {
         #expect(info.schedule == "normal")
         #expect(info.depth == "infinity")
         #expect(info.lastChangedRevision == 4)
-        #expect(info.lastChangedAuthor == "wanyingfei")
+        #expect(info.lastChangedAuthor == "fixture")
         #expect(info.lastChangedDate != nil)
         #expect(info.host == nil) // file:// URLs have no host
     }
@@ -80,7 +80,7 @@ struct InfoXMLTests {
         #expect(info.schedule == nil)
         #expect(info.url.hasSuffix("/trunk/src/main.swift"))
         #expect(info.lastChangedRevision == 1)
-        #expect(info.lastChangedAuthor == "wanyingfei")
+        #expect(info.lastChangedAuthor == "fixture")
         #expect(info.repositoryLock == nil)
     }
 }

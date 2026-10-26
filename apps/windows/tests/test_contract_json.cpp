@@ -25,7 +25,7 @@ TEST(JsonContract, StatusUsesSortedObjectsAndExplicitNulls) {
     EXPECT_TRUE(locked["changelist"].is_null());
     EXPECT_TRUE(locked["remoteItem"].is_null());
     EXPECT_EQ(locked["revision"], 4);
-    EXPECT_EQ(locked["commit"]["author"], "wanyingfei");
+    EXPECT_EQ(locked["commit"]["author"], "fixture");
     EXPECT_EQ(locked["commit"]["date"], "2026-10-18T04:35:54.118Z");
 
     const std::string dumped = json.dump();
@@ -51,7 +51,7 @@ TEST(JsonContract, InfoContainsRepositoryAndWorkingCopyFields) {
     EXPECT_EQ(entry["kind"], "dir");
     EXPECT_EQ(entry["revision"], 4);
     EXPECT_EQ(entry["workingCopyRoot"],
-              "/Users/wanyingfei/Projects/OpenSVN/tests/.work/wc-a");
+              "/private/tmp/opensvn-fixtures/wc-a");
     EXPECT_EQ(entry["lastChangedDate"], "2026-10-18T04:35:56.116Z");
     EXPECT_TRUE(entry["repositoryLock"].is_null());
 }

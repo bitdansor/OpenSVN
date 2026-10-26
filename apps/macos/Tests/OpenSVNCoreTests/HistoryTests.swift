@@ -115,7 +115,7 @@ struct BlameTests {
         #expect(result.target == "renamed.txt")
         #expect(result.lines.map(\.lineNumber) == [1, 2, 3, 4])
         #expect(result.lines.map(\.revision) == [1, 4, 1, 4])
-        #expect(result.lines.allSatisfy { $0.author == "wanyingfei" })
+        #expect(result.lines.allSatisfy { $0.author == "fixture" })
         // The XML truly carries no content.
         #expect(result.lines.allSatisfy { $0.content.isEmpty })
     }
@@ -129,7 +129,7 @@ struct BlameTests {
         #expect(counts.count == 2)
         #expect(counts[0].author == "alice")
         #expect(counts[0].lines == 2)
-        #expect(counts[1].author == "wanyingfei")
+        #expect(counts[1].author == "fixture")
         #expect(counts[1].lines == 2)
     }
 
