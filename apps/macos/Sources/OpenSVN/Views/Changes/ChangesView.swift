@@ -251,13 +251,10 @@ struct ChangesView: View {
     }
 
     private var actionBar: some View {
+        // No refresh button here: the toolbar already owns "re-read the working
+        // copy", with the same icon and the same ⌘R. Two of them on one screen
+        // reads as two different checks, and this bar is for acting on files.
         HStack(spacing: 10) {
-            Button {
-                Task { await session.refresh() }
-            } label: {
-                Label("刷新", systemImage: "arrow.clockwise")
-            }
-
             changelistMenu
 
             Divider().frame(height: 16)
