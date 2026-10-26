@@ -43,21 +43,14 @@ struct MainWindowView: View {
         .navigationTitle(appState.selectedBookmark?.name ?? "OpenSVN")
         .animation(.easeOut(duration: 0.18), value: showsRecoveryBanner)
         .toolbar {
+            // "Add a working copy" and "check out" live in the sidebar footer,
+            // not here. Both of them add a row to the list below, and the list
+            // is where the user looks for them; a second copy in the toolbar
+            // put the same two glyphs on screen twice, which reads as four
+            // different commands instead of two. The File menu still offers
+            // both, because menu equivalents are how a Mac app is expected to
+            // behave rather than a competing control.
             ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    appState.presentAddWorkingCopyPanel()
-                } label: {
-                    Label("添加工作副本", systemImage: "folder.badge.plus")
-                }
-                .help("添加一个已存在的工作副本")
-
-                Button {
-                    appState.showingCheckoutSheet = true
-                } label: {
-                    Label("检出", systemImage: "square.and.arrow.down")
-                }
-                .help("从仓库检出新的工作副本")
-
                 Button {
                     appState.showingTaskCenter = true
                 } label: {
