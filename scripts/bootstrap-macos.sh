@@ -40,7 +40,7 @@ fi
 
 case "$(uname -m)" in
   arm64) ok "architecture arm64 (Apple silicon)" ;;
-  x86_64) note "architecture x86_64 — supported, but the release pipeline builds universal binaries" ;;
+  x86_64) note "architecture x86_64 — not a supported target; the app and its releases are arm64 only" ;;
   *) note "unknown architecture $(uname -m)" ;;
 esac
 

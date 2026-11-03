@@ -6,6 +6,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed (macOS: Intel support dropped, and the tree stops implying it)
+
+- **macOS is arm64 only, and the published files now say so.** Two of them claimed
+  otherwise: `specifications/compatibility.md` listed x86_64 as "later", and
+  `scripts/bootstrap-macos.sh` told anyone on an Intel Mac that "the release pipeline
+  builds universal binaries" — it never did, the artifact has been
+  `OpenSVN-<ver>-macos-arm64.zip` since the pipeline existed. The contract row now reads
+  arm64 only with the reasoning next to it, the bootstrap check warns that x86_64 is not
+  a supported target, and both README requirement lines read "macOS 14+ on Apple
+  silicon". A promise nobody is going to keep is worse than an honest requirement.
+
 ### Removed (docs: design reasoning kept out of the published tree)
 
 - **`docs/` is no longer published.** Architecture notes, the seven decision

@@ -31,7 +31,7 @@ bootstrap scripts now land together.
 
 ## Build & run (macOS)
 
-Requirements: macOS 14+, Xcode 16+ (Swift 6 toolchain), Apache Subversion CLI 1.8+.
+Requirements: macOS 14+ on Apple silicon, Xcode 16+ (Swift 6 toolchain), Apache Subversion CLI 1.8+.
 
 ```bash
 scripts/bootstrap-macos.sh          # checks toolchain and SVN

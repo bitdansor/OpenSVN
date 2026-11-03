@@ -27,8 +27,11 @@
 
 | 平台 | 最低版本 | 架构 | 状态 |
 |---|---|---|---|
-| macOS | 14.0 | arm64（首期），x86_64 后续 | 已实现 |
+| macOS | 14.0 | arm64（Apple silicon） | 已实现；x86_64 **不支持** |
 | Windows | Windows 11 | x64 | 已实现；运行时待真实 svn 验证 |
+
+macOS 只发布 arm64。“x86_64 后续支持”已经撤回：维持两条架构意味着两份构建、两套签名与测试矩阵，
+而 Intel Mac 的存量撑不起这个成本；GitHub 的 Intel macOS runner（`macos-15-intel`）本身也在长期弃用名单上。
 
 macOS 不启用 App Sandbox：需要任意路径的工作副本访问与子进程执行。代价是无法上架 Mac App Store，分发走 Developer ID + 公证（阶段 6）。
 

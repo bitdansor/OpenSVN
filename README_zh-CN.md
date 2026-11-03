@@ -27,7 +27,7 @@ Windows 端已从零重做；现在代码、CI 与引导脚本必须在同一次
 
 ## 构建与运行（macOS）
 
-依赖：macOS 14+、Xcode 16+（Swift 6 工具链）、Apache Subversion CLI 1.8+。
+依赖：macOS 14+（Apple silicon）、Xcode 16+（Swift 6 工具链）、Apache Subversion CLI 1.8+。
 
 ```bash
 scripts/bootstrap-macos.sh          # 检查工具链与 SVN
