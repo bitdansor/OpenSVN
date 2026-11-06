@@ -42,6 +42,36 @@ final class RepositorySession: Identifiable {
         let backupDirectory: URL?
     }
 
+    /// Non-fatal outcome of a merge or a switch. Same shape as `ResolveReport`
+    /// but a distinct type: the two are different events, and merging their
+    /// state would make one alert dismiss the other.
+    struct BranchReport: Identifiable {
+        let id = UUID()
+        let title: String
+        let message: String
+        /// Set when the operation left conflicts behind, so the alert can offer
+        /// to jump straight to the page that lists them.
+        let hasConflicts: Bool
+    }
+
+    /// Everything the read-only mergeinfo sheet shows, in one snapshot.
+    ///
+    /// A snapshot rather than three separate live properties: three independent
+    /// async reads would each need their own loading and failure state, and the
+    /// sheet would flicker between them.
+    struct MergeInfoSnapshot: Identifiable {
+        let id = UUID()
+        /// Working-copy path the property is read from.
+        let target: String
+        var lines: [MergeInfoLine] = []
+        var merged: [Int64] = []
+        var eligible: [Int64] = []
+        var isLoading = true
+        var failure: String?
+        /// The source URL the caller asked about; empty means "nothing asked yet".
+        var source = ""
+    }
+
     /// Properties of one path, plus whether they are still loading.
     ///
     /// A snapshot rather than a live query: `svn` is a process, and a view that
@@ -195,6 +225,14 @@ final class RepositorySession: Identifiable {
     var presentedError: PresentedError?
     var confirmation: Confirmation?
     var resolveReport: ResolveReport?
+    /// Outcome of a merge or a switch, shown as an alert.
+    ///
+    /// Separate from `resolveReport` on purpose: those two are about a conflict
+    /// being settled, while this one reports a bulk operation that *created*
+    /// work (or moved the working copy somewhere else) and the next step.
+    var branchReport: BranchReport?
+    /// Non-nil while the read-only mergeinfo sheet is open.
+    var mergeInfoSnapshot: MergeInfoSnapshot?
     /// Non-nil while the three-way merge editor is open.
     var mergeEditor: MergeEditorState?
     /// Non-nil while the property sheet is open.
@@ -1498,6 +1536,30 @@ final class RepositorySession: Identifiable {
         }
     }
 
+    /// Like `perform`, but hands the operation's result back to the caller.
+    ///
+    /// Merge and switch both produce a report the user has to read (how many
+    /// paths changed, whether conflicts were left behind). `perform` discards its
+    /// value, so the alternative would be a second copy of this plumbing.
+    private func performReturning<T: Sendable>(
+        _ title: String,
+        _ operation: @escaping @Sendable (SVNCredential?, SVNProgressHandler) async throws -> T
+    ) async -> T? {
+        guard let taskCenter else { return nil }
+        do {
+            let value = try await withAuthRetry { credential in
+                try await taskCenter.run(title) { progress in
+                    try await operation(credential, progress)
+                }
+            }
+            await refresh()
+            return value
+        } catch {
+            handle(error)
+            return nil
+        }
+    }
+
     /// Runs the operation; on an authentication failure asks the UI for
     /// credentials once and retries exactly once.
     ///
@@ -1533,6 +1595,361 @@ final class RepositorySession: Identifiable {
             presentedError = PresentedError(error: error)
         } else {
             presentedError = PresentedError(error: SVNError(code: .unknown, message: error.localizedDescription))
+        }
+    }
+
+    // MARK: - Drag & drop import / export
+
+    /// Asks before copying Finder-dropped items into the working copy.
+    ///
+    /// A drop is a write, so it goes through the same `Confirmation` path as the
+    /// other creating actions: nothing is written until the user agrees, and one
+    /// prompt covers the whole drop. The dialog itself is attached to
+    /// `RepositoryDetailView`, which already owns `session.confirmation`.
+    func confirmImport(of urls: [URL]) {
+        let valid = urls.filter { FileManager.default.fileExists(atPath: $0.path) }
+        guard !valid.isEmpty else {
+            presentedError = PresentedError(error: SVNError(
+                code: .invalidInvocation,
+                message: "拖入的文件已不存在，未导入任何内容"
+            ))
+            return
+        }
+        let names = valid.prefix(3).map(\.lastPathComponent).joined(separator: "、")
+        let more = valid.count > 3 ? " 等 \(valid.count) 项" : ""
+        confirmation = Confirmation(
+            title: "导入到工作副本",
+            message: "将把 \(names)\(more) 复制到「\(displayName)」并加入版本控制（svn add），不会立即提交。",
+            confirmLabel: "导入",
+            isDestructive: false,
+            action: { [weak self] in
+                for url in valid {
+                    await self?.copyIntoWorkingCopy(url)
+                }
+            }
+        )
+    }
+
+    /// Single-item convenience; still asks for confirmation.
+    func importDroppedFile(_ source: URL) async {
+        confirmImport(of: [source])
+    }
+
+    /// Copies one item into the working copy root and schedules it with `svn add`.
+    /// Nothing is committed here: the new item first appears in the Changes list,
+    /// where it can be reviewed like any other local edit. Directories are added
+    /// recursively by svn itself.
+    private func copyIntoWorkingCopy(_ source: URL) async {
+        guard service != nil else { return }
+        let destination = path.appendingPathComponent(source.lastPathComponent)
+        guard !FileManager.default.fileExists(atPath: destination.path) else {
+            presentedError = PresentedError(error: SVNError(
+                code: .invalidInvocation,
+                message: "工作副本里已存在同名项目：\(destination.lastPathComponent)"
+            ))
+            return
+        }
+        do {
+            try FileManager.default.copyItem(at: source, to: destination)
+        } catch {
+            handle(error)
+            return
+        }
+        await add([destination.path])
+    }
+
+    /// Exports selected paths (or the whole working copy) into a directory the
+    /// user chose. `svn export` refuses to overwrite, so with more than one
+    /// selected path each lands in its own subdirectory.
+    func export(to directory: URL, paths selected: [String]) async {
+        guard let service else { return }
+        let sources: [URL]
+        if selected.isEmpty {
+            sources = [path]
+        } else {
+            sources = selected.map { raw in
+                raw.hasPrefix("/")
+                    ? URL(fileURLWithPath: raw)
+                    : path.appendingPathComponent(raw)
+            }
+        }
+        await perform("导出 \(sources.count) 项") { _, _ in
+            for source in sources {
+                let destination = sources.count == 1
+                    ? directory
+                    : directory.appendingPathComponent(source.lastPathComponent)
+                try await service.export(from: source.path, to: destination)
+            }
+        }
+    }
+
+    // MARK: - Branch operations (merge / switch / mergeinfo)
+
+    /// The preview the merge sheet shows, straight from the service.
+    ///
+    /// Pure computation — no subprocess, no network — so the sheet can re-render
+    /// it on every keystroke without spawning svn.
+    func previewMerge(_ request: MergeRequest) -> OperationPreview {
+        MergePreview.make(from: request)
+    }
+
+    /// Same, for a switch. Also pure.
+    func previewSwitch(_ request: SwitchRequest) -> OperationPreview {
+        SwitchPreview.make(from: request)
+    }
+
+    /// `svn merge` against this working copy.
+    ///
+    /// The sheet is the confirmation: the user has read the preview and pressed
+    /// the button, so `confirmed: true` here is what the service's guard is for —
+    /// it stops an *unattended* caller, not a user decision.
+    func merge(_ request: MergeRequest) async {
+        guard let service else { return }
+        let outcome = await performReturning("合并到 \(displayName)") { credential, progress in
+            try await service.merge(
+                request,
+                confirmed: true,
+                credential: credential,
+                progress: progress
+            )
+        }
+        guard let outcome else { return }
+
+        var lines: [String] = []
+        let changes = outcome.changes
+        let touched = changes.updated.count + changes.added.count
+            + changes.deleted.count + changes.merged.count
+        lines.append("合并来源：\(request.primarySourceURL)")
+        if outcome.recordOnly {
+            lines.append("这是一次 --record-only 合并：只更新 svn:mergeinfo 记录，没有改动任何文件。")
+        } else if touched == 0 {
+            lines.append("没有文件发生变化：这段修订可能已经合并过了（见「信息」页的合并记录）。")
+        } else {
+            lines.append("改动 \(touched) 个路径。")
+        }
+        if outcome.hasConflicts {
+            lines.append("其中 \(changes.conflicted.count) 个路径冲突，未自动解决——请到「变更」页逐个处理后再提交。")
+        } else if !outcome.recordOnly && touched > 0 {
+            lines.append("改动还在工作副本里：确认无误后到「提交」页提交。")
+        }
+        if !changes.skipped.isEmpty {
+            lines.append("\(changes.skipped.count) 个路径被跳过（Skipped），通常是本地已存在未纳入版本控制的同名文件。")
+        }
+
+        branchReport = BranchReport(
+            title: "合并完成",
+            message: lines.joined(separator: "\n\n"),
+            hasConflicts: outcome.hasConflicts
+        )
+        await loadLog(reset: true)
+    }
+
+    /// `svn switch` — repoints this working copy at another URL in the same
+    /// repository. The history therefore changes too, so the log is reloaded.
+    func switchWorkingCopy(to request: SwitchRequest) async {
+        guard let service else { return }
+        let outcome = await performReturning("切换到 \(request.url)") { credential, progress in
+            try await service.switchTo(
+                request,
+                confirmed: true,
+                credential: credential,
+                progress: progress
+            )
+        }
+        guard let outcome else { return }
+
+        var lines = ["工作副本现在指向：\(outcome.url)"]
+        let changes = outcome.changes
+        let touched = changes.updated.count + changes.added.count
+            + changes.deleted.count + changes.merged.count
+        if touched > 0 { lines.append("内容随之更新了 \(touched) 个路径。") }
+        if outcome.hasConflicts {
+            lines.append("其中 \(changes.conflicted.count) 个路径冲突——本地未提交的修改与切换后的内容撞在了一起，请到「变更」页处理。")
+        } else {
+            lines.append("本地未提交的修改已被保留。")
+        }
+        branchReport = BranchReport(
+            title: "切换完成",
+            message: lines.joined(separator: "\n\n"),
+            hasConflicts: outcome.hasConflicts
+        )
+        await loadLog(reset: true)
+    }
+
+    /// Opens the read-only mergeinfo sheet for the working copy root.
+    func openMergeInfo() {
+        mergeInfoSnapshot = MergeInfoSnapshot(target: path.path)
+        Task { await loadMergeInfo() }
+    }
+
+    func dismissMergeInfo() {
+        mergeInfoSnapshot = nil
+    }
+
+    /// Reads the stored `svn:mergeinfo` property, and — when the sheet already
+    /// names a source — which revisions are merged and which are still eligible.
+    ///
+    /// The eligibility query needs the network; the property read may not. A
+    /// failure of either lands in `failure` rather than in an alert, because the
+    /// sheet exists to explain merge state and a dialog on top of it would hide
+    /// the explanation.
+    func loadMergeInfo(source explicitSource: String? = nil) async {
+        guard let service, let state = mergeInfoSnapshot else { return }
+        var working = state
+        if let explicitSource { working.source = explicitSource }
+        working.isLoading = true
+        working.failure = nil
+        mergeInfoSnapshot = working
+
+        let target = path
+        let source = working.source.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            let lines = try await withAuthRetry { credential in
+                try await service.mergeInfoProperty(at: target.path, credential: credential)
+            }
+            var merged: [Int64] = []
+            var eligible: [Int64] = []
+            if !source.isEmpty {
+                merged = try await withAuthRetry { credential in
+                    try await service.mergeInfo(.merged, source: source, target: target, credential: credential)
+                }
+                eligible = try await withAuthRetry { credential in
+                    try await service.mergeInfo(.eligible, source: source, target: target, credential: credential)
+                }
+            }
+            guard var current = mergeInfoSnapshot, current.id == state.id else { return }
+            current.lines = lines
+            current.merged = merged
+            current.eligible = eligible
+            current.isLoading = false
+            mergeInfoSnapshot = current
+        } catch {
+            let svnError = (error as? SVNError)
+                ?? SVNError(code: .unknown, message: error.localizedDescription)
+            guard var current = mergeInfoSnapshot, current.id == state.id else { return }
+            current.isLoading = false
+            current.failure = svnError.message
+            mergeInfoSnapshot = current
+        }
+    }
+
+    /// Which revisions are still eligible to merge from `source`.
+    ///
+    /// Returns `nil` on failure and surfaces the error through `handle`, so the
+    /// merge sheet can keep the query result in local state without owning an
+    /// alert. Read-only: no gate, no journal, no confirmation.
+    func eligibleRevisions(from source: String) async -> [Int64]? {
+        guard let service else { return nil }
+        let target = path
+        do {
+            return try await withAuthRetry { credential in
+                try await service.mergeInfo(
+                    .eligible,
+                    source: source,
+                    target: target,
+                    credential: credential
+                )
+            }
+        } catch {
+            handle(error)
+            return nil
+        }
+    }
+
+    // MARK: - External merge tool
+
+    /// Resolves a text conflict with the external command configured in the
+    /// extension settings. The command is launched as an argument array through
+    /// `Process` (never a shell string); the merged output is written back and
+    /// marked resolved only after a successful exit.
+    func resolveWithExternalTool(_ entry: StatusEntry) {
+        guard let configuration = ExternalMergeConfiguration.load() else {
+            presentedError = PresentedError(error: SVNError(
+                code: .invalidInvocation,
+                message: "尚未配置外部合并工具，请在「扩展设置」里指定可执行文件"
+            ))
+            return
+        }
+        guard let service else { return }
+        let fileURL = entryURL(entry)
+        let displayPath = relativePath(entry.path)
+
+        Task {
+            do {
+                guard let artifacts = try await service.conflictArtifacts(for: fileURL),
+                      artifacts.supportsMerge,
+                      let base = artifacts.base,
+                      let mine = artifacts.mine,
+                      let theirs = artifacts.theirs else {
+                    presentedError = PresentedError(error: SVNError(
+                        code: .conflictRemains,
+                        message: "「\(displayPath)」没有完整的三方冲突副本，无法用外部工具合并"
+                    ))
+                    return
+                }
+
+                let extensionName = fileURL.pathExtension.isEmpty ? "txt" : fileURL.pathExtension
+                let merged = FileManager.default.temporaryDirectory
+                    .appendingPathComponent("opensvn-merge-\(UUID().uuidString)")
+                    .appendingPathExtension(extensionName)
+                let arguments = configuration.arguments(
+                    base: base,
+                    mine: mine,
+                    theirs: theirs,
+                    merged: merged,
+                    working: fileURL
+                )
+                let executable = configuration.executable
+                let status = try await Task.detached(priority: .userInitiated) {
+                    let process = Process()
+                    process.executableURL = executable
+                    process.arguments = arguments
+                    try process.run()
+                    process.waitUntilExit()
+                    return process.terminationStatus
+                }.value
+
+                guard status == 0 else {
+                    presentedError = PresentedError(error: SVNError(
+                        code: .unknown,
+                        message: "外部合并工具以退出码 \(status) 结束，未写入任何改动"
+                    ))
+                    try? FileManager.default.removeItem(at: merged)
+                    return
+                }
+                guard let mergedText = try? String(contentsOf: merged, encoding: .utf8) else {
+                    presentedError = PresentedError(error: SVNError(
+                        code: .unknown,
+                        message: "外部合并工具没有在 {merged} 位置写出合并结果"
+                    ))
+                    try? FileManager.default.removeItem(at: merged)
+                    return
+                }
+
+                let backup = try? await service.backupConflictArtifacts(
+                    for: [fileURL],
+                    reason: "external-merge"
+                )
+                try mergedText.write(to: fileURL, atomically: true, encoding: .utf8)
+                guard let taskCenter else { return }
+                _ = try await taskCenter.run("写入外部合并结果") { _ in
+                    try await service.resolve([fileURL], strategy: .working, confirmed: true)
+                }
+                try? FileManager.default.removeItem(at: merged)
+                await refresh()
+
+                let backupNote = backup.map {
+                    "\n\n合并前的内容已备份到：\n"
+                        + ($0.directory.path as NSString).abbreviatingWithTildeInPath
+                } ?? ""
+                resolveReport = ResolveReport(
+                    title: "已用外部工具解决冲突",
+                    message: "「\(displayPath)」的合并结果已写回并标记为已解决。" + backupNote,
+                    backupDirectory: backup?.directory
+                )
+            } catch {
+                handle(error)
+            }
         }
     }
 }
