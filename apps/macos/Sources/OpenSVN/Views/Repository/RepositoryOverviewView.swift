@@ -76,6 +76,12 @@ struct RepositoryOverviewView: View {
                         Label("切换仓库地址…", systemImage: "arrow.triangle.swap")
                     }
                     .help("svn relocate：仓库换了地址（协议/主机/路径）但内容还是同一个")
+                    Button {
+                        session.openMergeInfo()
+                    } label: {
+                        Label("合并记录…", systemImage: "arrow.triangle.merge")
+                    }
+                    .help("查看 svn:mergeinfo，以及某个来源还有哪些修订没合并")
                     Spacer()
                 }
                 .padding(.top, 4)

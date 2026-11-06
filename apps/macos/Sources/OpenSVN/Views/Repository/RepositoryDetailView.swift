@@ -35,6 +35,8 @@ enum RepositoryTab: String, CaseIterable, Identifiable {
 struct RepositoryDetailView: View {
     @Bindable var session: RepositorySession
     @State private var tab: RepositoryTab = .changes
+    @State private var showingMerge = false
+    @State private var showingSwitch = false
 
     var body: some View {
         // No band above the content. A 37 pt strip holding the section switcher
@@ -102,6 +104,31 @@ struct RepositoryDetailView: View {
                     Label("清理", systemImage: "bandage")
                 }
                 .help("清理内部锁（svn cleanup）")
+
+                // Branch operations live in a menu rather than three separate
+                // buttons: they are used in bursts (merge something, check what
+                // is left, maybe switch), not on every visit.
+                Menu {
+                    Button {
+                        showingMerge = true
+                    } label: {
+                        Label("合并…", systemImage: "arrow.triangle.branch")
+                    }
+                    Button {
+                        showingSwitch = true
+                    } label: {
+                        Label("切换分支…", systemImage: "arrow.triangle.swap")
+                    }
+                    Divider()
+                    Button {
+                        session.openMergeInfo()
+                    } label: {
+                        Label("合并记录…", systemImage: "arrow.triangle.merge")
+                    }
+                } label: {
+                    Label("分支", systemImage: "arrow.triangle.branch")
+                }
+                .help("合并、切换分支、查看合并记录")
             }
         }
         .alert(
@@ -162,6 +189,36 @@ struct RepositoryDetailView: View {
         }
         .sheet(item: $session.externalsState) { _ in
             ExternalsSheet(session: session)
+        }
+        .sheet(item: $session.mergeInfoSnapshot) { _ in
+            MergeInfoSheet(session: session)
+        }
+        .sheet(isPresented: $showingMerge) {
+            MergeSheet(session: session)
+        }
+        .sheet(isPresented: $showingSwitch) {
+            SwitchSheet(session: session)
+        }
+        // A merge or a switch changes many files at once. The alert is where the
+        // counts and the "what to do next" sentence live, because a task-centre
+        // row is too small to hold them and too easy to miss.
+        .alert(
+            session.branchReport?.title ?? "分支操作",
+            isPresented: Binding(
+                get: { session.branchReport != nil },
+                set: { if !$0 { session.branchReport = nil } }
+            ),
+            presenting: session.branchReport
+        ) { report in
+            if report.hasConflicts {
+                Button("查看冲突") {
+                    tab = .changes
+                    session.branchReport = nil
+                }
+            }
+            Button("好", role: .cancel) { session.branchReport = nil }
+        } message: { report in
+            Text(report.message)
         }
         .task {
             if session.status == nil {
