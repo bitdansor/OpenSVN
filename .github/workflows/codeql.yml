@@ -6,13 +6,20 @@ name: CodeQL
 # green baseline; until then this workflow deliberately does not claim coverage
 # of apps/windows.
 #
-# Code scanning is only available on private repositories with a GitHub Advanced
-# Security licence. This repository is private and has none, so the first run
-# (39106470737) spent 12 minutes building and then failed in Analyze with
-# "Code scanning is not enabled for this repository". Skipping on private repos
-# keeps the state honest — the job shows as skipped, never as a passing scan.
-# The project is Apache-2.0 and will be opened; scanning then starts with no edit.
-# To run it while private, enable code scanning and remove the `if:` line.
+# Code scanning is free on public repositories and needs a GitHub Advanced
+# Security licence on private ones. This repository is public and scanning is
+# enabled: each run uploads an analysis under the `swift` category, and the
+# current tree analyses to 0 results across 28 rules. The `if:` guard is kept
+# for the reverse case — if the repository ever goes private without a licence,
+# the job is skipped instead of spending twelve minutes building and then failing
+# in Analyze with "Code scanning is not enabled for this repository", which is
+# what the first run (39106470737) did.
+#
+# A red run does not always mean a finding. On 2026-11-02 the scheduled job sat
+# in the macOS queue with no runner assigned and was cancelled after fifteen
+# minutes, which renders as a failed run with zero steps; on 2026-11-06 the
+# build step failed on the pinned Swift 6.1 compiler. Neither was a CodeQL
+# result. Read the step that failed before reading the annotations.
 
 on:
   push:
