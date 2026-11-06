@@ -45,6 +45,14 @@ public actor SVNService {
     /// `--password-from-stdin` first shipped in svn 1.10.
     public nonisolated static let passwordStdinMinimumVersion = SVNVersion(major: 1, minor: 10, patch: 0)
 
+    /// `--store-pristine=no` (Pristines on Demand) first shipped in svn 1.15.
+    ///
+    /// It is not merely a flag: opting in switches the working copy to format 32,
+    /// which svn 1.14 and older cannot read at all. Refusing below 1.15 keeps a
+    /// working copy usable by every client that might touch it — the alternative
+    /// is a silent "unable to open working copy" for a colleague on 1.14.
+    public nonisolated static let pristineStoreMinimumVersion = SVNVersion(major: 1, minor: 15, patch: 0)
+
     public nonisolated let installation: SVNInstallation
     private let runner: SVNProcessRunner
     private let credentials: any CredentialStoring
@@ -299,14 +307,31 @@ public actor SVNService {
         }
     }
 
+    /// `storePristines: false` enables svn 1.15 "Pristines on Demand" by adding
+    /// `--store-pristine=no` (singular — the plural is rejected by svn); the
+    /// default keeps svn's stock behaviour.
+    ///
+    /// Opting out is refused below svn 1.15 rather than attempted: the flag does
+    /// not exist there, and it would rewrite the working copy into a format that
+    /// older clients cannot open.
     public func checkout(
         url: String,
         to destination: URL,
         revision: Int64? = nil,
         depth: CheckoutDepth = .infinity,
+        storePristines: Bool = true,
         credential: SVNCredential? = nil,
         progress: SVNProgressHandler? = nil
     ) async throws {
+        if !storePristines {
+            guard installation.version >= Self.pristineStoreMinimumVersion else {
+                throw SVNError(
+                    code: .invalidInvocation,
+                    message: "svn \(installation.version) 不支持按需获取原始副本（Pristines on Demand），需要 1.15 或更高版本"
+                )
+            }
+        }
+
         let fileManager = FileManager.default
         var isDirectory: ObjCBool = false
         if fileManager.fileExists(atPath: destination.path, isDirectory: &isDirectory) {
@@ -319,11 +344,13 @@ public actor SVNService {
             }
         }
 
-        var arguments = ["checkout", url, destination.path, "--depth", depth.rawValue]
-        if let revision {
-            arguments += ["-r", String(revision)]
-        }
-        let checkoutArguments = arguments
+        let checkoutArguments = CheckoutArguments.make(
+            url: url,
+            destination: destination,
+            revision: revision,
+            depth: depth.rawValue,
+            storePristines: storePristines
+        )
 
         let key = destination.standardizedFileURL.path
         let ticket = await beginJournal(
@@ -538,6 +565,18 @@ public actor SVNService {
 
     // MARK: - Commit
 
+    /// Commits the given paths in **one** `svn commit`, i.e. scoped to a single
+    /// repository. There is deliberately no "group by repository URL/UUID and
+    /// fire one commit per group" helper here — see
+    /// `specifications/svn-operations.md` §5.6 for the written conclusion.
+    ///
+    /// The short version: `svn:externals` mounts another working copy (possibly
+    /// another repository). svn refuses to commit changes *inside* an external
+    /// as part of the parent's commit; `StatusSnapshot.committable` already
+    /// excludes those paths (§1.14). Auto-grouping by UUID and replaying commits
+    /// would either silently commit someone else's repository or hide that a
+    /// path belongs to an external. The caller must commit each external from
+    /// its own working copy, explicitly.
     public func commit(
         _ paths: [URL],
         message: String,
@@ -1229,6 +1268,215 @@ public actor SVNService {
         _ = try await invoke(args, workingDirectory: nil, credential: nil, repositoryURL: nil)
     }
 
+    // MARK: - Merge, switch, and local repositories
+    //
+    // These are working-copy writes (or, for svnadmin, a local repository
+    // creation). They reuse the existing journal kinds rather than adding new
+    // ones, because `OperationJournal.Entry.Kind` is a closed enum with
+    // exhaustive recovery advice that this file does not own. The mapping is a
+    // semantic fit, not a shortcut:
+    //   - merge / switch -> .update   ("working copy may be in an intermediate
+    //     state; run cleanup") — exactly what an interrupted merge/switch leaves;
+    //   - createLocalRepository -> .checkout ("may be only partly created; check
+    //     the directory, then delete and redo") — exactly a half-built repo.
+    // Every one of them goes through gate.withLock + beginJournal/finishJournal,
+    // and the dangerous ones refuse unconfirmed calls at the service layer (R3).
+
+    /// Read-only description of a merge; never runs svn and never mutates.
+    public func previewMerge(_ request: MergeRequest) -> OperationPreview {
+        MergePreview.make(from: request)
+    }
+
+    /// `svn merge` — branch merging with merge tracking (svn 1.14 semantics:
+    /// the automatic/sync merge and the classic two-URL merge, plus
+    /// `--record-only`). The result is a *local* change that still needs a commit.
+    ///
+    /// A merge can overwrite local work and leave conflicts behind, so the
+    /// service — not only the UI — refuses any call without `confirmed`.
+    public func merge(
+        _ request: MergeRequest,
+        confirmed: Bool,
+        credential: SVNCredential? = nil,
+        progress: SVNProgressHandler? = nil
+    ) async throws -> MergeOutcome {
+        guard confirmed else {
+            let preview = MergePreview.make(from: request)
+            throw SVNError(
+                code: .confirmationRequired,
+                message: preview.summary,
+                diagnosticOutput: preview.detail
+            )
+        }
+        try request.validate()
+
+        let args = MergeArguments.make(request)
+        let key = WorkingCopyLocator.serializationKey(for: request.target)
+        let ticket = await beginJournal(
+            .update,
+            workingCopy: URL(fileURLWithPath: key),
+            summary: "合并到 \(request.target.lastPathComponent)"
+        )
+        do {
+            let outcome = try await gate.withLock(key) {
+                let result = try await self.invoke(
+                    args,
+                    workingDirectory: nil,
+                    credential: credential,
+                    repositoryURL: request.primarySourceURL,
+                    progress: progress
+                )
+                return MergeOutcome.make(
+                    target: request.target,
+                    recordOnly: request.recordOnly,
+                    from: result.standardOutput
+                )
+            }
+            await finishJournal(ticket)
+            return outcome
+        } catch {
+            await finishJournal(ticket)
+            throw error
+        }
+    }
+
+    /// `svn mergeinfo --show-revs <merged|eligible>` — which revisions are (or
+    /// are not) yet merged between a source and a working-copy target.
+    /// Read-only: no gate, no journal, no confirmation.
+    public func mergeInfo(
+        _ kind: MergeInfoRevisions,
+        source: String,
+        target: URL? = nil,
+        credential: SVNCredential? = nil
+    ) async throws -> [Int64] {
+        var args = ["mergeinfo", "--show-revs", kind.rawValue, source]
+        if let target { args.append(target.standardizedFileURL.path) }
+        let result = try await invoke(
+            args,
+            workingDirectory: nil,
+            credential: credential,
+            repositoryURL: source
+        )
+        return MergeInfoRevisions.parse(result.standardOutput)
+    }
+
+    /// `svn propget svn:mergeinfo` — the raw stored merge-tracking property.
+    /// Accepts either a working-copy path or a repository URL. Read-only.
+    public func mergeInfoProperty(
+        at target: String,
+        credential: SVNCredential? = nil
+    ) async throws -> [MergeInfoLine] {
+        let isURL = target.contains("://")
+        let path = isURL ? target : URL(fileURLWithPath: target).standardizedFileURL.path
+        let result = try await invoke(
+            ["propget", "svn:mergeinfo", "--", path],
+            workingDirectory: nil,
+            credential: credential,
+            repositoryURL: isURL ? target : nil
+        )
+        return MergeInfoProperty.parse(result.standardOutput)
+    }
+
+    /// Read-only description of a switch; never runs svn and never mutates.
+    public func previewSwitch(_ request: SwitchRequest) -> OperationPreview {
+        SwitchPreview.make(from: request)
+    }
+
+    /// `svn switch` — repoint a working copy at a different URL inside the *same*
+    /// repository. svn enforces the UUID check, so this cannot silently join two
+    /// histories. Local modifications may conflict, hence `confirmed` at the
+    /// service layer.
+    public func switchTo(
+        _ request: SwitchRequest,
+        confirmed: Bool,
+        credential: SVNCredential? = nil,
+        progress: SVNProgressHandler? = nil
+    ) async throws -> SwitchOutcome {
+        guard confirmed else {
+            let preview = SwitchPreview.make(from: request)
+            throw SVNError(
+                code: .confirmationRequired,
+                message: preview.summary,
+                diagnosticOutput: preview.detail
+            )
+        }
+        try request.validate()
+
+        let args = SwitchArguments.make(request)
+        let key = WorkingCopyLocator.serializationKey(for: request.target)
+        let ticket = await beginJournal(
+            .update,
+            workingCopy: URL(fileURLWithPath: key),
+            summary: "切换 \(request.target.lastPathComponent) 到 \(request.url)"
+        )
+        do {
+            let outcome = try await gate.withLock(key) {
+                let result = try await self.invoke(
+                    args,
+                    workingDirectory: nil,
+                    credential: credential,
+                    repositoryURL: request.url,
+                    progress: progress
+                )
+                return SwitchOutcome.make(
+                    target: request.target,
+                    url: request.url,
+                    from: result.standardOutput
+                )
+            }
+            await finishJournal(ticket)
+            return outcome
+        } catch {
+            await finishJournal(ticket)
+            throw error
+        }
+    }
+
+    /// `svnadmin create` — creates a brand-new local repository and returns its
+    /// `file://` URL. Refuses to touch a non-empty destination, so it needs no
+    /// `confirmed`. It is still serialised and journaled like every other write.
+    public func createLocalRepository(at location: URL) async throws -> LocalRepository {
+        let path = location.standardizedFileURL
+        let fileManager = FileManager.default
+        var isDirectory: ObjCBool = false
+        if fileManager.fileExists(atPath: path.path, isDirectory: &isDirectory) {
+            guard isDirectory.boolValue else {
+                throw SVNError(code: .invalidInvocation, message: "目标已存在且不是目录：\(path.path)")
+            }
+            let contents = try fileManager.contentsOfDirectory(atPath: path.path)
+            guard contents.isEmpty else {
+                throw SVNError(code: .invalidInvocation, message: "目标目录非空，无法在此创建仓库：\(path.path)")
+            }
+        } else {
+            // svnadmin creates only the final directory, not its parents.
+            try fileManager.createDirectory(
+                at: path.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+        }
+
+        let key = path.path
+        let ticket = await beginJournal(
+            .checkout,
+            workingCopy: path,
+            summary: "创建本地仓库 \(path.lastPathComponent)"
+        )
+        do {
+            let repository = try await gate.withLock(key) {
+                let result = try await self.runAdmin(LocalRepositoryArguments.create(path: path))
+                return LocalRepository(
+                    path: path,
+                    url: LocalRepositoryArguments.fileURL(for: path),
+                    rawOutput: LogRedactor.redact(result.standardOutput)
+                )
+            }
+            await finishJournal(ticket)
+            return repository
+        } catch {
+            await finishJournal(ticket)
+            throw error
+        }
+    }
+
     private static func requireMessage(_ message: String) throws {
         guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw SVNError(
@@ -1318,6 +1566,42 @@ public actor SVNService {
         return result
     }
 
+    /// Runs `svnadmin`, which is a *different binary* from `svn` and does not
+    /// accept the client's global `--non-interactive` / `--no-auth-cache`
+    /// options that `runOnce` prepends. It still goes through the same
+    /// `SVNProcessRunner` abstraction (never a raw `Process`), exactly like
+    /// `DemoWorkspace`'s admin calls; credentials are never involved because
+    /// `svnadmin` only works on the local filesystem.
+    private func runAdmin(_ arguments: [String]) async throws -> SVNProcessResult {
+        guard let adminURL = DemoWorkspace.adminTool(nextTo: installation.executableURL) else {
+            throw SVNError(
+                code: .svnNotFound,
+                message: "找不到 svnadmin：它应与 svn 位于同一目录"
+            )
+        }
+        let adminRunner = SVNProcessRunner(executableURL: adminURL, defaultTimeout: defaultTimeout)
+        let invocation = SVNInvocation(
+            executableURL: adminURL,
+            arguments: arguments,
+            timeout: defaultTimeout
+        )
+        let result = try await adminRunner.run(invocation)
+        guard result.isSuccess else {
+            let text = result.standardError.isEmpty ? result.standardOutput : result.standardError
+            throw SVNError(
+                code: .commandFailed(exitCode: result.exitCode),
+                message: "svnadmin 执行失败",
+                diagnosticOutput: LogRedactor.redact(text)
+            )
+        }
+        AppLog.shared.record(
+            .debug,
+            "svnadmin \(Self.describe(arguments)) → exit \(result.exitCode)",
+            category: "svn"
+        )
+        return result
+    }
+
     // MARK: - Conflict merge support
 
     /// The three versions `svn` left behind for a text conflict, or nil when the
@@ -1348,7 +1632,11 @@ public actor SVNService {
         credential: SVNCredential?,
         progress: SVNProgressHandler?
     ) async throws -> SVNProcessResult {
-        var args = ["--non-interactive", "--no-auth-cache"] + arguments
+        // All of these are svn *global* options. They must come before the
+        // subcommand and, critically, before any `--` separator in `arguments`:
+        // svn treats everything after `--` as a positional path, so appending
+        // them at the end used to turn `--username` into a bogus target.
+        var globalOptions = ["--non-interactive", "--no-auth-cache"]
         var stdin: Data?
 
         if let credential {
@@ -1358,9 +1646,17 @@ public actor SVNService {
                     message: "svn \(installation.version) 不支持从 stdin 读取密码，需要 1.10 或更高版本"
                 )
             }
-            args += ["--username", credential.username, "--password-from-stdin"]
+            globalOptions += ["--username", credential.username, "--password-from-stdin"]
             stdin = Data((credential.password + "\n").utf8)
         }
+
+        // A fresh store per invocation: one-shot certificate trust must not
+        // outlive the single operation the user approved.
+        globalOptions += SVNConnectionSettingsStore().resolveSVNTrustArguments(
+            svnVersion: installation.version
+        )
+
+        let args = globalOptions + arguments
 
         let invocation = SVNInvocation(
             executableURL: installation.executableURL,

@@ -31,7 +31,7 @@
 
 | 方法 | 语义 | 网络 | 写工作副本 | 需确认 | 幂等 |
 |---|---|---|---|---|---|
-| `checkout(url,to,revision,depth)` | 检出到空目录 | 是 | 创建 | 否 | 目标非空时拒绝 |
+| `checkout(url,to,revision,depth,storePristines)` | 检出到空目录 | 是 | 创建 | 否 | 目标非空时拒绝 |
 | `update(at,revision)` | 更新工作副本 | 是 | 是 | 否 | 是 |
 | `status(at,includeIgnored)` | 读取状态 | 否 | 否 | 否 | 是 |
 | `add(paths,force,noIgnore)` | 纳入版本控制 | 否 | 是 | 否 | 重复 add 报错 |
@@ -66,8 +66,16 @@
 | `importDirectory(from,to,message)` | 导入本地目录 | 是 | 否 | 否 | 否 |
 | `relocate(wc,to)` | 切换仓库地址 | 否 | 是 | 否 | 否 |
 | `setChangelist(name,paths)` | 本地变更集 | 否 | 是 | 否 | 是 |
+| `previewMerge(request)` | 描述合并后果（纯计算） | 否 | 否 | — | 是 |
+| `merge(request,confirmed)` | 自动合并 / 两 URL 合并 / record-only | 是 | 是 | **是** | 否 |
+| `mergeInfo(kind,source,target)` | 已合并 / 可合并修订 | 是 | 否 | 否 | 是 |
+| `mergeInfoProperty(at)` | 读取 `svn:mergeinfo` 原始值 | 否† | 否 | 否 | 是 |
+| `previewSwitch(request)` | 描述切换后果（纯计算） | 否 | 否 | — | 是 |
+| `switchTo(request,confirmed)` | 切换到同仓库另一 URL | 是 | 是 | **是** | 否 |
+| `createLocalRepository(at)` | `svnadmin create` 本地仓库 | 否 | 否 | 否 | 否 |
 
 \* `info` 针对工作副本路径时只读本地 `.svn`；针对 URL 时访问网络。
+† `mergeInfoProperty`（`propget`）对仓库 URL 目标会访问网络；对工作副本路径只读本地 `.svn`。
 
 ### 1.1 checkout
 
@@ -317,6 +325,90 @@ changelist 成员不在 `<target>` 下，也不是 entry 的属性，而是 `<ta
 4. 成功后才写入钥匙串；失败不保存。
 5. 不做自动无限重试。
 
-## 5. 未实现的接口（后续版本）
+## 5. 能力状态与补充契约
 
-`switch`、`merge`、`export`。契约预留：方法名、错误码、确认策略在设计时补入本文，而不是先写实现后补文档。
+### 5.0 状态校正（与代码对齐）
+
+旧版本节写作「未实现的接口（后续版本）：`switch`、`merge`、`export`」。该描述已与代码不符：
+
+| 接口 | 状态 | 实现位置 |
+|---|---|---|
+| `export` | **已实现**（2026-10-25） | `SVNService.export(from:to:revision:)`，见 §1 方法表与 §1.13 |
+| `merge` | **已实现**（本次） | `SVNService.previewMerge` / `merge`，见 §5.1 |
+| `switch` | **已实现**（本次） | `SVNService.previewSwitch` / `switchTo`，见 §5.2 |
+
+本节其余条目是本次新增能力的**行为契约**，不是实现说明；两端（macOS / 其他平台）的语义、前置条件、副作用、失败后状态必须一致。契约先于或同步于实现，不是先写完代码再补文档。
+
+**写锁与中断日志的复用约定**：`OperationJournal.Entry.Kind` 是带穷尽 `recoveryAdvice` 的封闭枚举。本次新增的写操作不新增 `Kind`，而是复用现有枚举——`merge` / `switch` 记为 `.update`（"工作副本可能停在中间状态，运行清理"），`createLocalRepository` 记为 `.checkout`（"可能只完成了一部分，确认目录内容后再决定"）。这两种恢复建议恰好就是对应操作被中断后的真实状态，因此是语义契合而非权宜。三者一律走 R4 写锁 + `beginJournal` / `finishJournal`；危险操作一律由服务层拒绝未 `confirmed` 调用（R3）。
+
+### 5.1 merge（分支合并 / merge tracking）
+
+| 项 | 契约 |
+|---|---|
+| 语义 | 封装 `svn merge`（svn 1.14 语义）。两种形式：`automatic`（`svn merge [-r N:M \| -c N] SOURCE[@PEG] [TARGET]`，即由 `svn:mergeinfo` 驱动的自动/sync/reintegrate 合并）与 `twoURL`（`svn merge SOURCE1[@N] SOURCE2[@M] [TARGET]`）。支持 `--record-only`（只更新合并记录、不应用改动）、`--accept`、`--ignore-ancestry`、修订范围/挑拣 |
+| 入参 | `MergeRequest(style, target, recordOnly=false, accept=.postpone, ignoreAncestry=false)`；另有 `confirmed: Bool`、`credential`、`progress`。`previewMerge(request) -> OperationPreview` 为纯计算预览 |
+| 前置条件 | 目标为工作副本路径；来源 URL 非空（`validate()` 在启动子进程前校验，空则 `SVN-9001`）；`confirmed == true`；凭据按 §4 流程解析，密码只走 stdin |
+| 副作用 | 仅改工作副本（文件内容、`svn:mergeinfo`、可能留下冲突标记）；**不提交**，`--record-only` 只改属性。走写锁 + `.update` journal；记 debug 日志 |
+| 幂等性 | 否。重复合并会产生重复改动或冲突（svn 自身也不保证合并幂等）；`--record-only` 重复执行仍需谨慎，应以 mergeinfo 为准 |
+| 失败后工作副本状态 | 可能处于混合修订 / 含未解决冲突 / 中间状态，且可能已写入部分改动。返回 `SVN-0501`（未确认）、`SVN-9001`（入参非法）、冲突相关或 svn 映射错误；失败即 `finishJournal` 删除日志条目。恢复建议：刷新状态、必要时 `cleanup`、按需 `revert` 后重试，不要盲目重复合并 |
+| 确认策略 | **服务层强制**：`confirmed == false` 抛 `SVN-0501 confirmationRequired`，附带 `OperationPreview` 摘要/详情，且不启动任何子进程。`previewMerge` 是只读纯计算，不扫描工作副本；本地改动由调用方另外用 `status` / `remotePreview` 检查 |
+
+### 5.2 switch（切换到同仓库另一 URL）
+
+| 项 | 契约 |
+|---|---|
+| 语义 | 封装 `svn switch URL[@PEG] [PATH]`：把工作副本整体指向**同一仓库内**的另一个 URL（分支）。不是 `relocate`（同仓库换地址），也不是拼接两段历史——仓库 UUID 由 svn 校验，切到别的仓库会失败 |
+| 入参 | `SwitchRequest(url, target, revision=nil, accept=.postpone, ignoreExternals=false, force=false)`；另有 `confirmed: Bool`、`credential`、`progress`。`previewSwitch(request) -> OperationPreview` 为纯计算预览 |
+| 前置条件 | 目标 URL 非空（`validate()` → 空则 `SVN-9001`）；`confirmed == true`；UUID 一致性由 svn 保证 |
+| 副作用 | 更新工作副本内容、`.svn/wc.db` 中的 URL；`--force` 可能覆盖未版本化的同名文件；`--ignore-externals` 保留外挂不动。走写锁 + `.update` journal |
+| 幂等性 | 否（切换会重写文件；已处于目标 URL 时 svn 视为无操作，但服务层不做此判定） |
+| 失败后工作副本状态 | 可能停在混合修订或残留冲突，需刷新状态并视情况 `cleanup`；失败即 `finishJournal` |
+| 确认策略 | **服务层强制**：`confirmed == false` 抛 `SVN-0501`，不启动任何子进程。`previewSwitch` 为只读纯计算 |
+
+### 5.3 mergeinfo 读取
+
+| 项 | 契约 |
+|---|---|
+| 语义 | 两种互补的只读入口：`mergeInfo(kind, source, target)` 跑 `svn mergeinfo --show-revs <merged\|eligible>` 返回已合并/可合并修订号列表；`mergeInfoProperty(at)` 跑 `svn propget svn:mergeinfo` 返回解析后的 `path:rangelist` 行（含范围与非继承 `*` 标记） |
+| 入参 | `MergeInfoRevisions.merged / .eligible`、`source: String`（URL 或路径）、可选 `target: URL`；`mergeInfoProperty` 接受路径或 URL 字符串；均带可选 `credential` |
+| 前置条件 | 无确认、无写锁；`--show-revs` 面向仓库需网络，`propget` 对 URL 目标需网络 |
+| 副作用 | 无。不改工作副本、不记 journal、不取写锁 |
+| 幂等性 | 是（纯读） |
+| 失败后工作副本状态 | 不变；错误按 `SVNErrorMapper` 映射或读失败上抛 |
+| 确认策略 | 不需要 `confirmed` |
+
+### 5.4 创建本地仓库（svnadmin create）
+
+| 项 | 契约 |
+|---|---|
+| 语义 | 封装 `svnadmin create PATH`，创建全新的本地空仓库；返回 `LocalRepository`（仓库路径 + `file://` URL，经 `URL(fileURLWithPath:)` 正确百分号编码，含空格/中文路径） |
+| 入参 | `createLocalRepository(at location: URL)` |
+| 前置条件 | 目标不存在，或存在且为空目录；目标已存在且非空 / 是文件时返回 `SVN-9001`，**不覆盖用户已有内容**。`svnadmin` 与 `svn` 同目录（参考 `DemoWorkspace.adminTool(nextTo:)`），找不到返回 `SVN-0001` |
+| 副作用 | 在磁盘创建仓库目录树（自动补建父目录）。`svnadmin` 是**不同于 `svn` 的二进制**，不接受 `--non-interactive` / `--no-auth-cache`，因此走独立的 `SVNProcessRunner`（不自建 `Process`），不经 `invoke` 的全局参数。仍走写锁 + `.checkout` journal |
+| 幂等性 | 否：目标非空即拒绝，因此不会重复创建；但不静默吞掉"已存在" |
+| 失败后工作副本状态 | 不接触任何现有工作副本；可能留下一个不完整的仓库目录，由用户按恢复建议删除重建。失败即 `finishJournal` |
+| 确认策略 | 不需要 `confirmed`：只新建、不删除、不覆盖（非空即拒绝），是非破坏性本地操作 |
+
+### 5.5 checkout：Pristines on Demand
+
+| 项 | 契约 |
+|---|---|
+| 语义 | `checkout` 新增可选参数 `storePristines: Bool = true`。默认 `true` = 保持原有行为（svn 默认存储 pristine 副本）；`false` 追加 `--store-pristine=no`（svn 1.15 "Pristines on Demand"，按需从仓库取 pristine，不本地保存） |
+| 入参 | `checkout(url,to,revision,depth,storePristines=true,credential,progress)`；参数带标签，新增项不改变既有调用语义 |
+| 前置条件 | 同 §1.1：目标不存在或为空目录。另需 svn ≥ 1.15：低于该版本时服务层在**启动子进程之前**直接拒绝（`SVN-9001`），不依赖 svn 报错 |
+| 副作用 | 创建工作副本；`storePristines=false` 时 `.svn/pristine/` 不保存完整副本，**且工作副本格式升级为 32**——svn 1.14 及更旧客户端因此无法打开该工作副本。这是拒绝低版本的全部理由，不只是"选项不存在"。走写锁 + `.checkout` journal（既有行为） |
+| 幂等性 | 目标非空时拒绝；其余同 §1.1 |
+| 失败后工作副本状态 | 可能留下部分目录，不自动删除用户目录（同 §1.1） |
+| 确认策略 | 不需要 `confirmed`（既有 checkout 语义不变） |
+
+**选项拼写（实测 svn 1.15）**：真实选项是单数 `--store-pristine`，取值 `yes`/`no`，且必须以 `--store-pristine=no` 形式传入（单个 argv 元素）。复数 `--store-pristines=no` 会被 svn 判为 `svn: invalid option` 而拒绝；早期设计草稿里的复数写法不生效，实现与本文一律采用单数形式。该选项在 1.15 之前不存在（1.14 及更旧版本的 `svn help checkout` 中没有它），因此不是"旧版本会报错"，而是旧版本根本没有这个能力。
+
+### 5.6 跨仓库分别提交（书面结论，不实现）
+
+**结论：本节刻意不提供实现，只给出结论与理由。** 用户诉求是"按待提交路径解析所属仓库 URL/UUID 分组，一次 commit 只发同一仓库的路径"。理想做法是对每个路径 `svn info --xml` 取 `<repository><root>` 与 `<uuid>`，按 `(root, uuid)` 分组，每组各发一次 `svn commit`。但当前服务层**不会**加这套自动分组，原因如下：
+
+1. **svn 自身的提交边界就是单一仓库。** `svn commit` 一次调用针对的是同一个仓库的工作副本；把来自不同仓库的路径混在一次调用里，svn 会拒绝（"are not from the same repository" 一类错误）。因此"一次 commit 只发同一仓库的路径"本来就是 `commit` 的既有约束，不需要（也不应该）在服务层再造一层分组。
+2. **externals 是被明确排除的提交边界。** `svn:externals` 挂载的是**另一个工作副本**，可能来自**另一个仓库**。svn 明确拒绝把外挂挂载点内部的改动随父工作副本一起提交：自 svn 1.7 起 `svn commit` 默认不深入 external，外挂内的改动必须在其自身工作副本内单独提交。见 §1.14：`StatusSnapshot.committable` 已负责把挂载点及祖先为 external 的路径排除在可提交集合之外（判定用带分隔符的前缀比较，`/wc/shared-notes.md` 不会被误判为 `/wc/shared` 的子路径）。
+3. **"按 UUID 分组后自动分别提交"是危险且误导的假实现。** 若服务层偷偷把外挂/别的仓库的路径也纳入分组并各发一次提交，等于在一次用户动作里静默提交了用户并未明确选择的、可能属于他人/他仓库的内容，违背 §1.14 的提交边界契约，也违背"预览—确认—提交"的可见性原则。分组本身还依赖 `svn info` 的网络往返与缓存一致性（§1.12 已说明 UUID 不匹配时缓存必须丢弃），把它做进提交路径只会增加不可预测的副作用。
+
+**因此采用的行为**：`commit` 保持"一次调用、单一仓库、路径来自同一工作副本"；调用方（UI）用 `StatusSnapshot.committable` 过滤掉 external 路径后再提交；若用户确实要提交某个 external 或另一个仓库，应打开那个工作副本、由用户显式发起一次独立的提交。这把"跨仓库分别提交"表达为**多次显式的用户动作**，而不是服务层一次隐式分组。此结论为书面约定，不产生任何新的分组/多提交代码。
