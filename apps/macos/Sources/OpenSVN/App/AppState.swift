@@ -39,6 +39,7 @@ final class AppState {
     var startupError: SVNError?
     var authPrompt: AuthPrompt?
     var showingCheckoutSheet = false
+    var showingNewRepositorySheet = false
     var showingTaskCenter = false
     var showingDemoSheet = false
     private(set) var demoPhase: DemoPhase = .idle
@@ -525,7 +526,13 @@ final class AppState {
 
     // MARK: - Checkout
 
-    func checkout(url: String, destination: URL, depth: SVNService.CheckoutDepth, revision: Int64?) async throws {
+    func checkout(
+        url: String,
+        destination: URL,
+        depth: SVNService.CheckoutDepth,
+        revision: Int64?,
+        storePristines: Bool = true
+    ) async throws {
         guard let service else { throw SVNError(code: .svnNotFound, message: "SVN 服务尚未就绪") }
 
         func attempt(_ credential: SVNCredential?) async throws {
@@ -535,6 +542,7 @@ final class AppState {
                     to: destination,
                     revision: revision,
                     depth: depth,
+                    storePristines: storePristines,
                     credential: credential,
                     progress: progress
                 )
@@ -551,5 +559,41 @@ final class AppState {
             try await attempt(credential)
         }
         addRepository(at: destination)
+    }
+
+    // MARK: - Local repository creation
+
+    /// `svnadmin create`, run through the task centre like every other write so
+    /// it is visible, cancellable and retryable.
+    ///
+    /// Errors are thrown rather than turned into an alert here: the sheet that
+    /// asked is still open and owns the field the user needs to fix.
+    func createLocalRepository(at location: URL) async throws -> LocalRepository {
+        guard let service else {
+            throw SVNError(code: .svnNotFound, message: "SVN 服务尚未就绪")
+        }
+        return try await taskCenter.run("创建本地仓库 \(location.lastPathComponent)") { _ in
+            try await service.createLocalRepository(at: location)
+        }
+    }
+
+    /// Creates the repository and checks out its (empty) root next to it, so the
+    /// flow ends with a working copy in the sidebar instead of a URL the user has
+    /// to paste into the checkout sheet.
+    ///
+    /// `-wc` next to the repository, not inside it: a working copy inside the
+    /// repository directory would be added to the repository on the next
+    /// `svn add`, which is never what anyone wants.
+    func createLocalRepositoryAndCheckout(at location: URL) async throws -> LocalRepository {
+        let repository = try await createLocalRepository(at: location)
+        let workingCopy = location.deletingLastPathComponent()
+            .appendingPathComponent(location.lastPathComponent + "-wc", isDirectory: true)
+        try await checkout(
+            url: repository.url,
+            destination: workingCopy,
+            depth: .infinity,
+            revision: nil
+        )
+        return repository
     }
 }

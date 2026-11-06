@@ -423,10 +423,8 @@ struct HistoryView: View {
 
                     Divider()
 
-                    Text(entry.message.isEmpty ? "（无提交说明）" : entry.message)
+                    TicketLinkedText(text: entry.message.isEmpty ? "（无提交说明）" : entry.message)
                         .font(.body)
-                        .textSelection(.enabled)
-                        .frame(maxWidth: .infinity, alignment: .leading)
 
                     if !entry.changedPaths.isEmpty {
                         Divider()

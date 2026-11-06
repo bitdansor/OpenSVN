@@ -6,7 +6,10 @@ struct OpenSVNApp: App {
     @State private var appState = AppState()
 
     var body: some Scene {
-        WindowGroup("OpenSVN") {
+        // An id lets the "新建窗口" command open another instance of this scene.
+        // All windows share the same AppState (bookmarks, sessions, task center),
+        // so opening a second window never re-reads or resets existing data.
+        WindowGroup("OpenSVN", id: "main") {
             MainWindowView()
                 .environment(appState)
                 .frame(minWidth: 1040, minHeight: 680)
@@ -14,7 +17,9 @@ struct OpenSVNApp: App {
         }
         .windowToolbarStyle(.unified)
         .commands {
-            CommandGroup(replacing: .newItem) {
+            // Appending (rather than replacing) keeps the system "新建窗口" ⌘N
+            // item, which is what opens another window of the WindowGroup.
+            CommandGroup(after: .newItem) {
                 Button("添加工作副本…") {
                     appState.presentAddWorkingCopyPanel()
                 }

@@ -70,8 +70,17 @@ struct CheckoutSheet: View {
     @State private var destination = NSHomeDirectory() + "/OpenSVN"
     @State private var depth: SVNService.CheckoutDepth = .infinity
     @State private var revisionText = ""
+    @State private var storePristines = true
     @State private var isRunning = false
     @State private var errorMessage: String?
+
+    /// Pristines on Demand needs svn 1.15; before that the option does not exist
+    /// and opting in rewrites the working copy to a format older clients cannot
+    /// open. The service refuses it — this only keeps the UI from offering it.
+    private var supportsPristinesOnDemand: Bool {
+        guard let version = appState.installation?.version else { return false }
+        return version >= SVNService.pristineStoreMinimumVersion
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -96,7 +105,15 @@ struct CheckoutSheet: View {
 
                 TextField("修订版本（可选）", text: $revisionText, prompt: Text("留空表示 HEAD"))
                     .textFieldStyle(.roundedBorder)
+
+                Toggle("不保存原始副本，按需从仓库获取（--store-pristine=no）", isOn: $storePristines)
+                    .toggleStyle(.checkbox)
+                    .disabled(!supportsPristinesOnDemand)
             }
+
+            Text(pristinesNote)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
 
             if let errorMessage {
                 Text(errorMessage)
@@ -121,6 +138,16 @@ struct CheckoutSheet: View {
         }
         .padding(20)
         .frame(width: 520)
+        .onChange(of: supportsPristinesOnDemand) { _, supported in
+            if !supported { storePristines = true }
+        }
+    }
+
+    private var pristinesNote: String {
+        guard supportsPristinesOnDemand else {
+            return "按需获取原始副本需要 svn 1.15 或更高版本；当前 \(appState.installation?.version.description ?? "未知版本")，因此该选项不可用。"
+        }
+        return "关闭后工作副本不再本地保存原始副本，磁盘占用更小，但格式会升级到 32：svn 1.14 及更旧客户端将无法打开这个工作副本，且无法降级。"
     }
 
     private func chooseDestination() {
@@ -143,7 +170,8 @@ struct CheckoutSheet: View {
                 url: url.trimmingCharacters(in: .whitespaces),
                 destination: URL(fileURLWithPath: destination),
                 depth: depth,
-                revision: Int64(revisionText.trimmingCharacters(in: .whitespaces))
+                revision: Int64(revisionText.trimmingCharacters(in: .whitespaces)),
+                storePristines: storePristines
             )
             dismiss()
         } catch let error as SVNError {

@@ -1,11 +1,15 @@
-import SwiftUI
+import AppKit
 import OpenSVNCore
+import SwiftUI
 
 /// Root layout: repositories on the left, the selected working copy on the right.
 struct MainWindowView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var showingExtensionsSettings = false
+    @State private var quickLookURL: URL?
 
     /// `safeAreaInset` on a `NavigationSplitView` does not reserve space here:
     /// both columns keep their own scroll views and the inset view is painted
@@ -46,16 +50,16 @@ struct MainWindowView: View {
             // here, and without a background a long list scrolled upwards shows
             // its rows behind the title text. It costs nothing in alignment — the
             // column divider sits at the same x above and below the toolbar.
+            // Finder drops are handled on the Changes page itself (see
+            // `ChangesView`): attaching a second `onDrop` here would risk two
+            // confirmations for one drop. The quick-actions toolbar menu stays
+            // as the window-level complement.
             .toolbarBackground(.visible, for: .windowToolbar)
         }
         .navigationTitle(appState.selectedBookmark?.name ?? "OpenSVN")
         // Off for the window, so the sidebar's material runs all the way to the
         // top edge (behind the traffic lights) and the column divider is a single
         // line from y=0 down, with no step where the toolbar ends.
-        //
-        // Safe now that the history page draws its own splitter: the previous
-        // `NSSplitView` divider was the thing that reached into the titlebar and
-        // stole clicks from the toolbar icons.
         .toolbarBackground(.hidden, for: .windowToolbar)
         .animation(.easeOut(duration: 0.18), value: showsRecoveryBanner)
         .toolbar {
@@ -82,6 +86,8 @@ struct MainWindowView: View {
                           : "list.bullet.rectangle")
                 }
                 .help("任务中心")
+
+                quickActionsMenu
             }
         }
         .sheet(isPresented: $appState.showingCheckoutSheet) {
@@ -116,6 +122,123 @@ struct MainWindowView: View {
             DemoWorkspaceSheet()
                 .environment(appState)
         }
+        .sheet(isPresented: $appState.showingNewRepositorySheet) {
+            NewLocalRepositorySheet()
+                .environment(appState)
+        }
+        .sheet(isPresented: $showingExtensionsSettings) {
+            UIExtensionsSettingsView()
+        }
+        .sheet(isPresented: Binding(
+            get: { quickLookURL != nil },
+            set: { if !$0 { quickLookURL = nil } }
+        )) {
+            if let quickLookURL {
+                QuickLookSheet(url: quickLookURL)
+            }
+        }
+        // Ask for notification authorization once and prime the status snapshot
+        // so tasks that finished before this window appeared stay silent.
+        .task {
+            await MainActor.run {
+                TaskNotificationBridge.shared.requestAuthorizationIfNeeded()
+                TaskNotificationBridge.shared.prime(appState.taskCenter.items)
+            }
+        }
+        .onChange(of: appState.taskCenter.items.map(\.status)) { _, _ in
+            Task { @MainActor in
+                TaskNotificationBridge.shared.process(appState.taskCenter.items)
+            }
+        }
+    }
+
+    // MARK: - Quick actions
+
+    /// Acts on the files selected in the Changes list (or on the working copy
+    /// itself when nothing is selected). Kept here so every tab can reach these
+    /// commands without each of them owning a menu.
+    private var quickActionsMenu: some View {
+        Menu {
+            Button("快速查看") {
+                if let url = selectedFileURLs.first { quickLookURL = url }
+            }
+            .disabled(selectedFileURLs.isEmpty)
+
+            Button("在终端打开") {
+                if let directory = terminalDirectory {
+                    FileActions.openInTerminal(directory)
+                }
+            }
+            .disabled(terminalDirectory == nil)
+
+            Button("在 Finder 中显示") {
+                FileActions.revealInFinder(finderURLs)
+            }
+            .disabled(finderURLs.isEmpty)
+
+            Divider()
+
+            Button("导出所选…") { exportSelected() }
+                .disabled(appState.selectedSession == nil)
+
+            Button("新建本地仓库…") {
+                appState.showingNewRepositorySheet = true
+            }
+            .help("用 svnadmin 在这台 Mac 上创建仓库，不需要服务器")
+
+            Button("用外部工具解决冲突…") {
+                if let session = appState.selectedSession,
+                   let entry = session.conflictedEntries.first {
+                    session.resolveWithExternalTool(entry)
+                }
+            }
+            .disabled(appState.selectedSession?.conflictedEntries.isEmpty ?? true)
+
+            Divider()
+
+            Button("新建窗口") { openWindow(id: "main") }
+            Button("扩展设置…") { showingExtensionsSettings = true }
+        } label: {
+            Label("快捷操作", systemImage: "ellipsis.circle")
+        }
+        .help("快速查看、在终端打开、导出、外部合并、扩展设置与新建窗口")
+    }
+
+    private var selectedFileURLs: [URL] {
+        guard let session = appState.selectedSession else { return [] }
+        return session.selectedPaths.compactMap { raw in
+            let url = raw.hasPrefix("/")
+                ? URL(fileURLWithPath: raw)
+                : session.path.appendingPathComponent(raw)
+            return FileManager.default.fileExists(atPath: url.path) ? url : nil
+        }
+    }
+
+    private var terminalDirectory: URL? {
+        if let first = selectedFileURLs.first {
+            return first.deletingLastPathComponent()
+        }
+        return appState.selectedSession?.path
+    }
+
+    private var finderURLs: [URL] {
+        if !selectedFileURLs.isEmpty { return selectedFileURLs }
+        return [appState.selectedSession?.path].compactMap { $0 }
+    }
+
+    /// `svn export` needs a destination directory, which a Finder drop cannot
+    /// name; the panel asks for one explicitly and reuses the existing service.
+    private func exportSelected() {
+        guard let session = appState.selectedSession else { return }
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.prompt = "导出到此处"
+        panel.message = "选择目标目录：svn export 不会覆盖已有文件"
+        guard panel.runModal() == .OK, let directory = panel.url else { return }
+        let paths = Array(session.selectedPaths)
+        Task { await session.export(to: directory, paths: paths) }
     }
 }
 
@@ -137,6 +260,12 @@ private struct WelcomeView: View {
                 Button("检出仓库…") { appState.showingCheckoutSheet = true }
                     .buttonStyle(.borderedProminent)
             }
+
+            Button("在这台 Mac 上新建一个本地仓库（不需要服务器）") {
+                appState.showingNewRepositorySheet = true
+            }
+            .buttonStyle(.link)
+            .font(.callout)
 
             Button("想先试试三方合并？用一份带冲突的演示数据") {
                 appState.showingDemoSheet = true

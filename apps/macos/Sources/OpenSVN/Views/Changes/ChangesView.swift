@@ -5,6 +5,7 @@ import OpenSVNCore
 struct ChangesView: View {
     @Bindable var session: RepositorySession
     @Binding var tab: RepositoryTab
+    @State private var quickLookURL: URL?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -20,11 +21,23 @@ struct ChangesView: View {
             Divider()
             actionBar
         }
+        // Finder drops land on this page: the modifier resolves the file URLs
+        // and routes them through `session.confirmImport`, so nothing is written
+        // until the existing confirmation dialog is accepted.
+        .modifier(WorkcopyDropImport(session: session))
         .sheet(item: $session.mergeEditor) { editor in
             MergeEditorView(session: session, editor: editor)
         }
         .sheet(item: $session.lockEditor) { _ in
             LockSheet(session: session)
+        }
+        .sheet(isPresented: Binding(
+            get: { quickLookURL != nil },
+            set: { if !$0 { quickLookURL = nil } }
+        )) {
+            if let quickLookURL {
+                QuickLookSheet(url: quickLookURL)
+            }
         }
     }
 
@@ -64,6 +77,7 @@ struct ChangesView: View {
                         ForEach(entries) { entry in
                             row(entry)
                                 .tag(entry.id)
+                                .modifier(ChangesRowDragSource(url: session.entryURL(entry)))
                                 .contextMenu { contextMenu(for: entry) }
                         }
                     } header: {
@@ -219,6 +233,10 @@ struct ChangesView: View {
         }
         Button("删除…", role: .destructive) {
             session.requestDelete([entry.id])
+        }
+        Divider()
+        ChangesRowQuickActions(url: session.entryURL(entry)) { url in
+            quickLookURL = url
         }
     }
 

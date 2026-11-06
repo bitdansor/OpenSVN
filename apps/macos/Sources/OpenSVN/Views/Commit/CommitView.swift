@@ -10,6 +10,9 @@ import OpenSVNCore
 /// re-selection.
 struct CommitView: View {
     @Bindable var session: RepositorySession
+    /// The commit panel's own history sheet: scoping `session.log` to one file
+    /// lets the user answer "who touched this?" without leaving the page.
+    @State private var showingHistorySheet = false
 
     var body: some View {
         VStack(spacing: 0) {
@@ -36,6 +39,11 @@ struct CommitView: View {
                   let first = session.changedEntries.first else { return }
             await session.previewDiff(for: first)
         }
+        .sheet(isPresented: $showingHistorySheet, onDismiss: {
+            Task { await session.clearLogTarget() }
+        }) {
+            CommitFileHistorySheet(session: session)
+        }
     }
 
     private var conflictBanner: some View {
@@ -50,6 +58,13 @@ struct CommitView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            if let first = session.conflictedEntries.first {
+                Button("用外部工具解决") {
+                    session.resolveWithExternalTool(first)
+                }
+                .controlSize(.small)
+                .help("用「扩展设置」里配置的三方合并工具处理「\(session.relativePath(first.path))」")
+            }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -132,6 +147,16 @@ struct CommitView: View {
         }
         .toggleStyle(.checkbox)
         .disabled(entry.hasConflicts)
+        .contextMenu {
+            Button("查看此文件历史…") {
+                showingHistorySheet = true
+                Task { await session.showHistory(for: entry) }
+            }
+            Button("注解 / 作者…") {
+                session.openBlame(for: entry)
+            }
+            .disabled(entry.item == .unversioned)
+        }
     }
 
     // MARK: - Message + preview
@@ -154,6 +179,10 @@ struct CommitView: View {
             Text("提交前会再次读取工作副本状态；发现冲突将中止提交，说明与勾选会保留。")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
+                .padding(.horizontal, 14)
+                .padding(.top, 6)
+
+            TicketLinksBar(text: session.commitMessage)
                 .padding(.horizontal, 14)
                 .padding(.top, 6)
 
