@@ -58,10 +58,14 @@ final class TaskNotificationBridge {
               Bundle.main.bundleIdentifier != nil else { return }
         Task { @MainActor in
             do {
-                let center = UNUserNotificationCenter.current()
-                let settings = await center.notificationSettings()
-                guard settings.authorizationStatus == .notDetermined else { return }
-                _ = try await center.requestAuthorization(options: [.alert, .sound])
+                // No `notificationSettings()` pre-check. Once the user has
+                // answered, `requestAuthorization` returns the existing
+                // decision immediately without prompting, so the round trip
+                // only existed to avoid a prompt that cannot happen. It also
+                // handed back a non-Sendable `UNNotificationSettings` across an
+                // isolation boundary, which Swift 6.1 rejects outright.
+                _ = try await UNUserNotificationCenter.current()
+                    .requestAuthorization(options: [.alert, .sound])
             } catch {
                 // Unsigned or misconfigured builds: silently skip.
             }
@@ -73,8 +77,6 @@ final class TaskNotificationBridge {
         Task { @MainActor in
             do {
                 let center = UNUserNotificationCenter.current()
-                let settings = await center.notificationSettings()
-                guard settings.authorizationStatus == .authorized else { return }
                 let content = UNMutableNotificationContent()
                 content.title = title
                 content.body = body
@@ -84,6 +86,11 @@ final class TaskNotificationBridge {
                     content: content,
                     trigger: nil
                 )
+                // `add` throws when this app is not allowed to post
+                // notifications, and the catch below turns that into "no
+                // notification" — the same outcome as an explicit
+                // `authorizationStatus` check, without reading that value out of
+                // a non-Sendable `UNNotificationSettings`.
                 try await center.add(request)
             } catch {
                 // No notification is better than a failed operation.

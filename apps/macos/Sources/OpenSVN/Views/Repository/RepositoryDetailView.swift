@@ -51,6 +51,12 @@ struct RepositoryDetailView: View {
         // ideal height than the window, and scroll to a position that leaves
         // only the tail of the list visible. Giving the column its measured size
         // makes the list a bounded scroll view again.
+        //
+        // The sheets and dialogs are applied by the modifiers below rather than
+        // inline: with them in the same expression the type checker gave up
+        // ("unable to type-check this expression in reasonable time") on Swift
+        // 6.1, which is the toolchain CI pins. Each piece is now inferred on its
+        // own.
         GeometryReader { proxy in
             content
                 .frame(width: proxy.size.width, height: proxy.size.height)
@@ -60,166 +66,15 @@ struct RepositoryDetailView: View {
         // of the thing you are looking at belongs. The path is not repeated here:
         // the sidebar row already carries it on its second line.
         .navigationSubtitle(subtitle)
-        .toolbar {
-            // Trailing, next to the actions it switches between. Leading (`nav`)
-            // puts the tabs before the window title, which makes the title read
-            // like a caption for them.
-            ToolbarItem(placement: .primaryAction) {
-                Picker("分区", selection: $tab) {
-                    ForEach(RepositoryTab.allCases) { candidate in
-                        Label(candidate.title, systemImage: candidate.systemImage)
-                            .tag(candidate)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelStyle(.titleAndIcon)
-                .fixedSize()
-                .help("切换工作副本的分区")
-            }
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    Task { await session.refresh() }
-                } label: {
-                    // The spinner used to live in the band that is gone; without
-                    // it a slow re-read looks like a click that did nothing.
-                    if session.isLoading {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Label("刷新", systemImage: "arrow.clockwise")
-                    }
-                }
-                .keyboardShortcut("r", modifiers: .command)
-                .help("重新读取工作副本状态")
-
-                Button {
-                    Task { await session.requestUpdate() }
-                } label: {
-                    Label("更新", systemImage: "arrow.down.circle")
-                }
-                .help("先看服务器上有什么变化，再决定是否更新")
-
-                Button {
-                    Task { await session.cleanup() }
-                } label: {
-                    Label("清理", systemImage: "bandage")
-                }
-                .help("清理内部锁（svn cleanup）")
-
-                // Branch operations live in a menu rather than three separate
-                // buttons: they are used in bursts (merge something, check what
-                // is left, maybe switch), not on every visit.
-                Menu {
-                    Button {
-                        showingMerge = true
-                    } label: {
-                        Label("合并…", systemImage: "arrow.triangle.branch")
-                    }
-                    Button {
-                        showingSwitch = true
-                    } label: {
-                        Label("切换分支…", systemImage: "arrow.triangle.swap")
-                    }
-                    Divider()
-                    Button {
-                        session.openMergeInfo()
-                    } label: {
-                        Label("合并记录…", systemImage: "arrow.triangle.merge")
-                    }
-                } label: {
-                    Label("分支", systemImage: "arrow.triangle.branch")
-                }
-                .help("合并、切换分支、查看合并记录")
-            }
-        }
-        .alert(
-            "操作失败",
-            isPresented: Binding(
-                get: { session.presentedError != nil },
-                set: { if !$0 { session.presentedError = nil } }
-            ),
-            presenting: session.presentedError
-        ) { _ in
-            Button("好", role: .cancel) { session.presentedError = nil }
-        } message: { presented in
-            Text(presented.detail.isEmpty ? presented.title : "\(presented.title)\n\n\(presented.detail)")
-        }
-        .alert(
-            session.resolveReport?.title ?? "解决冲突",
-            isPresented: Binding(
-                get: { session.resolveReport != nil },
-                set: { if !$0 { session.dismissResolveReport() } }
-            ),
-            presenting: session.resolveReport
-        ) { report in
-            if let directory = report.backupDirectory {
-                Button("在 Finder 中显示备份") {
-                    NSWorkspace.shared.activateFileViewerSelecting([directory])
-                    session.dismissResolveReport()
-                }
-            }
-            Button("好", role: .cancel) { session.dismissResolveReport() }
-        } message: { report in
-            Text(report.message)
-        }
-        .confirmationDialog(
-            session.confirmation?.title ?? "确认操作",
-            isPresented: Binding(
-                get: { session.confirmation != nil },
-                set: { if !$0 { session.confirmation = nil } }
-            ),
-            presenting: session.confirmation
-        ) { confirmation in
-            Button(confirmation.confirmLabel, role: confirmation.isDestructive ? .destructive : nil) {
-                session.confirmPending()
-            }
-            Button("取消", role: .cancel) { session.confirmation = nil }
-        } message: { confirmation in
-            Text(confirmation.message)
-        }
-        // Attached here rather than in one tab: properties belong to a path, not
-        // to a page, and opening the sheet must not depend on which tab is up.
-        .sheet(item: $session.propertyEditor) { _ in
-            PropertyEditorView(session: session)
-        }
-        .sheet(item: $session.updatePreview) { _ in
-            UpdatePreviewSheet(session: session)
-        }
-        .sheet(item: $session.blameState) { _ in
-            BlameSheet(session: session)
-        }
-        .sheet(item: $session.externalsState) { _ in
-            ExternalsSheet(session: session)
-        }
-        .sheet(item: $session.mergeInfoSnapshot) { _ in
-            MergeInfoSheet(session: session)
-        }
-        .sheet(isPresented: $showingMerge) {
-            MergeSheet(session: session)
-        }
-        .sheet(isPresented: $showingSwitch) {
-            SwitchSheet(session: session)
-        }
-        // A merge or a switch changes many files at once. The alert is where the
-        // counts and the "what to do next" sentence live, because a task-centre
-        // row is too small to hold them and too easy to miss.
-        .alert(
-            session.branchReport?.title ?? "分支操作",
-            isPresented: Binding(
-                get: { session.branchReport != nil },
-                set: { if !$0 { session.branchReport = nil } }
-            ),
-            presenting: session.branchReport
-        ) { report in
-            if report.hasConflicts {
-                Button("查看冲突") {
-                    tab = .changes
-                    session.branchReport = nil
-                }
-            }
-            Button("好", role: .cancel) { session.branchReport = nil }
-        } message: { report in
-            Text(report.message)
-        }
+        .toolbar { toolbarContent }
+        .modifier(DetailDocumentSheets(session: session))
+        .modifier(DetailBranchSheets(
+            session: session,
+            showingMerge: $showingMerge,
+            showingSwitch: $showingSwitch
+        ))
+        .modifier(DetailAlerts(session: session))
+        .modifier(DetailBranchDialogs(session: session, tab: $tab))
         .task {
             if session.status == nil {
                 await session.refresh()
@@ -232,6 +87,77 @@ struct RepositoryDetailView: View {
         .onDisappear {
             session.stopWatching()
         }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        // Trailing, next to the actions it switches between. Leading (`nav`)
+        // puts the tabs before the window title, which makes the title read
+        // like a caption for them.
+        ToolbarItem(placement: .primaryAction) {
+            sectionPicker
+        }
+        ToolbarItemGroup(placement: .primaryAction) {
+            refreshButton
+            updateButton
+            cleanupButton
+            // Branch operations live in a menu rather than three separate
+            // buttons: they are used in bursts (merge something, check what is
+            // left, maybe switch), not on every visit.
+            BranchMenu(
+                session: session,
+                showingMerge: $showingMerge,
+                showingSwitch: $showingSwitch
+            )
+        }
+    }
+
+    private var sectionPicker: some View {
+        Picker("分区", selection: $tab) {
+            ForEach(RepositoryTab.allCases) { candidate in
+                Label(candidate.title, systemImage: candidate.systemImage)
+                    .tag(candidate)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelStyle(.titleAndIcon)
+        .fixedSize()
+        .help("切换工作副本的分区")
+    }
+
+    @ViewBuilder
+    private var refreshButton: some View {
+        Button {
+            Task { await session.refresh() }
+        } label: {
+            // The spinner used to live in the band that is gone; without it a
+            // slow re-read looks like a click that did nothing.
+            if session.isLoading {
+                ProgressView().controlSize(.small)
+            } else {
+                Label("刷新", systemImage: "arrow.clockwise")
+            }
+        }
+        .keyboardShortcut("r", modifiers: .command)
+        .help("重新读取工作副本状态")
+    }
+
+    private var updateButton: some View {
+        Button {
+            Task { await session.requestUpdate() }
+        } label: {
+            Label("更新", systemImage: "arrow.down.circle")
+        }
+        .help("先看服务器上有什么变化，再决定是否更新")
+    }
+
+    private var cleanupButton: some View {
+        Button {
+            Task { await session.cleanup() }
+        } label: {
+            Label("清理", systemImage: "bandage")
+        }
+        .help("清理内部锁（svn cleanup）")
     }
 
     /// Window subtitle: which revision this working copy is at, and who left it
@@ -266,5 +192,174 @@ struct RepositoryDetailView: View {
         case .overview:
             RepositoryOverviewView(session: session)
         }
+    }
+}
+
+/// 合并 / 切换分支 / 合并记录, grouped into one toolbar menu.
+private struct BranchMenu: View {
+    @Bindable var session: RepositorySession
+    @Binding var showingMerge: Bool
+    @Binding var showingSwitch: Bool
+
+    var body: some View {
+        Menu {
+            Button {
+                showingMerge = true
+            } label: {
+                Label("合并…", systemImage: "arrow.triangle.branch")
+            }
+            Button {
+                showingSwitch = true
+            } label: {
+                Label("切换分支…", systemImage: "arrow.triangle.swap")
+            }
+            Divider()
+            Button {
+                session.openMergeInfo()
+            } label: {
+                Label("合并记录…", systemImage: "arrow.triangle.merge")
+            }
+        } label: {
+            Label("分支", systemImage: "arrow.triangle.branch")
+        }
+        .help("合并、切换分支、查看合并记录")
+    }
+}
+
+// MARK: - Sheets
+
+/// The sheets that describe one path or one read-only report.
+private struct DetailDocumentSheets: ViewModifier {
+    @Bindable var session: RepositorySession
+
+    func body(content: Content) -> some View {
+        content
+            // Attached here rather than in one tab: properties belong to a
+            // path, not to a page, and opening the sheet must not depend on
+            // which tab is up.
+            .sheet(item: $session.propertyEditor) { _ in
+                PropertyEditorView(session: session)
+            }
+            .sheet(item: $session.updatePreview) { _ in
+                UpdatePreviewSheet(session: session)
+            }
+            .sheet(item: $session.blameState) { _ in
+                BlameSheet(session: session)
+            }
+            .sheet(item: $session.externalsState) { _ in
+                ExternalsSheet(session: session)
+            }
+            .sheet(item: $session.mergeInfoSnapshot) { _ in
+                MergeInfoSheet(session: session)
+            }
+    }
+}
+
+/// The two sheets that change the working copy's branch.
+private struct DetailBranchSheets: ViewModifier {
+    @Bindable var session: RepositorySession
+    @Binding var showingMerge: Bool
+    @Binding var showingSwitch: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(isPresented: $showingMerge) {
+                MergeSheet(session: session)
+            }
+            .sheet(isPresented: $showingSwitch) {
+                SwitchSheet(session: session)
+            }
+    }
+}
+
+// MARK: - Dialogs
+
+/// Failures and conflict reports, which carry a message worth reading.
+private struct DetailAlerts: ViewModifier {
+    @Bindable var session: RepositorySession
+
+    func body(content: Content) -> some View {
+        content
+            .alert(
+                "操作失败",
+                isPresented: Binding(
+                    get: { session.presentedError != nil },
+                    set: { if !$0 { session.presentedError = nil } }
+                ),
+                presenting: session.presentedError
+            ) { _ in
+                Button("好", role: .cancel) { session.presentedError = nil }
+            } message: { presented in
+                Text(presented.detail.isEmpty
+                     ? presented.title
+                     : "\(presented.title)\n\n\(presented.detail)")
+            }
+            .alert(
+                session.resolveReport?.title ?? "解决冲突",
+                isPresented: Binding(
+                    get: { session.resolveReport != nil },
+                    set: { if !$0 { session.dismissResolveReport() } }
+                ),
+                presenting: session.resolveReport
+            ) { report in
+                if let directory = report.backupDirectory {
+                    Button("在 Finder 中显示备份") {
+                        NSWorkspace.shared.activateFileViewerSelecting([directory])
+                        session.dismissResolveReport()
+                    }
+                }
+                Button("好", role: .cancel) { session.dismissResolveReport() }
+            } message: { report in
+                Text(report.message)
+            }
+    }
+}
+
+/// The pending-confirmation prompt and the merge/switch report.
+private struct DetailBranchDialogs: ViewModifier {
+    @Bindable var session: RepositorySession
+    @Binding var tab: RepositoryTab
+
+    func body(content: Content) -> some View {
+        content
+            .confirmationDialog(
+                session.confirmation?.title ?? "确认操作",
+                isPresented: Binding(
+                    get: { session.confirmation != nil },
+                    set: { if !$0 { session.confirmation = nil } }
+                ),
+                presenting: session.confirmation
+            ) { confirmation in
+                Button(
+                    confirmation.confirmLabel,
+                    role: confirmation.isDestructive ? .destructive : nil
+                ) {
+                    session.confirmPending()
+                }
+                Button("取消", role: .cancel) { session.confirmation = nil }
+            } message: { confirmation in
+                Text(confirmation.message)
+            }
+            // A merge or a switch changes many files at once. The alert is where
+            // the counts and the "what to do next" sentence live, because a
+            // task-centre row is too small to hold them and too easy to miss.
+            .alert(
+                session.branchReport?.title ?? "分支操作",
+                isPresented: Binding(
+                    get: { session.branchReport != nil },
+                    set: { if !$0 { session.branchReport = nil } }
+                ),
+                presenting: session.branchReport
+            ) { report in
+                if report.hasConflicts {
+                    Button("查看冲突") {
+                        tab = .changes
+                        session.branchReport = nil
+                    }
+                }
+                Button("好", role: .cancel) { session.branchReport = nil }
+            } message: { report in
+                Text(report.message)
+            }
     }
 }
