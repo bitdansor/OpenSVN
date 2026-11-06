@@ -8,8 +8,16 @@ name: Release
 # a tag build fails loudly at the end of the job rather than publishing something
 # Gatekeeper would block.
 #
-# Publication itself stays blocked: the release needs the Windows artifacts
-# (S6-3) and the final regression report (S7-1/S7-6).
+# Publication itself stays blocked on purpose. The publish job ends with an
+# explicit `exit 1`: a real release needs the Windows artifacts (S6-3), the
+# two-platform cross-regression (S7-1), the compliance audit (S7-2), release
+# notes (S7-4), a trademark re-check (S7-5) and a human go/no-go (S7-6).
+# Do not remove that refusal until S6-3 (Windows artifacts), S7-1 (two-platform
+# cross-regression), S7-2 (compliance), S7-4 (release notes) and S7-5 (trademark
+# re-check) are signed off, and a human gives a go/no-go (S7-6). Most of those
+# items cannot be completed from this repository: a Developer ID certificate +
+# Apple account, a Windows machine + signing certificate, an external trademark
+# search, and a human decision.
 
 on:
   push:
@@ -212,7 +220,11 @@ jobs:
             exit 1
           fi
           echo "signed artifact present:" && ls -l macos/
-          # Creating the GitHub release itself is S7-6: it needs the Windows
-          # artifacts and release notes from the final regression pass.
-          echo "::error::release publication is not implemented yet (S6-3 Windows, S7-6)"
+          # Creating the GitHub release is S7-6. This refusal is the last human
+          # gate: do not replace it with a `gh release create` until the release
+          # gates are clear — at minimum S6-3 (Windows artifacts) and S7-1
+          # (two-platform cross-regression), then S7-2 / S7-4 / S7-5. Each item
+          # needs a signed-off owner and completion criteria; several are
+          # external and must not be faked as done from this repository.
+          echo "::error::release publication is blocked by design (S7-6). Minimum gates before this refusal may be removed: S6-3 Windows artifacts, S7-1 two-platform cross-regression, then S7-2 compliance / S7-4 release notes / S7-5 trademark re-check. A human must give the final go/no-go."
           exit 1

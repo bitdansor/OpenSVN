@@ -6,6 +6,184 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (macOS: branch operations — merge, switch, merge tracking)
+
+- **`svn merge` is a value before it is a process.** `MergeRequest` carries the
+  style (mergeinfo-driven automatic merge, or the classic two-URL comparison),
+  the revision selection (`-r N:M`, where `N > M` is the documented way to revert
+  a committed change, or `-c N,M`), `--record-only`, `--ignore-ancestry` and an
+  `--accept` strategy. `SVNAccept` deliberately excludes `edit` and `launch`:
+  the service always passes `--non-interactive`, so those two would hang a child
+  process with no one to answer it. Building the argv is a pure function, so the
+  command line is asserted in tests without spawning svn.
+- **`svn switch` is a separate value from `svn relocate`, and the app says so.**
+  `SwitchRequest` repoints a working copy at another URL *inside the same
+  repository*; relocate keeps the path and only changes the address. The two
+  sheets sit next to each other and each states the distinction, because
+  confusing them is the classic way to break a working copy.
+- **Merge tracking is read, not guessed.** `svn mergeinfo --show-revs
+  merged|eligible` is parsed into `[Int64]`, and `svn:mergeinfo` is parsed into
+  ranges that stay ranges — expanding `1-100000` into an array would be wasteful
+  and would lose the `*` non-inheritable marker.
+- **The service refuses an unconfirmed merge or switch.** `merge(_:confirmed:)`
+  and `switchTo(_:confirmed:)` run the preview and throw
+  `confirmationRequired` when the flag is absent, then take the per-working-copy
+  write lock and a journal entry like every other write. The previews are pure
+  computations — no subprocess, no network — so the sheet can re-render them on
+  every keystroke and the "what would this do" answer never depends on being
+  online.
+- **`createLocalRepository` wraps `svnadmin create`.** It refuses a non-empty
+  destination instead of overwriting it, creates missing parents, and returns the
+  percent-encoded `file://` URL. `svnadmin` is a different binary from `svn` and
+  does not accept the client's global options, so it runs through its own runner
+  rather than `invoke`.
+- **All of it is reachable from the window.** The 分支 menu opens a merge sheet
+  (live preview, eligible-revision lookup, reverse-merge note), a switch sheet and
+  a read-only mergeinfo sheet; the 信息 page links to merge records; 新建本地仓库
+  creates a repository and checks it out to `<name>-wc` beside it, so the flow ends
+  with a working copy in the sidebar instead of a URL to paste somewhere else.
+  Merge and switch report what they changed — how many paths, whether conflicts
+  were left behind — in an alert that offers to jump to the page listing them.
+
+### Added (macOS: connection settings that survive a hostile server)
+
+- **HTTPS certificate trust and proxy/SASL settings get a home.** Before this,
+  a self-signed or internal-CA server could only be used by turning off TLS
+  verification for the whole process. `SVNConnectionSettings` resolves the trust
+  arguments per call, records that `--trust-server-cert` is deprecated and
+  equivalent to `--trust-server-cert-failures=unknown-ca`, and emits the explicit
+  failure set instead — a deprecated flag prints a warning on stderr, and stderr
+  is exactly what the error mapper classifies by.
+- **Trust is granted for one operation, not for the session.** The store is
+  built fresh per invocation and the one-shot permission is consumed on use, so
+  approving a certificate for a single checkout cannot silently extend to every
+  later command.
+- **Proxy and client-certificate passwords never leave the parser.** The
+  read-only listing shows `••••••` for `http-proxy-password` and
+  `ssl-client-cert-password`, and the writer leaves those lines byte-for-byte
+  untouched instead of round-tripping the cleartext through a settings model
+  that might later be logged.
+
+### Added (macOS: the file actions that were only possible in the terminal)
+
+- **Quick Look, open in terminal, reveal in Finder, drag-and-drop import.**
+  Files are opened through `NSWorkspace` and the terminal through a launched
+  application — never a shell string. A Finder drop is a write, so it goes
+  through the same confirmation as the other creating actions and one prompt
+  covers the whole drop.
+- **One file's history, and `{ticket}` references, from the log.** A commit's
+  message can link to an issue tracker using a template from the extension
+  settings; the sheet showing a single file's history follows the rename that
+  moved it, because `svn log` follows copies by default.
+- **Task notifications.** A finished background task posts a user notification
+  once; the bridge primes itself on launch so tasks that finished before the
+  window appeared stay silent.
+- **An external merge tool can be configured** as an executable plus an argument
+  template, launched as an argument array through `Process`. The merged output is
+  written back and marked resolved only after a successful exit, and the original
+  conflicted file is backed up first.
+
+### Fixed (svn global options were appended after `--`)
+
+- **A credential plus a `--` separator produced a bogus target.** Every operation
+  ends up with `--non-interactive`, `--no-auth-cache` and, when a credential is
+  present, `--username`/`--password-from-stdin`. Those were appended at the end
+  of the argv array, but svn treats everything after `--` as a positional path —
+  and thirteen call sites separate operands with `--` precisely so a path cannot
+  be read as an option. With a credential on any of them, `--username` became a
+  working-copy target and svn failed with a message about a file named
+  `--username`. The global options are now hoisted in front of the subcommand, and
+  a test asserts that each of them precedes the separator.
+
+### Changed (Pristines on Demand requires svn 1.15, not 1.14)
+
+- **The contract said 1.14; the feature shipped in 1.15.** `--store-pristine=no`
+  is not merely absent before 1.15 — opting in upgrades the working copy to
+  format 32, which svn 1.14 and older cannot open at all. The service therefore
+  refuses `storePristines: false` below 1.15 *before* spawning a process, the
+  checkout sheet disables the toggle and explains why, and the published
+  specification says 1.15 instead of 1.14. The default (`true`) path is untouched,
+  so no existing working copy changes format because of this.
+
+### Added (app icon generated from source artwork)
+
+- **The icon is built, not drawn into a binary.** `scripts/generate-app-icon.sh`
+  renders `apps/macos/Resources/AppIcon.svg` into every required size and writes
+  `AppIcon.icns` (ten representations, largest 1024 pt); the bundle then points
+  `CFBundleIconFile` at it. The icon is reproducible from the vector source and is
+  never a hand-edited placeholder.
+
+### Added (release governance: a checklist, a decision record, and gap criteria)
+
+- **`packaging/macos/distribution-decision.md` records a decision, not a backlog.**
+  OpenSVN ships with a Developer ID signature and not through the Mac App Store;
+  the file states the three structural conflicts (no sandbox, GPL-3.0 `libintl`,
+  the bundled runtime's location) and that B1/B2/B3/B5 will not start unless the
+  decision is overturned. The question does not get re-litigated every release.
+- **A local release-readiness checklist** turns S6-2, S6-3, S6-7 and S7-1 through
+  S7-6 into status / blocker / owner / completion-criteria rows. Real notarisation,
+  Windows signing, the trademark re-check and the final release are marked as
+  external — they need a Developer ID certificate and Apple account, a Windows
+  machine and signing certificate, an external search, or a human go/no-go — and
+  none is claimed done. The refusal in `release.yml` is documented as the last
+  human gate rather than a bug.
+- **A local B4 assessment measures before recommending.** It records the actual
+  bundled runtime (24 files; 16 binaries linking `libintl.8.dylib`) and the
+  Homebrew formula (`gettext` is a hard dependency and there is no
+  `--disable-nls` option), sets out the `--disable-nls` rebuild steps and exactly
+  what they would change — the runtime bytes, `runtime-manifest.json`,
+  `verify-release.py` assertions and the inside-out signing order — and concludes
+  "do it before the first public release", conditional on a reproducible build
+  and a pinned svn version. No runtime was rebuilt; B4 is not marked fixed.
+- **Local test-gap write-ups replace the idea of fake passing scenarios.** F5
+  (authentication end-to-end), F9 (killing the app process, distinct from the
+  existing scenario that kills the `svn` client) and F13 (two-window serialisation)
+  get written conclusions and acceptance criteria; S5-6 gets a redaction-audit
+  checklist and S4-10 a two-platform UI parity checklist. The scenario catalog
+  now points at them. None is marked passing, and no hollow `arrange/act/assert`
+  directory was added to make a checkbox look green.
+
+### Added (user documentation: a shortest path that matches the app)
+
+- **A local user guide gains a seven-step path** — install, first launch, checkout,
+  commit, update, conflict handling, log — written from the real SwiftUI strings
+  (「检出」, 「去提交」, 「提交 N 项」, 「更新」, 「开始三方合并」, 「历史」 …), so no menu
+  name is invented. Planned-but-unwritten chapters are labelled as such.
+- **`README.md` and `README_zh-CN.md` gain a short Quick start.** Both state plainly
+  that there is no downloadable release yet — the publish gate refuses — and that
+  Windows has no installer, then give the same five actions with the literal UI
+  labels. Nothing points at a binary or a menu that does not exist.
+
+### Changed (release gate and packaging notes)
+
+- **`.github/workflows/release.yml` keeps its refusal and explains it.** The
+  `publish` job still ends in `exit 1`; the header comment and the error message
+  state the minimum blockers by name (S6-3 Windows artifacts, S7-1 two-platform
+  regression) plus the compliance, release-notes and trademark items, and note
+  that several are external and that a human must give the final go/no-go. It
+  still cannot publish.
+- **`packaging/macos/README.md` now points at the icon generator.** The icon is
+  generated by `scripts/generate-app-icon.sh` from source vector artwork — never
+  hand-edited, never a committed placeholder — instead of referring to an ignored
+  `assets/` directory or claiming the bundle has none.
+- The local releases index and the scenario catalog gain pointers to the new
+  checklist and gap write-ups, so the material is findable from the directories a
+  maintainer already opens.
+
+### Fixed (documentation drift against the code)
+
+- **Two local planning snapshots were corrected against the code.** The
+  feature-parity priority section no longer recommends starting from timeline
+  search → blame → repository browser — those are done — so completed
+  export/import/relocate are struck through and the Windows row reads as rebuilt
+  on 2026-10-26 (C++20 core + C ABI + C# WinUI 3, 110 tests, see
+  `apps/windows/README.md`) instead of an empty tree; the header no longer says
+  the Windows tree is empty. The App Store readiness snapshot drops Repository
+  Browser / Branch/Tag / Lock/Unlock from its outstanding list, is labelled a
+  2026-10-20 snapshot whose functional state lives in the code, and its
+  "automatic updates must be struck" note is corrected: the MAS-only reason no
+  longer applies while the feature itself remains unimplemented.
+
 ### Changed (macOS: Intel support dropped, and the tree stops implying it)
 
 - **macOS is arm64 only, and the published files now say so.** Two of them claimed

@@ -29,6 +29,31 @@ What is actually verified is written down per platform:
 from scratch after the previous C++/WinUI skeleton never compiled; code, CI and
 bootstrap scripts now land together.
 
+## Quick start
+
+There is no downloadable release yet: `release.yml` deliberately refuses to
+publish (the `publish` job ends in `exit 1`), and the only artifact today is the
+ad-hoc-signed `build/OpenSVN.app` you build yourself (Build & run below). Drag it
+into Applications; because it is not notarised, the first launch needs Finder →
+right-click → Open, or System Settings → Privacy & Security → Open Anyway.
+
+The app UI is in Chinese, so the labels below are its literal strings:
+
+1. **Check out** — click **检出** in the toolbar (or **检出仓库…** on the welcome
+   screen), fill **仓库 URL** and **目标目录**, click **检出**. A **需要认证** sheet
+   appears if the repository asks for credentials.
+2. **Commit** — on the **变更** tab click **去提交**; on the **提交** tab tick files,
+   write **提交说明**, and click **提交 N 项** (⌘↵). Conflicts block the commit until
+   resolved, and a failed commit keeps your message and selection.
+3. **Update** — click **更新** in the tab toolbar or **仓库 → 更新** (⌘⇧U). A preview
+   sheet lists incoming changes first; **仍然更新** proceeds.
+4. **Conflicts** — the orange banner on **变更** offers **开始三方合并**; each
+   conflicted row also has a **三方合并** button and a **解决冲突** context menu.
+5. **Log** — the **历史** tab lists revisions; pick one to see its diff.
+
+Windows has no installer yet ([apps/windows/README.md](apps/windows/README.md)),
+so these steps describe the macOS app.
+
 ## Build & run (macOS)
 
 Requirements: macOS 14+ on Apple silicon, Xcode 16+ (Swift 6 toolchain), Apache Subversion CLI 1.8+.
