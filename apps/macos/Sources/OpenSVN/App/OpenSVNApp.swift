@@ -17,6 +17,13 @@ struct OpenSVNApp: App {
         }
         .windowToolbarStyle(.unified)
         .commands {
+            // The conventional place for this item: right under 关于 OpenSVN.
+            CommandGroup(after: .appInfo) {
+                Button("检查更新…") {
+                    Task { await appState.checkForUpdates(explicitlyRequested: true) }
+                }
+                .disabled(appState.isCheckingForUpdates)
+            }
             // Appending (rather than replacing) keeps the system "新建窗口" ⌘N
             // item, which is what opens another window of the WindowGroup.
             CommandGroup(after: .newItem) {

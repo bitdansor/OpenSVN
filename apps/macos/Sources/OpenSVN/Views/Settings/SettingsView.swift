@@ -126,6 +126,7 @@ private struct SVNSettingsPane: View {
     @State private var pathDraft = ""
     @State private var autoRefresh = true
     @State private var previewBeforeUpdate = true
+    @State private var checkForUpdates = false
     @FocusState private var pathFocused: Bool
 
     var body: some View {
@@ -159,6 +160,22 @@ private struct SVNSettingsPane: View {
             } footer: {
                 SettingsFooter("自动刷新只监听当前打开的工作副本，.svn 内部的改动会被忽略——否则每次刷新都会触发下一次刷新。更新前预览多花一次网络往返，换回一份「将要发生什么」的清单。")
             }
+
+            Section {
+                Toggle("启动时检查新版本", isOn: $checkForUpdates)
+                HStack {
+                    Text(appState.isCheckingForUpdates ? "正在检查…" : "手动检查")
+                    Spacer()
+                    Button("检查更新…") {
+                        Task { await appState.checkForUpdates(explicitlyRequested: true) }
+                    }
+                    .disabled(appState.isCheckingForUpdates)
+                }
+            } header: {
+                Text("版本")
+            } footer: {
+                SettingsFooter("启动时检查默认关闭：这是本应用唯一会主动连接项目服务器的请求（GitHub 的 Releases 接口），只读取公开的版本信息，不携带任何本机数据，每天最多一次。关了也不影响菜单里的「检查更新…」。检查到新版本时只会给出下载页，不会自行下载或替换应用。")
+            }
         }
         .formStyle(.grouped)
         .onAppear(perform: load)
@@ -172,6 +189,11 @@ private struct SVNSettingsPane: View {
         }
         .onChange(of: previewBeforeUpdate) { _, value in
             applySettings(appState) { $0.previewBeforeUpdate = value }
+        }
+        .onChange(of: checkForUpdates) { _, value in
+            // `rebuildService: false`: this only changes what the next launch
+            // does, so there is nothing to re-discover now.
+            applySettings(appState, rebuildService: false) { $0.checkForUpdatesOnLaunch = value }
         }
     }
 
@@ -209,6 +231,7 @@ private struct SVNSettingsPane: View {
         pathDraft = settings.explicitSVNPath ?? ""
         autoRefresh = settings.autoRefresh
         previewBeforeUpdate = settings.previewBeforeUpdate
+        checkForUpdates = settings.checkForUpdatesOnLaunch
     }
 
     private func commitPath() {

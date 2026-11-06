@@ -42,6 +42,12 @@ final class AppState {
     var showingNewRepositorySheet = false
     var showingTaskCenter = false
     var showingDemoSheet = false
+    var showingUpdateSheet = false
+    /// Result of the most recent version check, when it succeeded.
+    private(set) var updateCheckResult: UpdateCheckResult?
+    /// Message from the most recent check, when it did not.
+    private(set) var updateCheckError: String?
+    private(set) var isCheckingForUpdates = false
     private(set) var demoPhase: DemoPhase = .idle
     /// Set when a previously generated demo working copy is still on disk, so the
     /// sheet can offer "open" instead of "generate".
@@ -118,6 +124,13 @@ final class AppState {
         }
         if let session = selectedSession {
             await session.refresh()
+        }
+
+        // Last, and only when the user asked for it. A launch that begins with a
+        // network request to a server the user never mentioned is the behaviour
+        // this project refuses everywhere else.
+        if settings.checkForUpdatesOnLaunch {
+            await checkForUpdates(explicitlyRequested: false)
         }
     }
 
@@ -595,5 +608,69 @@ final class AppState {
             revision: nil
         )
         return repository
+    }
+
+    // MARK: - Update check
+
+    /// Key for the last successful check, so a launch check cannot hammer the
+    /// feed. GitHub allows 60 unauthenticated requests per hour per address.
+    private static let lastUpdateCheckKey = "cn.opensvn.lastUpdateCheckAt"
+    private static let updateCheckInterval: TimeInterval = 24 * 60 * 60
+
+    /// Asks the release feed whether a newer version exists.
+    ///
+    /// - Parameter explicitlyRequested: `true` when the user picked 检查更新…
+    ///   from the menu. That changes two things: the daily de-duplication is
+    ///   skipped, and a "no update" or an error is shown rather than staying
+    ///   silent. A launch check only speaks up when there is something to say.
+    func checkForUpdates(explicitlyRequested: Bool) async {
+        guard !isCheckingForUpdates else { return }
+        if !explicitlyRequested, let last = lastUpdateCheck,
+           Date().timeIntervalSince(last) < Self.updateCheckInterval {
+            return
+        }
+
+        isCheckingForUpdates = true
+        defer { isCheckingForUpdates = false }
+
+        updateCheckError = nil
+        let checker = UpdateChecker(currentVersion: UpdateChecker.bundleVersion())
+        do {
+            let result = try await checker.check()
+            updateCheckResult = result
+            lastUpdateCheck = Date()
+            AppLog.shared.record(
+                .info,
+                "检查更新：当前 \(checker.currentVersion)，结果 \(result.title)",
+                category: "update"
+            )
+            if explicitlyRequested || result.isUpdateAvailable {
+                showingUpdateSheet = true
+            }
+        } catch {
+            // A failed check must never look like "you are up to date".
+            let message = (error as? UpdateCheckError)?.errorDescription
+                ?? error.localizedDescription
+            updateCheckError = message
+            updateCheckResult = nil
+            AppLog.shared.record(.warning, "检查更新失败：\(message)", category: "update")
+            if explicitlyRequested {
+                showingUpdateSheet = true
+            }
+        }
+    }
+
+    private var lastUpdateCheck: Date? {
+        get {
+            let stored = UserDefaults.standard.double(forKey: Self.lastUpdateCheckKey)
+            return stored > 0 ? Date(timeIntervalSince1970: stored) : nil
+        }
+        set {
+            if let newValue {
+                UserDefaults.standard.set(newValue.timeIntervalSince1970, forKey: Self.lastUpdateCheckKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.lastUpdateCheckKey)
+            }
+        }
     }
 }

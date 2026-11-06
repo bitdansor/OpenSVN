@@ -136,6 +136,13 @@ public struct AppSettings: Sendable {
     /// child to exit, so a script that returns immediately is what keeps the
     /// operation from blocking until the window is closed.
     public var externalDiffCommand: String?
+    /// Ask the project's release feed whether a newer version exists.
+    ///
+    /// Off by default: this is the only request the app makes to a server it was
+    /// not told about, and a tool that manages private repositories should not
+    /// phone home because it was installed. Turning it on is a decision the user
+    /// makes, and 检查更新… in the app menu always works regardless.
+    public var checkForUpdatesOnLaunch: Bool
 
     public static let defaultTimeout: TimeInterval = 300
     public static let defaultMaxConcurrentWrites = 4
@@ -149,7 +156,8 @@ public struct AppSettings: Sendable {
         maxConcurrentWrites: Int = AppSettings.defaultMaxConcurrentWrites,
         autoRefresh: Bool = true,
         previewBeforeUpdate: Bool = true,
-        externalDiffCommand: String? = nil
+        externalDiffCommand: String? = nil,
+        checkForUpdatesOnLaunch: Bool = false
     ) {
         self.explicitSVNPath = explicitSVNPath
         self.operationTimeout = operationTimeout
@@ -159,6 +167,7 @@ public struct AppSettings: Sendable {
         self.autoRefresh = autoRefresh
         self.previewBeforeUpdate = previewBeforeUpdate
         self.externalDiffCommand = externalDiffCommand
+        self.checkForUpdatesOnLaunch = checkForUpdatesOnLaunch
     }
 
     private static let pathKey = "cn.opensvn.svnPath"
@@ -169,6 +178,7 @@ public struct AppSettings: Sendable {
     private static let autoRefreshKey = "cn.opensvn.autoRefresh"
     private static let previewUpdateKey = "cn.opensvn.previewBeforeUpdate"
     private static let externalDiffKey = "cn.opensvn.externalDiffCommand"
+    private static let updateCheckKey = "cn.opensvn.checkForUpdatesOnLaunch"
 
     public static func load(from defaults: UserDefaults = .standard) -> AppSettings {
         let path = defaults.string(forKey: pathKey)
@@ -179,6 +189,7 @@ public struct AppSettings: Sendable {
         let autoRefresh = defaults.object(forKey: autoRefreshKey) as? Bool ?? true
         let previewUpdate = defaults.object(forKey: previewUpdateKey) as? Bool ?? true
         let externalDiff = defaults.string(forKey: externalDiffKey)
+        let updateCheck = defaults.object(forKey: updateCheckKey) as? Bool ?? false
         return AppSettings(
             explicitSVNPath: (path?.isEmpty ?? true) ? nil : path,
             operationTimeout: timeout > 0 ? timeout : defaultTimeout,
@@ -190,7 +201,8 @@ public struct AppSettings: Sendable {
             ),
             autoRefresh: autoRefresh,
             previewBeforeUpdate: previewUpdate,
-            externalDiffCommand: (externalDiff?.isEmpty ?? true) ? nil : externalDiff
+            externalDiffCommand: (externalDiff?.isEmpty ?? true) ? nil : externalDiff,
+            checkForUpdatesOnLaunch: updateCheck
         )
     }
 
@@ -203,5 +215,6 @@ public struct AppSettings: Sendable {
         defaults.set(autoRefresh, forKey: Self.autoRefreshKey)
         defaults.set(previewBeforeUpdate, forKey: Self.previewUpdateKey)
         defaults.set(externalDiffCommand, forKey: Self.externalDiffKey)
+        defaults.set(checkForUpdatesOnLaunch, forKey: Self.updateCheckKey)
     }
 }

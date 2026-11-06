@@ -126,6 +126,10 @@ struct MainWindowView: View {
             NewLocalRepositorySheet()
                 .environment(appState)
         }
+        .sheet(isPresented: $appState.showingUpdateSheet) {
+            UpdateCheckSheet()
+                .environment(appState)
+        }
         .sheet(isPresented: $showingExtensionsSettings) {
             UIExtensionsSettingsView()
         }
