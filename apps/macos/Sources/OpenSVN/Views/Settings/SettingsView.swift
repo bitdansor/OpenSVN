@@ -26,6 +26,8 @@ struct SettingsView: View {
                 .tabItem { Label("工具", systemImage: "wrench.and.screwdriver") }
             CredentialsSettingsPane()
                 .tabItem { Label("凭据", systemImage: "key") }
+            ConnectionSettingsPane()
+                .tabItem { Label("连接", systemImage: "network") }
             AboutSettingsPane()
                 .tabItem { Label("关于", systemImage: "info.circle") }
         }
@@ -240,6 +242,11 @@ private struct BehaviorSettingsPane: View {
     @State private var maxConcurrentWrites = AppSettings.defaultMaxConcurrentWrites
     @FocusState private var timeoutFocused: Bool
 
+    // UI-extension key (Support/UIExtensionSettings.swift). Hard-coded here so
+    // the Settings scene has no compile-time dependency on that layer.
+    @AppStorage("cn.opensvn.taskNotificationsEnabled")
+    private var taskNotificationsEnabled = true
+
     var body: some View {
         Form {
             Section {
@@ -260,10 +267,11 @@ private struct BehaviorSettingsPane: View {
                 }
 
                 Toggle("危险操作前要求确认", isOn: $confirmDestructive)
+                Toggle("任务成功 / 失败时发送通知", isOn: $taskNotificationsEnabled)
             } header: {
                 Text("执行")
             } footer: {
-                SettingsFooter("确认在服务层强制执行，这个开关只决定界面是否提前展示预览。写操作上限约束的是不同工作副本之间的并行度——同一个工作副本上的两个写操作始终排队，与上限无关。")
+                SettingsFooter("确认在服务层强制执行，这个开关只决定界面是否提前展示预览。写操作上限约束的是不同工作副本之间的并行度——同一个工作副本上的两个写操作始终排队，与上限无关。任务通知在任务中心的任务成功或失败时发送本地通知；未签名或未获通知授权时会自动跳过。")
             }
         }
         .formStyle(.grouped)
@@ -307,6 +315,16 @@ private struct ToolsSettingsPane: View {
     @State private var logLevel: LogLevel = .info
     @FocusState private var diffFocused: Bool
 
+    // UI-extension keys (Support/UIExtensionSettings.swift). Hard-coded here so
+    // the Settings scene has no compile-time dependency on that layer; the
+    // defaults match that type so an unset key behaves identically.
+    @AppStorage("cn.opensvn.ticketURLTemplate")
+    private var ticketURLTemplate = "https://example.com/browse/{id}"
+    @AppStorage("cn.opensvn.mergeExecutablePath")
+    private var mergeExecutablePath = ""
+    @AppStorage("cn.opensvn.mergeArgumentTemplate")
+    private var mergeArgumentTemplate = "{base} {mine} {theirs} {merged}"
+
     var body: some View {
         Form {
             Section {
@@ -326,6 +344,33 @@ private struct ToolsSettingsPane: View {
                 Text("外部 diff")
             } footer: {
                 SettingsFooter("留空则使用内置差异视图。填了会传给 svn diff --diff-cmd，应填包装脚本而不是 GUI 程序本身：svn 会等子进程退出，直接指向 GUI 会让操作卡到窗口关闭为止。")
+            }
+
+            Section {
+                SettingsRow(title: "URL 模板") {
+                    SettingsTextField(text: $ticketURLTemplate)
+                }
+            } header: {
+                Text("工单链接")
+            } footer: {
+                SettingsFooter("识别 #123、PROJ-123、issue 123，生成可点击链接。占位符可用 {id}、{number}、{key}。")
+            }
+
+            Section {
+                SettingsRow(title: "可执行文件") {
+                    SettingsTextField(text: $mergeExecutablePath)
+                    Button("选择…") { chooseMergeExecutable() }
+                    if !mergeExecutablePath.isEmpty {
+                        Button("清除") { mergeExecutablePath = "" }
+                    }
+                }
+                SettingsRow(title: "参数模板") {
+                    SettingsTextField(text: $mergeArgumentTemplate)
+                }
+            } header: {
+                Text("外部合并")
+            } footer: {
+                SettingsFooter("命令按参数数组执行，不使用 shell 字符串拼接。占位符：{base}、{mine}、{theirs}、{merged}、{file}。")
             }
 
             Section {
@@ -390,6 +435,17 @@ private struct ToolsSettingsPane: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         diffDraft = url.path
         commitDiff()
+    }
+
+    private func chooseMergeExecutable() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "选择"
+        panel.message = "选择外部合并工具"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        mergeExecutablePath = url.path
     }
 }
 
@@ -465,6 +521,331 @@ private struct CredentialsSettingsPane: View {
     private func remove(_ scope: CredentialScope) async {
         await appState.forgetCredential(scope)
         scopes = await appState.credentialScopes()
+    }
+}
+
+// MARK: - Connection & certificates
+
+/// Certificate trust and proxy configuration.
+///
+/// These settings deliberately bypass `AppState`: `SVNConnectionSettingsStore`
+/// owns dedicated `UserDefaults` keys so the process launcher can read them
+/// directly, and the one-shot "connect anyway" flag is consumed by the next svn
+/// invocation rather than pushed into open sessions.
+private struct ConnectionSettingsPane: View {
+    @State private var store = SVNConnectionSettingsStore()
+
+    // Certificate trust
+    @State private var trustMode: TrustMode = .strict
+    @State private var selectedFailures: Set<ServerCertificateFailure> = []
+    @State private var pendingOneShotNote = false
+    @State private var showingOneShotConfirmation = false
+
+    // Proxy
+    @State private var serversConfig = ServersConfig()
+    @State private var proxyHost = ""
+    @State private var proxyPort = ""
+    @State private var proxyUsername = ""
+    @State private var proxyExceptions = ""
+    @State private var backupNote = ""
+    @State private var errorMessage: String?
+    @State private var showingProxySaveConfirmation = false
+
+    /// Local, UI-only representation of `CertificateTrustPolicy`.
+    private enum TrustMode: String, CaseIterable, Identifiable {
+        case strict, specified, all
+        var id: String { rawValue }
+    }
+
+    var body: some View {
+        Form {
+            certificateSection
+            oneShotSection
+            proxySection
+            authenticationSection
+        }
+        .formStyle(.grouped)
+        .onAppear(perform: load)
+        .onChange(of: trustMode) { _, _ in persistPolicy() }
+        .onChange(of: selectedFailures) { _, _ in persistPolicy() }
+        .confirmationDialog("临时放宽证书校验？", isPresented: $showingOneShotConfirmation) {
+            Button("仍要连接（仅此一次）") { armOneShot() }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("仅对紧接着的一次 svn 操作生效，之后自动恢复为上方的策略。svn 在 --non-interactive 模式下不会逐张证书询问，本次操作将静默接受带有这些问题的证书。请确认你信任目标服务器。")
+        }
+        .confirmationDialog("修改 ~/.subversion/servers？", isPresented: $showingProxySaveConfirmation) {
+            Button("备份并保存") { saveProxy() }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("保存前会先把现有文件备份为 servers.opensvn-backup-<时间戳>，只改动 [global] 段中的 4 个代理字段，其余内容与注释保持不变。该文件是 svn 的全局配置，会影响使用此用户目录的所有 svn 客户端。")
+        }
+    }
+
+    // MARK: Certificate trust
+
+    private var certificateSection: some View {
+        Section {
+            Picker("证书校验", selection: $trustMode) {
+                Text("严格校验（推荐）").tag(TrustMode.strict)
+                Text("信任指定问题").tag(TrustMode.specified)
+                Text("信任所有未知证书（高风险）").tag(TrustMode.all)
+            }
+
+            Text("失败类型（同时用于一次性的「仍要连接」）：")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach(ServerCertificateFailure.allCases, id: \.self) { failure in
+                Toggle(failure.label, isOn: binding(for: failure))
+            }
+
+            if trustMode == .all {
+                Text("将下发全部 5 种失败类型，接受任何未知、过期或域名不匹配的证书。")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        } header: {
+            Text("HTTPS 服务器证书")
+        } footer: {
+            SettingsFooter("默认严格校验：遇到无效证书时 svn 会直接失败。勾选失败类型后，svn 会在 --non-interactive 下静默接受对应问题的证书——攻击者可借此冒充服务器、窃取或篡改提交内容。仅在你确认是自签名/内网证书时启用，并尽量只勾选一项。本应用改用全量 --trust-server-cert-failures（可填 unknown-ca / cn-mismatch / expired / not-yet-valid / other 的逗号组合）：旧参数 --trust-server-cert 已废弃、仅等价于 unknown-ca，且可能往 stderr 打警告污染错误分类，因此不会下发。该选项仅在 svn 1.14 及以上生效，旧版本自动保持严格校验。")
+        }
+    }
+
+    private var oneShotSection: some View {
+        Section {
+            HStack {
+                Button("为下一次连接临时放宽…") { showingOneShotConfirmation = true }
+                    .disabled(selectedFailures.isEmpty)
+                Spacer()
+                if pendingOneShotNote {
+                    Text("已就绪，等待下一次连接")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if selectedFailures.isEmpty {
+                Text("请先在上方勾选至少一种失败类型。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("一次性的「仍要连接」")
+        } footer: {
+            SettingsFooter("「仍要连接」不会永久降低校验强度：它使用上方勾选的失败类型，只对紧接着的一次 svn 操作生效，操作后自动清除。适用于偶发的内网自签名证书，避免把宽松策略长期留在设置里。")
+        }
+    }
+
+    // MARK: Proxy
+
+    private var proxySection: some View {
+        Section {
+            LabeledContent("配置文件") {
+                HStack(spacing: 6) {
+                    Text(store.serversFileURL.path)
+                        .font(.caption.monospaced())
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .textSelection(.enabled)
+                    Button("打开") { openServersFile() }
+                }
+            }
+
+            if serversConfig.fileExists {
+                LabeledContent("当前代理（只读）") {
+                    Text(currentProxySummary)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            } else {
+                Text("该文件尚不存在，保存代理设置时会新建。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            SettingsRow(title: "主机") { SettingsTextField(text: $proxyHost) }
+            SettingsRow(title: "端口") {
+                SettingsTextField(text: $proxyPort, width: 88)
+                Text("1–65535").font(.caption).foregroundStyle(.secondary)
+            }
+            SettingsRow(title: "用户名") { SettingsTextField(text: $proxyUsername) }
+            SettingsRow(title: "排除列表") { SettingsTextField(text: $proxyExceptions) }
+
+            HStack {
+                Spacer()
+                Button("保存代理设置…") { showingProxySaveConfirmation = true }
+            }
+            if !backupNote.isEmpty {
+                Text(backupNote)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
+        } header: {
+            Text("代理（~/.subversion/servers）")
+        } footer: {
+            SettingsFooter("http-proxy-password 不在此处编辑：明文写进共享配置文件会抵消钥匙串的保护。保存前会自动备份原文件，且只改动 [global] 段的这 4 个字段。")
+        }
+    }
+
+    // MARK: Authentication / SASL (read-only)
+
+    private var authenticationSection: some View {
+        Section {
+            if serversConfig.displayEntries.isEmpty {
+                Text("servers 文件中没有生效的认证 / TLS 相关字段。")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(serversConfig.displayEntries.keys.sorted(), id: \.self) { key in
+                    LabeledContent(key) {
+                        Text(serversConfig.displayEntries[key] ?? "")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+            if !serversConfig.groupEntries.isEmpty {
+                Text("[groups] 段（只读）")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ForEach(serversConfig.groupEntries.keys.sorted(), id: \.self) { key in
+                    LabeledContent(key) {
+                        Text(serversConfig.groupEntries[key] ?? "")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+            Button("打开 ~/.subversion 文件夹") { openSubversionFolder() }
+        } header: {
+            Text("认证与 SASL")
+        } footer: {
+            SettingsFooter("认证 / TLS 字段与 [groups] 段只读展示，不做修改；http-proxy-password 等密码值一律脱敏，且不会被写入设置存储或日志。svnserve 的 SASL 与 svn+ssh 认证由系统 SASL 库、SSH 配置与 SSH_ASKPASS 管理，不通过这个配置文件控制；本应用的 svn 子进程是非交互的（--non-interactive），无法弹出终端密码提示，也不提供 iCloud 钥匙串同步。")
+        }
+    }
+
+    // MARK: Behaviour
+
+    private var currentProxySummary: String {
+        let proxy = serversConfig.proxy
+        guard !proxy.host.isEmpty else { return "未配置（注释或未设置）" }
+        var summary = proxy.port.map { "\(proxy.host):\($0)" } ?? proxy.host
+        if let user = proxy.username { summary += " · 用户 \(user)" }
+        if let exceptions = proxy.exceptions { summary += " · 排除 \(exceptions)" }
+        return summary
+    }
+
+    private func binding(for failure: ServerCertificateFailure) -> Binding<Bool> {
+        Binding(
+            get: { selectedFailures.contains(failure) },
+            set: { isOn in
+                if isOn { selectedFailures.insert(failure) } else { selectedFailures.remove(failure) }
+            }
+        )
+    }
+
+    private func load() {
+        switch store.persistentPolicy {
+        case .strict:
+            trustMode = .strict
+        case .specifiedFailures(let failures):
+            trustMode = .specified
+            selectedFailures = failures
+        case .trustAllCertificates:
+            trustMode = .all
+        }
+
+        let config = (try? store.readServersConfig()) ?? ServersConfig()
+        serversConfig = config
+        let proxy = config.proxy
+        proxyHost = proxy.host
+        proxyPort = proxy.port.map { String($0) } ?? ""
+        proxyUsername = proxy.username ?? ""
+        proxyExceptions = proxy.exceptions ?? ""
+        pendingOneShotNote = store.hasPendingOneShotTrust
+    }
+
+    private func persistPolicy() {
+        let policy: CertificateTrustPolicy
+        switch trustMode {
+        case .strict:
+            policy = .strict
+        case .specified:
+            policy = selectedFailures.isEmpty ? .strict : .specifiedFailures(selectedFailures)
+        case .all:
+            policy = .trustAllCertificates
+        }
+        store.persistentPolicy = policy
+    }
+
+    private func armOneShot() {
+        store.armOneShotTrust(.specifiedFailures(selectedFailures))
+        pendingOneShotNote = true
+    }
+
+    private func saveProxy() {
+        let trimmedPort = proxyPort.trimmingCharacters(in: .whitespaces)
+        let port: Int?
+        if trimmedPort.isEmpty {
+            port = nil
+        } else if let value = Int(trimmedPort), (1...65535).contains(value) {
+            port = value
+        } else {
+            errorMessage = "代理端口无效：应为 1–65535 的整数"
+            return
+        }
+
+        let proxy = ProxySettings(
+            host: proxyHost,
+            port: port,
+            username: proxyUsername.isEmpty ? nil : proxyUsername,
+            exceptions: proxyExceptions.isEmpty ? nil : proxyExceptions
+        )
+        do {
+            let backup = try store.writeProxySettings(proxy)
+            backupNote = backup.map { "已备份原文件：\($0.lastPathComponent)" }
+                ?? "已新建 servers 文件（原文件不存在，无需备份）"
+            errorMessage = nil
+            serversConfig = (try? store.readServersConfig()) ?? ServersConfig()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func openServersFile() {
+        let url = store.serversFileURL
+        if FileManager.default.fileExists(atPath: url.path) {
+            NSWorkspace.shared.open(url)
+        } else {
+            openSubversionFolder()
+        }
+    }
+
+    private func openSubversionFolder() {
+        let directory = store.serversFileURL.deletingLastPathComponent()
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(directory)
+    }
+}
+
+/// Chinese labels for the svn certificate-failure tokens.
+private extension ServerCertificateFailure {
+    var label: String {
+        switch self {
+        case .unknownCA: return "颁发机构未知（unknown-ca）"
+        case .cnMismatch: return "域名不匹配（cn-mismatch）"
+        case .expired: return "证书已过期（expired）"
+        case .notYetValid: return "证书尚未生效（not-yet-valid）"
+        case .other: return "其它校验失败（other）"
+        }
     }
 }
 
