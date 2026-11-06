@@ -1,3 +1,7 @@
+<p align="right">
+  <a href="README.md">English</a> · <b>简体中文</b>
+</p>
+
 # OpenSVN
 
 现代化、免费、开源、原生的 Apache Subversion（SVN）图形客户端。
