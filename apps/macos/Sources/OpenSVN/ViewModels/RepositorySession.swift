@@ -1786,6 +1786,51 @@ final class RepositorySession: Identifiable {
         mergeInfoSnapshot = nil
     }
 
+    // MARK: - Depth and patches
+
+    /// Current depth of a path, read from `svn info`. Local, no network.
+    func currentDepth(at target: URL) async -> WorkingCopyDepth? {
+        guard let service else { return nil }
+        return try? await service.workingCopyDepth(at: target)
+    }
+
+    /// `svn update --set-depth`. Returns whether it went through, so the sheet
+    /// can stay open on failure and keep the user's choice.
+    @discardableResult
+    func changeDepth(of target: URL, to depth: WorkingCopyDepth) async -> Bool {
+        guard let service else { return false }
+        let summary = await performReturning("改深度：\(target.lastPathComponent)") { credential, progress in
+            try await service.update(at: target, setDepth: depth, credential: credential, progress: progress)
+        }
+        guard summary != nil else { return false }
+        await loadLog(reset: true)
+        return true
+    }
+
+    /// What a patch would do. A dry run changes nothing, so it runs outside the
+    /// task centre: the user is typing in a sheet and expects an answer now.
+    func previewPatch(_ request: PatchRequest) async -> PatchOutcome? {
+        guard let service else { return nil }
+        do {
+            return try await service.applyPatch(request)
+        } catch {
+            handle(error)
+            return nil
+        }
+    }
+
+    /// The real application. `confirmed` is passed explicitly because the user
+    /// has just read the dry-run result.
+    func applyPatch(_ request: PatchRequest) async -> PatchOutcome? {
+        guard let service else { return nil }
+        let outcome = await performReturning("应用补丁 \(request.patchFile.lastPathComponent)") { _, progress in
+            try await service.applyPatch(request.applying(), confirmed: true, progress: progress)
+        }
+        if outcome == nil { return nil }
+        await loadLog(reset: true)
+        return outcome
+    }
+
     /// Reads the stored `svn:mergeinfo` property, and — when the sheet already
     /// names a source — which revisions are merged and which are still eligible.
     ///

@@ -37,6 +37,8 @@ struct RepositoryDetailView: View {
     @State private var tab: RepositoryTab = .changes
     @State private var showingMerge = false
     @State private var showingSwitch = false
+    @State private var showingDepth = false
+    @State private var showingPatch = false
 
     var body: some View {
         // No band above the content. A 37 pt strip holding the section switcher
@@ -73,6 +75,11 @@ struct RepositoryDetailView: View {
             showingMerge: $showingMerge,
             showingSwitch: $showingSwitch
         ))
+        .modifier(DetailWorkingCopySheets(
+            session: session,
+            showingDepth: $showingDepth,
+            showingPatch: $showingPatch
+        ))
         .modifier(DetailAlerts(session: session))
         .modifier(DetailBranchDialogs(session: session, tab: $tab))
         .task {
@@ -108,6 +115,11 @@ struct RepositoryDetailView: View {
                 session: session,
                 showingMerge: $showingMerge,
                 showingSwitch: $showingSwitch
+            )
+            WorkingCopyMenu(
+                session: session,
+                showingDepth: $showingDepth,
+                showingPatch: $showingPatch
             )
         }
     }
@@ -226,8 +238,38 @@ private struct BranchMenu: View {
     }
 }
 
-// MARK: - Sheets
+/// 改深度 / 应用补丁, in one menu.
+///
+/// Neither belongs in the branch menu: depth is about *how much* of the tree is
+/// on disk, and a patch is an edit applied to it. Both are also rare enough that
+/// a permanent toolbar button would be noise, and both act on the working copy
+/// as a whole rather than on a selection, which is what the selection-driven
+/// buttons next to it do.
+private struct WorkingCopyMenu: View {
+    @Bindable var session: RepositorySession
+    @Binding var showingDepth: Bool
+    @Binding var showingPatch: Bool
 
+    var body: some View {
+        Menu {
+            Button {
+                showingDepth = true
+            } label: {
+                Label("改深度…", systemImage: "square.stack.3d.down.right")
+            }
+            Button {
+                showingPatch = true
+            } label: {
+                Label("应用补丁…", systemImage: "doc.badge.plus")
+            }
+        } label: {
+            Label("工作副本", systemImage: "ellipsis.circle")
+        }
+        .help("改变稀疏工作副本的深度、应用补丁")
+    }
+}
+
+// MARK: - Sheets
 /// The sheets that describe one path or one read-only report.
 private struct DetailDocumentSheets: ViewModifier {
     @Bindable var session: RepositorySession
@@ -268,6 +310,23 @@ private struct DetailBranchSheets: ViewModifier {
             }
             .sheet(isPresented: $showingSwitch) {
                 SwitchSheet(session: session)
+            }
+    }
+}
+
+/// The two sheets that act on the working copy itself rather than on a branch.
+private struct DetailWorkingCopySheets: ViewModifier {
+    @Bindable var session: RepositorySession
+    @Binding var showingDepth: Bool
+    @Binding var showingPatch: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .sheet(isPresented: $showingDepth) {
+                DepthSheet(session: session)
+            }
+            .sheet(isPresented: $showingPatch) {
+                PatchSheet(session: session)
             }
     }
 }
