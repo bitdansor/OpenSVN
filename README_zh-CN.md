@@ -82,7 +82,7 @@ scripts/create-conflict-demo.sh        # ~/OpenSVN 合并演示
 
 ```bash
 scripts/bootstrap-macos.sh              # 缺什么依赖
-cd apps/macos && swift test             # 126 个测试 / 20 个套件，需要真实 svn
+cd apps/macos && swift test             # 256 个测试 / 44 个套件，需要真实 svn
 python3 scripts/verify-release.py       # VERSION / CHANGELOG / Info.plist / fixture 一致性
 python3 scripts/verify-release.py --bundle build/OpenSVN.app
 ```
