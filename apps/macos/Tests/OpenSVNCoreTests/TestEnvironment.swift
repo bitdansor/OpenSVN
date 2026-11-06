@@ -60,6 +60,59 @@ enum TestEnvironment {
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: url.path)
         return url
     }
+
+    /// A fake `svn` that logs its argv and answers `info` / `status` with canned
+    /// XML, so a service-level guard can be exercised without a real working copy.
+    ///
+    /// The subcommand is found by skipping global options rather than assuming
+    /// `$1`: the service hoists `--non-interactive` and friends in front of the
+    /// subcommand, and a fake that read `$1` would answer the wrong question.
+    @MainActor
+    static func makeScriptedService(
+        infoXML: String,
+        statusXML: String
+    ) throws -> (service: SVNService, argsFile: URL, root: URL) {
+        let root = try makeTemporaryDirectory("scripted")
+        let argsFile = root.appendingPathComponent("args.txt")
+        let script = """
+        #!/bin/sh
+        printf '%s\\n' "$@" >> '\(argsFile.path)'
+        CMD=""
+        for a in "$@"; do
+          case "$a" in
+            --non-interactive|--no-auth-cache|--username|--password-from-stdin) continue;;
+            --*) continue;;
+            *) CMD="$a"; break;;
+          esac
+        done
+        case "$CMD" in
+        info)
+        cat <<'OPEN_SVN_XML'
+        \(infoXML)
+        OPEN_SVN_XML
+        ;;
+        status)
+        cat <<'OPEN_SVN_XML'
+        \(statusXML)
+        OPEN_SVN_XML
+        ;;
+        esac
+        exit 0
+        """
+        let svn = try makeExecutableScript(in: root, name: "svn", contents: script)
+        let service = SVNService(configuration: SVNServiceConfiguration(
+            installation: SVNInstallation(
+                executableURL: svn,
+                version: SVNVersion(major: 1, minor: 15, patch: 0),
+                source: .explicit
+            ),
+            credentialStore: InMemoryCredentialStore(),
+            environment: [:],
+            timeout: 30,
+            journal: nil
+        ))
+        return (service, argsFile, root)
+    }
 }
 
 extension SVNError {

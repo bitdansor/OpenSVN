@@ -375,25 +375,42 @@ public actor SVNService {
         }
     }
 
+    /// `svn update`, optionally changing how much of the subtree is present.
+    ///
+    /// - Parameter setDepth: moves a sparse path to another depth. It is kept
+    ///   apart from `revision` on purpose: svn applies both in one pass, and a
+    ///   path that does not exist at the given revision is then *deleted* rather
+    ///   than merely left alone (measured: `svn update -r 1 --set-depth
+    ///   immediates dir` removed `dir`, which had been added in r2). Changing
+    ///   depth is a question about what to keep, not about which revision, so
+    ///   the combination is refused instead of quietly having side effects.
     public func update(
         at target: URL,
         revision: Int64? = nil,
+        setDepth: WorkingCopyDepth? = nil,
         credential: SVNCredential? = nil,
         progress: SVNProgressHandler? = nil
     ) async throws -> UpdateSummary {
+        if setDepth != nil, revision != nil {
+            throw SVNError(
+                code: .invalidInvocation,
+                message: "改深度和指定修订不能在同一次更新里做。svn 会把两者一起应用，若该路径在目标修订中不存在，它会被直接删掉。"
+            )
+        }
+        if setDepth == .exclude {
+            try await requireNoStrandedFiles(at: target)
+        }
+
         let key = WorkingCopyLocator.serializationKey(for: target)
         let ticket = await beginJournal(
             .update,
             workingCopy: URL(fileURLWithPath: key),
-            summary: "更新 \(target.lastPathComponent)"
+            summary: setDepth.map { "改深度到 \($0.displayName)：\(target.lastPathComponent)" }
+                ?? "更新 \(target.lastPathComponent)"
         )
         do {
             let summary = try await gate.withLock(key) {
-                var args = ["update", "--accept", "postpone"]
-                if let revision {
-                    args += ["-r", String(revision)]
-                }
-                args.append(target.standardizedFileURL.path)
+                let args = UpdateArguments.make(target: target, revision: revision, setDepth: setDepth)
 
                 let repositoryURL = await self.repositoryURL(for: target.path)
                 let result = try await self.invoke(
@@ -426,6 +443,49 @@ public actor SVNService {
             throw error
         }
     }
+
+    /// Current depth of a working-copy path, from `svn info`.
+    ///
+    /// Read-only and local: `svn info` on a path inside a working copy does not
+    /// contact the repository, so this is safe to call when a sheet opens.
+    public func workingCopyDepth(at target: URL) async throws -> WorkingCopyDepth? {
+        let report = try await info(at: target.path)
+        return WorkingCopyDepth.parse(report.primary?.depth)
+    }
+
+    /// Refuses to exclude a directory that still holds anything svn cannot remove.
+    ///
+    /// Measured with svn 1.15.0: `svn update --set-depth exclude dir` where `dir`
+    /// contains an unversioned file does not fail. It un-version-controls the
+    /// subtree, leaves the files on disk, sometimes leaves the working copy
+    /// locked (`L` in `svn status`), and exits **0**. The next svn command then
+    /// fails with `E155037: Previous operation has not finished`. A pre-check is
+    /// the only place to stop this, because afterwards the versioning is gone.
+    private func requireNoStrandedFiles(at target: URL) async throws {
+        let report = try? await info(at: target.path)
+        // A file is either removed whole or refused by svn when modified, so the
+        // half-removed state only applies to directories.
+        guard report?.primary?.kind == .dir else { return }
+
+        // `--no-ignore` matters: an ignored file blocks removal just the same,
+        // and svn reports it as `I` rather than `?`.
+        let snapshot = try await status(at: target, includeIgnored: true)
+        let stranded = snapshot.entries.filter {
+            $0.item == .unversioned || $0.item == .ignored
+        }
+        guard stranded.isEmpty else {
+            let names = stranded.prefix(5).map(\.fileName).joined(separator: "、")
+            let more = stranded.count > 5 ? " 等 \(stranded.count) 项" : ""
+            throw SVNError(
+                code: .confirmationRequired,
+                message: "这个目录里还有未纳入版本控制的文件（\(names)\(more)），不能整体排除。"
+                    + "svn 会把这些文件留在磁盘上、同时丢掉目录的版本控制信息，工作副本还可能被锁住。"
+                    + "请先移走或删除它们，再改深度。",
+                diagnosticOutput: stranded.map(\.path).joined(separator: "\n")
+            )
+        }
+    }
+
 
     // MARK: - Staging changes
 
@@ -1430,6 +1490,59 @@ public actor SVNService {
             throw error
         }
     }
+
+    /// `svn patch` — applies a unidiff to the working copy.
+    ///
+    /// A dry run is allowed without `confirmed` because it changes nothing; a
+    /// real run needs it, like merge and switch, since the patch can schedule
+    /// additions and deletions on the user's disk.
+    ///
+    /// The verdict comes from the parsed per-file status, never from the exit
+    /// code: svn 1.15.0 returns 0 for a run where every hunk was rejected and for
+    /// a run where every target was skipped as missing.
+    public func applyPatch(
+        _ request: PatchRequest,
+        confirmed: Bool = false,
+        progress: SVNProgressHandler? = nil
+    ) async throws -> PatchOutcome {
+        try request.validate()
+        guard request.dryRun || confirmed else {
+            throw SVNError(
+                code: .confirmationRequired,
+                message: "应用补丁会修改工作副本里的文件（补丁也可能新增或删除文件）。请先预览，再确认应用。"
+            )
+        }
+
+        let args = PatchArguments.make(request)
+        let key = WorkingCopyLocator.serializationKey(for: request.target)
+        let ticket = request.dryRun ? nil : await beginJournal(
+            .patch,
+            workingCopy: URL(fileURLWithPath: key),
+            summary: "应用补丁 \(request.patchFile.lastPathComponent)"
+        )
+        do {
+            let outcome = try await gate.withLock(key) {
+                let result = try await self.invoke(
+                    args,
+                    workingDirectory: nil,
+                    credential: nil,
+                    repositoryURL: nil,
+                    progress: progress
+                )
+                return SVNOutputParser.parsePatch(
+                    result.standardOutput,
+                    target: request.target.path,
+                    isDryRun: request.dryRun
+                )
+            }
+            await finishJournal(ticket)
+            return outcome
+        } catch {
+            await finishJournal(ticket)
+            throw error
+        }
+    }
+
 
     /// `svnadmin create` — creates a brand-new local repository and returns its
     /// `file://` URL. Refuses to touch a non-empty destination, so it needs no

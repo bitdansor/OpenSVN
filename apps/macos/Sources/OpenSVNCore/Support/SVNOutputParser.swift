@@ -97,6 +97,91 @@ public enum SVNOutputParser {
         return result
     }
 
+    /// Reads `svn patch` output.
+    ///
+    /// This parser carries the whole verdict because the exit status does not:
+    /// measured on svn 1.15.0, `svn patch` returns 0 when every hunk is rejected
+    /// (`Summary of conflicts: Text conflicts: 1`) and when every target is
+    /// missing (`Skipped missing target: …`). The only trustworthy signal is the
+    /// per-file status column, which uses the same letters as `svn status`:
+    /// two columns, content then properties.
+    public static func parsePatch(
+        _ output: String,
+        target: String,
+        isDryRun: Bool
+    ) -> PatchOutcome {
+        var outcome = PatchOutcome(target: target, isDryRun: isDryRun, rawOutput: LogRedactor.redact(output))
+        var summaryLines: [String] = []
+        var inSummary = false
+
+        for rawLine in output.split(separator: "\n", omittingEmptySubsequences: false) {
+            let line = String(rawLine)
+            if line.isEmpty { continue }
+
+            if line.hasPrefix("Summary of conflicts:") {
+                inSummary = true
+                continue
+            }
+            if inSummary {
+                // The summary block is two-space indented and ends at the first
+                // line that is not.
+                if line.hasPrefix("  ") {
+                    summaryLines.append(line.trimmingCharacters(in: .whitespaces))
+                    continue
+                }
+                inSummary = false
+            }
+
+            if line.hasPrefix("Skipped") {
+                outcome.skipped.append(quotedPath(in: line) ?? line)
+                continue
+            }
+
+            // `>` lines carry svn's own caveats: offset, fuzz, "already applied",
+            // "rejected hunk". They never end the operation, so they are kept as
+            // notes for the user to read rather than turned into a failure.
+            if line.hasPrefix(">") {
+                let note = line.dropFirst().trimmingCharacters(in: .whitespaces)
+                if !note.isEmpty { outcome.notes.append(note) }
+                continue
+            }
+
+            // Status columns: two characters, then padding, then the path.
+            guard line.count > 2 else { continue }
+            let columns = line.prefix(2).filter { !$0.isWhitespace }
+            guard !columns.isEmpty, columns.allSatisfy({ "ADUCG".contains($0) }) else { continue }
+            let path = line.dropFirst(2).trimmingCharacters(in: .whitespaces)
+            guard !path.isEmpty else { continue }
+
+            // Conflict dominates: a file listed as both updated and conflicted
+            // is a conflicted file.
+            if columns.contains("C") {
+                outcome.conflicted.append(path)
+            } else if columns.contains("D") {
+                outcome.deleted.append(path)
+            } else if columns.contains("A") {
+                outcome.added.append(path)
+            } else if columns.contains("G") {
+                outcome.merged.append(path)
+            } else {
+                outcome.updated.append(path)
+            }
+        }
+
+        if !summaryLines.isEmpty {
+            outcome.conflictSummary = summaryLines.joined(separator: "；")
+        }
+        return outcome
+    }
+
+    /// Pulls the path out of `Skipped 'x'` / `Skipped missing target: 'x'`.
+    private static func quotedPath(in line: String) -> String? {
+        guard let open = line.firstIndex(of: "'"), let close = line.lastIndex(of: "'"),
+              open < close
+        else { return nil }
+        return String(line[line.index(after: open)..<close])
+    }
+
     /// True when `svn` reported that the working copy is already at the newest
     /// revision ("At revision 7." / "Updated to revision 7.").
     public static func isUpToDate(_ output: String) -> Bool {

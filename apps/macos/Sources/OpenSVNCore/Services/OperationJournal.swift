@@ -40,6 +40,10 @@ public actor OperationJournal {
             case property
             case lock
             case unlock
+            /// `svn patch`. Its own kind rather than `.update`: a rejected hunk
+            /// leaves `.svnpatch.rej` files behind, and the recovery banner says
+            /// which command to look at.
+            case patch
 
             /// Short label for the recovery banner. Never an svn token.
             public var title: String {
@@ -55,6 +59,7 @@ public actor OperationJournal {
                 case .property: return "修改属性"
                 case .lock: return "锁定"
                 case .unlock: return "解锁"
+                case .patch: return "应用补丁"
                 }
             }
         }
@@ -101,6 +106,12 @@ public actor OperationJournal {
                 return "检出可能只完成了一部分。确认目录内容后再决定是继续还是删掉重来。"
             case .update, .revert, .resolve, .delete, .add, .property:
                 return "工作副本可能停在中间状态。运行「清理」后再刷新状态。"
+            case .patch:
+                // A patch interrupted halfway is the same shape of problem as an
+                // update, but it also leaves `.svnpatch.rej` files next to the
+                // paths that did not match. Reverting is safe here: the patch
+                // only changed local files and was never committed.
+                return "工作副本可能停在中间状态，未匹配的部分会留下 .svnpatch.rej。运行「清理」后查看状态；确认不要这些改动用「还原」。"
             case .lock:
                 return "锁可能已在服务器上生效。刷新锁定状态确认，再决定是否重试。"
             case .unlock:
