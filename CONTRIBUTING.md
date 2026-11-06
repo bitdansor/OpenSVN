@@ -51,6 +51,23 @@ If `swift build` fails with `Invalid manifest` or a security-directory error in 
 locked-down environment, prefix the command with `HOME="$PWD/.build-home"`; see
 the README section "Sandboxed environments".
 
+CI pins **Swift 6.1 on macOS 15**, and a newer local toolchain accepts code that
+6.1 rejects. SE-0461, shipped in 6.2, makes `nonisolated async` functions inherit
+the caller's isolation instead of hopping off the actor, so a non-Sendable result
+read across such an `await` is an error only on the older compiler. Reproduce the
+pinned semantics before pushing:
+
+```bash
+cd apps/macos && swift build --build-tests \
+  -Xswiftc -disable-upcoming-feature -Xswiftc NonisolatedNonsendingByDefault
+```
+
+Keep single SwiftUI expressions small for the same reason. A view whose `body`
+chains a toolbar, several sheets and several dialogs can make 6.1 stop with
+"unable to type-check this expression in reasonable time" while a newer compiler
+still infers it; split the pieces into `ViewModifier`s and a
+`ToolbarContentBuilder` instead of raising the limit.
+
 If you change a parser, add or update a fixture under `testdata/` and note
 the `svn --version` used to record it. Contract tests must stay green.
 
