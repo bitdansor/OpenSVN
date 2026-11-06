@@ -44,6 +44,18 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/OpenSVN"
 cp "$PACKAGE/Resources/Info.plist" "$APP/Contents/Info.plist"
 
+# App icon. Generated from apps/macos/Resources/AppIcon.svg on every build and
+# placed in Contents/Resources, where CFBundleIconFile (AppIcon.icns) finds it.
+# Must happen before codesign seals the bundle. Icon generation is deliberately
+# best-effort: a failure prints a clear warning but never breaks the build --
+# the bundle simply falls back to the generic macOS application icon.
+echo "== generating app icon =="
+if "$ROOT/scripts/generate-app-icon.sh" && [[ -f "$ROOT/build/AppIcon.icns" ]]; then
+  cp "$ROOT/build/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
+else
+  echo "warning: app icon generation failed; the bundle will use the generic macOS icon" >&2
+fi
+
 # Keep the bundle version in sync with VERSION (CFBundleShortVersionString only
 # accepts three dot-separated integers; strip any -dev/-beta suffix).
 SHORT_VERSION="${VERSION%%-*}"

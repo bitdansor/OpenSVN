@@ -13,12 +13,29 @@ Stage 6. What ships today, and what is still missing:
 
 ## The app icon
 
-The bundle currently has none: there is no `.icns` in the tree and `Info.plist`
-declares no `CFBundleIconFile`, so macOS draws its generic application icon. The
-icon is generated at stage 6 from source artwork that is not published here
-(`/assets/` is ignored). Two rules outlive that directory: the `.icns` is
-**generated**, never hand-edited; and a placeholder icon must never be committed
-— it has a way of surviving into a release.
+The icon is **generated**, never hand-edited, and no placeholder is committed.
+`apps/macos/Resources/AppIcon.svg` (1024×1024 SVG) is the only tracked,
+human-editable artwork; `scripts/generate-app-icon.sh` turns it into
+`build/AppIcon.icns` on every build.
+
+The script first tries `rsvg-convert`, `inkscape`, `cairosvg` and `qlmanage`,
+**functionally checking** each one (it must emit a valid 1024×1024 PNG —
+`qlmanage` in particular can fail silently with "sandbox initialization
+failed"). On a stock Mac none of the first three is present, so it falls back to
+a small Swift/CoreGraphics renderer compiled once with `swiftc` and cached in
+`build/`; that is the path exercised on this machine. Only macOS-shipped tools
+(`sips`, `iconutil`, `swiftc`) are required and there is no network dependency.
+Verified here: `file` reports `Mac OS X icon`; `iconutil` round-trips to
+16/32/128/256/512 at 1x and 2x (10 representations, largest 1024 px); `sips`
+confirms 1024×1024; `plutil -lint` and `bash -n` pass.
+
+`build/` is git-ignored, so the `.icns` is a **build artifact and is not
+committed** — every build regenerates it, while the source SVG stays in the tree.
+`Info.plist` declares `CFBundleIconFile = AppIcon.icns`, and
+`scripts/build-macos-app.sh` runs the generator and copies the result into
+`Contents/Resources/` **before** `codesign` seals the bundle. A generation
+failure prints a clear warning and leaves the generic macOS icon rather than
+breaking the build. Edit the SVG or the script, never the generated output.
 
 ## How the runtime gets in
 

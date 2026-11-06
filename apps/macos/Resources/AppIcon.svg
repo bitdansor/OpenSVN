@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  OpenSVN application icon : source artwork.
+
+  This is the single, human-editable source of truth for the macOS app icon.
+  scripts/generate-app-icon.sh rasterises it (or reproduces it with a bundled
+  CoreGraphics renderer when no SVG rasteriser is installed) and packs the
+  result into build/AppIcon.icns. The .icns is a build artifact and is never
+  committed; this SVG is.
+
+  Design: an abstract version-control "fork" : a trunk with a commit node at
+  its base splitting into two branches, each ending in a commit node. The
+  full-bleed blue/indigo background carries its own opaque colour, so the icon
+  reads equally well on light and dark desktops; macOS applies the squircle
+  mask. Canvas is 1024x1024 with generous internal padding for small sizes.
+
+  Keep the geometry and colours here in sync with AppIconRenderer.swift, which
+  is embedded in scripts/generate-app-icon.sh.
+-->
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1024" height="1024" viewBox="0 0 1024 1024"
+     version="1.1">
+  <title>OpenSVN</title>
+  <defs>
+    <!-- Diagonal indigo -> blue background. -->
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#4F7DF3"/>
+      <stop offset="55%"  stop-color="#3B6BDE"/>
+      <stop offset="100%" stop-color="#1B2A6B"/>
+    </linearGradient>
+    <!-- Soft top-left sheen for a bit of depth. -->
+    <radialGradient id="sheen" cx="29.3%" cy="23.4%" r="74.2%">
+      <stop offset="0%"   stop-color="#FFFFFF" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Full-bleed background (macOS supplies the rounded mask). -->
+  <rect x="0" y="0" width="1024" height="1024" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1024" height="1024" fill="url(#sheen)"/>
+
+  <!-- Subtle inset frame to give the tile a badge-like finish. -->
+  <rect x="44" y="44" width="936" height="936" rx="200" ry="200"
+        fill="none" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="6"/>
+
+  <!-- Branch graph: trunk + fork, drawn as rounded white strokes. -->
+  <path d="M512 828 L512 470 M512 470 L296 250 M512 470 L728 250"
+        fill="none" stroke="#FFFFFF" stroke-width="40"
+        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Commit nodes (one base, one fork point, two branch tips). -->
+  <g fill="#FFFFFF">
+    <circle cx="512" cy="828" r="54"/>
+    <circle cx="512" cy="470" r="54"/>
+    <circle cx="296" cy="250" r="54"/>
+    <circle cx="728" cy="250" r="54"/>
+  </g>
+</svg>
