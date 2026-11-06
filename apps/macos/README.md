@@ -1,27 +1,37 @@
 # OpenSVN for macOS (Swift 6 + SwiftUI/AppKit)
 
-**Status: implemented and tested.** 49 tests in 11 suites pass (`swift test`),
-including a real-repository round trip against svn 1.14.5. The app builds,
-launches, and reads a working copy. Stage 5 (conflict wizard, interrupted-operation
-recovery) is not done — see the task list in the repository root.
+> **Status: implemented and tested.** 256 tests in 44 suites pass (`swift test`),
+> including round trips against a real svn 1.14.5. The app builds, launches, and
+> covers the working-copy loop end to end: checkout, edit, update preview,
+> three-way conflict resolution, commit, merge/switch, branch and repository
+> operations, history and blame.
+>
+> What is missing is distribution, not features. The bundle is ad-hoc signed;
+> there is no Developer ID signature, no notarisation against Apple's service and
+> no update feed. [distribution-decision.md](../../packaging/macos/distribution-decision.md)
+> records why the App Store route was rejected, and `release.yml` still refuses to
+> publish.
 
 ## Layout
 
 ```text
 apps/macos/
-  Package.swift                 SwiftPM manifest: OpenSVNCore library + OpenSVN executable
+  Package.swift                 SwiftPM manifest: OpenSVNCore + OpenSVN + OpenSVNProbe
   Sources/OpenSVNCore/          core layer — no SwiftUI, no AppKit
-    Models/                     data models (status, log, info, errors, progress)
+    Discovery/                  locating svn, version validation (1.10 ≤ v < 2.0)
+    Models/                     status, log, info, diff, lock, merge, error, progress
+    Parsing/                    svn --xml readers, date normalisation, mergeinfo ranges
     Process/                    SVNProcessRunner: argv array, pipe draining, cancel, timeout
-    Parsing/                    svn --xml readers + date normalisation
-    Discovery/                  locating svn, version validation
-    Services/                   SVNService actor, Keychain credentials, write serialization
+    Services/                   SVNService actor, Keychain credentials, write gate, journal
     Support/                    log redaction, error mapping, output summaries
   Sources/OpenSVN/              SwiftUI shell
-    App/                        entry point, AppState, task center
+    App/                        entry point, AppState, menu commands
     Models/                     bookmarks and settings persistence
-    ViewModels/                 RepositorySession
-    Views/                      Main, Repository, Changes, Commit, History, Diff, Settings
+    Support/                    drag-and-drop import, task notifications
+    ViewModels/                 RepositorySession, MergeEditorState, RepositoryBrowser
+    Views/                      Main, Changes, Commit, History, Diff, Properties,
+                                Repository (browser, merge, switch, mergeinfo), Settings
+  Sources/OpenSVNProbe/         headless CLI for scripted checks
   Tests/OpenSVNCoreTests/       Swift Testing suites (contract + integration)
   Resources/Info.plist          bundle metadata
   OpenSVN.xcodeproj/            thin Xcode shell that references the local package
@@ -37,7 +47,8 @@ gives that for free. `Package.swift` is the authority for targets and paths;
 ```bash
 scripts/bootstrap-macos.sh
 cd apps/macos && swift build && swift test
-scripts/build-macos-app.sh          # build/OpenSVN.app (ad-hoc signed)
+scripts/build-macos-app.sh          # build/OpenSVN.app (debug, ad-hoc signed)
+CONFIG=release scripts/build-macos-app.sh   # release, bundles its own svn runtime
 ```
 
 Locked-down environments that deny `~/.swiftpm` need
@@ -48,6 +59,9 @@ Locked-down environments that deny `~/.swiftpm` need
 - `SVNProcessRunner` never sees a shell string. Arguments are an array; the
   environment is an allowlist with a pinned UTF-8 locale (`LC_ALL=C` makes svn
   reject non-ASCII paths with `E000022`).
+- Global svn options go **before** the subcommand. svn treats everything after
+  `--` as a positional path, and the call sites that separate operands with `--`
+  would otherwise turn `--username` into a working-copy target.
 - Both pipes are drained on their own queues. A `PipeDrain` held weakly is a
   hang, not a slow test — that bug cost an afternoon once.
 - Passwords go to stdin via `--password-from-stdin` and live in the Keychain.
@@ -56,3 +70,6 @@ Locked-down environments that deny `~/.swiftpm` need
   nearest `.svn` root.
 - Destructive operations require an explicit `confirmed:` argument at the service
   layer. The UI cannot bypass it.
+- `--store-pristine=no` is refused below svn 1.15 *before* a process is spawned:
+  opting in upgrades the working copy to format 32, which older clients cannot
+  open at all.
