@@ -6,6 +6,49 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (macOS: sparse working copies, patches, and a version check)
+
+- **`svn update --set-depth` closes the sparse-working-copy loop.** Checking out
+  at `immediates` used to be a one-way decision: `update` never changed depth, so
+  the only way to widen or narrow a working copy again was to delete it and
+  re-checkout. `WorkingCopyDepth` is a separate type from `CheckoutDepth`
+  precisely because `--set-depth` accepts one more value than `--depth` —
+  `exclude` — and a shared enum would make `--depth exclude` representable.
+  `update(at:revision:setDepth:…)` refuses to combine `setDepth` with `revision`:
+  measured on svn 1.15, `svn update -r 1 --set-depth immediates dir` *deleted*
+  `dir` when it did not exist at r1, which is not something the caller asked for
+  and not something the arguments reveal.
+- **`exclude` is pre-checked, because svn reports success while mangling the
+  working copy.** Measured on svn 1.15: excluding a directory that still holds an
+  unversioned file exits **0**, un-version-controls the subtree, leaves the files
+  on disk as `?`, and leaves the working copy locked — the next svn command fails
+  with `E155037`. An ignored file instead gets deleted-tracked-files-left-behind.
+  The service now lists the directory with `--no-ignore` first and refuses,
+  naming the paths, rather than letting svn half-do it and reporting success.
+- **`svn patch` is supported, with the verdict parsed rather than inferred from
+  the exit code.** `svn patch` returns 0 both when every hunk is rejected and
+  when every target is missing (`Skipped missing target:`), so `PatchOutcome`
+  classifies the per-file status columns (`A`/`U`/`D`/`G`/`C`), keeps `>`
+  advisory lines as notes, and defines success as "at least one path touched, no
+  conflicts, nothing skipped". A dry run is free; a real apply needs
+  `confirmed: true`, and the sheet keeps 应用 disabled until a preview has run
+  for exactly the settings on screen.
+- **改深度… and 应用补丁… have entries in the working-copy toolbar**, under a new
+  工作副本 menu. Both are about the working copy itself rather than about a
+  branch or a selected file, which is why they are not in 分支 or in the
+  selection-driven buttons.
+- **A version check that does not install anything.** 检查更新… reads the
+  project's public release list and compares semver tags with the running
+  bundle: `0.1.0-dev < 0.1.0`, `1.0.0-rc.9 < 1.0.0-rc.10`, and a tag that is not
+  a version (`nightly`) is never announced as newer. The three answers —
+  update available, already current, and *nothing has ever been published* —
+  are kept apart, because the third is not the second. There is no Sparkle, no
+  appcast and no signing key, so the prompt offers a download link and says the
+  user installs it manually; a check that failed never reads as "up to date".
+  It is **off by default**: it is the only request the app makes to a server the
+  user did not name, it sends nothing about the machine, and it runs at most
+  once a day.
+
 ### Added (macOS: branch operations — merge, switch, merge tracking)
 
 - **`svn merge` is a value before it is a process.** `MergeRequest` carries the

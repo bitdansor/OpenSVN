@@ -339,7 +339,9 @@ changelist 成员不在 `<target>` 下，也不是 entry 的属性，而是 `<ta
 
 本节其余条目是本次新增能力的**行为契约**，不是实现说明；两端（macOS / 其他平台）的语义、前置条件、副作用、失败后状态必须一致。契约先于或同步于实现，不是先写完代码再补文档。
 
-**写锁与中断日志的复用约定**：`OperationJournal.Entry.Kind` 是带穷尽 `recoveryAdvice` 的封闭枚举。本次新增的写操作不新增 `Kind`，而是复用现有枚举——`merge` / `switch` 记为 `.update`（"工作副本可能停在中间状态，运行清理"），`createLocalRepository` 记为 `.checkout`（"可能只完成了一部分，确认目录内容后再决定"）。这两种恢复建议恰好就是对应操作被中断后的真实状态，因此是语义契合而非权宜。三者一律走 R4 写锁 + `beginJournal` / `finishJournal`；危险操作一律由服务层拒绝未 `confirmed` 调用（R3）。
+**写锁与中断日志的复用约定**：`OperationJournal.Entry.Kind` 是带穷尽 `recoveryAdvice` 的封闭枚举。多数新增写操作不新增 `Kind`，而是复用现有枚举——`merge` / `switch` / 改深度记为 `.update`（"工作副本可能停在中间状态，运行清理"），`createLocalRepository` 记为 `.checkout`（"可能只完成了一部分，确认目录内容后再决定"）。这两种恢复建议恰好就是对应操作被中断后的真实状态，因此是语义契合而非权宜。
+
+唯一例外是 `patch`（§5.8）：它新增了 `.patch` 这个 `Kind`。理由是恢复建议不同——补丁被打断时会额外在未匹配的文件旁留下 `.svnpatch.rej` 文件，而 `.update` 的通用建议不会提到这些残留物。所有写操作一律走 R4 写锁 + `beginJournal` / `finishJournal`；危险操作一律由服务层拒绝未 `confirmed` 调用（R3）。
 
 ### 5.1 merge（分支合并 / merge tracking）
 
@@ -412,3 +414,39 @@ changelist 成员不在 `<target>` 下，也不是 entry 的属性，而是 `<ta
 3. **"按 UUID 分组后自动分别提交"是危险且误导的假实现。** 若服务层偷偷把外挂/别的仓库的路径也纳入分组并各发一次提交，等于在一次用户动作里静默提交了用户并未明确选择的、可能属于他人/他仓库的内容，违背 §1.14 的提交边界契约，也违背"预览—确认—提交"的可见性原则。分组本身还依赖 `svn info` 的网络往返与缓存一致性（§1.12 已说明 UUID 不匹配时缓存必须丢弃），把它做进提交路径只会增加不可预测的副作用。
 
 **因此采用的行为**：`commit` 保持"一次调用、单一仓库、路径来自同一工作副本"；调用方（UI）用 `StatusSnapshot.committable` 过滤掉 external 路径后再提交；若用户确实要提交某个 external 或另一个仓库，应打开那个工作副本、由用户显式发起一次独立的提交。这把"跨仓库分别提交"表达为**多次显式的用户动作**，而不是服务层一次隐式分组。此结论为书面约定，不产生任何新的分组/多提交代码。
+
+### 5.7 改深度（sparse working copy 的 `--set-depth`）
+
+| 项 | 契约 |
+|---|---|
+| 语义 | `update` 新增可选参数 `setDepth: WorkingCopyDepth?`，转为 `svn update --accept postpone --set-depth <infinity\|immediates\|files\|empty\|exclude> PATH`。深度值是独立类型 `WorkingCopyDepth`，**不复用** `CheckoutDepth`：`--depth` 只接受四个值，`--set-depth` 多一个 `exclude`，共用一个枚举会让「`--depth exclude`」这种 svn 必然拒绝的命令行在类型上合法 |
+| 入参 | `update(at:revision=nil,setDepth=nil,credential,progress)`；另有只读的 `workingCopyDepth(at:) -> WorkingCopyDepth?`（读 `svn info --xml` 的 `wc-info/depth`，不联网） |
+| 前置条件 | ① `setDepth` 与 `revision` **互斥**，同时给出抛 `SVN-9001` 且不启动子进程；② 目标为目录且 `setDepth == .exclude` 时，目录内不得存在未纳入版本控制或被忽略的条目（判定用 `status --no-ignore`，命中即抛 `SVN-0501` 并附路径清单）；③ 别的深度值无额外前置条件 |
+| 副作用 | 增删磁盘内容：`infinity`/`immediates`/`files`/`empty` 决定子树里保留多少；`exclude` 删除文件并让仓库不再记录该路径。**升级深度不会自动带回此前被 `exclude` 的路径**，需要在被排除的那一层单独再设一次。不改仓库、不需要提交。走 R4 写锁 + `.update` journal |
+| 幂等性 | 设为当前深度在语义上无操作，但命令仍会执行，可能顺带把该深度范围内的最新内容带进来。因此「无变化」不等于「未联网」 |
+| 失败后工作副本状态 | 可能停在中间状态（见下面的实测），需要刷新状态、必要时 `cleanup`。失败即 `finishJournal` |
+| 确认策略 | 不需要 `confirmed`。破坏性只集中在 `exclude`，由服务层前置检查兜住「做不到的那一半」，UI 另以红色提示说明「磁盘上的文件会被删除」 |
+
+**为什么 `setDepth` 与 `revision` 互斥（实测 svn 1.15.0）**：`svn update -r 1 --set-depth immediates dir` 在 `dir` 于 r1 尚不存在时，结果是把 `dir` **删掉**（输出 `D dir`，随后 `svn info dir` 报 `W155010 not found`）。两个意图混在一次调用里时，"改深度"会借"切到某个修订"的手删掉目标，而这既不是用户要求的，也无法从参数上看出来。改深度是"保留多少"的问题，与"哪个修订"无关，因此拒绝组合而不是让它有副作用。
+
+**为什么 `exclude` 要先检查目录内容（实测 svn 1.15.0）**：把一个含未纳入版本控制文件的目录 `--set-depth exclude`，svn **不报错、退出码 0**，但结果是：子树被取消版本控制、原文件全留在磁盘上变成 `?`，并且工作副本被打上 `L`（锁定）标记，下一条 svn 命令报 `E155037: Previous operation has not finished`。含**被忽略**文件的目录是另一种半成品：版本控制的文件被删掉、被忽略的文件留下、目录本身变成未版本控制（`?`）。两种都不该由 UI 事后补救——事后版本控制信息已经丢了，只能靠前置检查在启动子进程之前拦住。
+
+另外两条实测结论：单文件 `exclude`（无本地修改）会干净删除该文件；**有本地修改**的文件会被 svn 拒绝，但错误文案是 `E155010: The node '…' is not a committed directory`（对一个文件说"不是已提交的目录"），因此这条错误的含义必须由 `SVNErrorMapper` / 文档解释，不能直接丢给用户看。
+
+### 5.8 应用补丁（`svn patch`）
+
+| 项 | 契约 |
+|---|---|
+| 语义 | `applyPatch(PatchRequest)` → `svn patch [--dry-run] [--reverse-diff] [--ignore-whitespace] [--strip N] PATCHFILE [WCPATH]`。补丁文件是**第一个**位置参数，工作副本路径在其后 |
+| 入参 | `PatchRequest(patchFile, target, strip=0, reverse=false, ignoreWhitespace=false, dryRun=false)`；另有 `confirmed: Bool`、`progress`。`applying()` 返回去掉 `dryRun` 的同一请求，供预览后直接应用 |
+| 前置条件 | 补丁文件可读、`strip >= 0`（`validate()` 在启动子进程之前校验）；非 dry-run 必须 `confirmed == true`。路径含 `@` 时须在末尾补一个 `@`（见下），否则会被当成 peg 修订 |
+| 副作用 | 修改工作副本文件。补丁可以把文件内容清空→调度为删除，也可以新建文件→调度为添加，两者都可用 `svn revert` 撤销。未匹配的片段写入同目录的 `<文件>.svnpatch.rej`，原文件保持不变。走 R4 写锁 + `.patch` journal（dry-run 不取锁、不记 journal） |
+| 幂等性 | 否。同一补丁重复应用会得到 `already applied`（`>` 提示行）而不是零改动，不能靠退出码判断"已经应用过" |
+| 失败后工作副本状态 | 已匹配的片段**已经写入**，未匹配的留在 `.rej` 里——即"部分成功"是常态而非异常。因此本操作不把 `C`（冲突）或 `Skipped` 当作异常抛出，而是把它们作为 `PatchOutcome` 的字段返回，由调用方决定下一步 |
+| 确认策略 | **服务层强制**：非 dry-run 且 `confirmed == false` 抛 `SVN-0501`，不启动子进程。UI 的「应用」按钮在跑过一次与当前参数完全一致的 dry-run 之前保持禁用 |
+
+**成功判定不看退出码（实测 svn 1.15.0）**：`svn patch` 在以下两种情况下都返回 **0**，而一次改动都没落地——(a) 所有 hunk 被拒（输出 `C` + `> rejected hunk …` + `Summary of conflicts: Text conflicts: 1`）；(b) 所有目标都找不到（输出 `Skipped missing target: '…'` + `Skipped paths: 1`），这通常是把 `svn diff` 生成的、带工作副本目录名前缀的补丁按 `--strip 0` 应用的结果。因此 `PatchOutcome.succeeded` 的定义是：**至少有一个 `A`/`U`/`D`/`G` 条目，且没有 `C`、没有 `Skipped`**。
+
+**输出格式**：状态列与 `svn status` 相同，两列（内容、属性），列宽十字符后接路径。属性专用补丁输出形如 ` G        path`（内容列空、属性列 `G`）。以 `>` 开头的行是 svn 自己的提示（偏移、模糊匹配、`already applied`、`rejected hunk`），进 `notes` 供人阅读，不单独构成失败。`--strip` 的默认值是 0，与 svn 一致；用 `svn diff` 在工作副本内生成的补丁通常需要 `1`。
+
+**`@` 与 peg 修订**：svn 把每个路径操作数读作 `PATH@PEG`，且这一解析发生在选项解析**之前**，所以 `--` 也保护不了含 `@` 的路径。服务层统一用 `SVNPeg.escape` 在含 `@` 的路径末尾补一个 `@`（已经是 `@` 结尾的会变成 `@@`，svn 只剥掉最后一个），补丁文件与目标路径都要过这一步。
