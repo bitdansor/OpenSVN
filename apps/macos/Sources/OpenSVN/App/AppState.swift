@@ -48,6 +48,23 @@ final class AppState {
     /// Message from the most recent check, when it did not.
     private(set) var updateCheckError: String?
     private(set) var isCheckingForUpdates = false
+    /// Where the in-app update path has got to. Kept on `AppState` rather than in
+    /// the sheet so closing the sheet during a download neither cancels it nor
+    /// loses the failure message.
+    enum UpdateDownloadPhase: Equatable {
+        case idle
+        case downloading(UpdateDownloadProgress)
+        case verifying
+        case ready(stagedBundle: URL, version: AppVersion)
+        case installing
+        case failed(String)
+    }
+    private(set) var updateDownloadPhase: UpdateDownloadPhase = .idle
+    /// The Developer ID team of the *running* bundle. `nil` for an ad-hoc build,
+    /// which is the normal state of a local build; it is also the reason the
+    /// installer is unavailable there rather than lenient.
+    private(set) var runningTeamIdentifier: String?
+    private var updateDownloadTask: Task<Void, Never>?
     private(set) var demoPhase: DemoPhase = .idle
     /// Set when a previously generated demo working copy is still on disk, so the
     /// sheet can offer "open" instead of "generate".
@@ -634,6 +651,7 @@ final class AppState {
         defer { isCheckingForUpdates = false }
 
         updateCheckError = nil
+        resetUpdateDownload()
         let checker = UpdateChecker(currentVersion: UpdateChecker.bundleVersion())
         do {
             let result = try await checker.check()
@@ -644,8 +662,17 @@ final class AppState {
                 "检查更新：当前 \(checker.currentVersion)，结果 \(result.title)",
                 category: "update"
             )
+            if result.isUpdateAvailable {
+                // Asked once per check rather than per download: the answer is a
+                // property of the running bundle and cannot change while it runs.
+                runningTeamIdentifier = (try? await UpdateInstaller()
+                    .teamIdentifier(of: Bundle.main.bundleURL)) ?? nil
+            }
             if explicitlyRequested || result.isUpdateAvailable {
                 showingUpdateSheet = true
+            }
+            if settings.autoDownloadUpdates, canInstallUpdateAutomatically {
+                startUpdateDownload()
             }
         } catch {
             // A failed check must never look like "you are up to date".
@@ -657,6 +684,152 @@ final class AppState {
             if explicitlyRequested {
                 showingUpdateSheet = true
             }
+        }
+    }
+
+    // MARK: - In-app update
+
+    /// The release as something installable, when the feed carried a verifiable
+    /// archive. `nil` means "download it yourself".
+    var updatePackage: UpdatePackage? {
+        guard case .updateAvailable(_, let release) = updateCheckResult else { return nil }
+        return release.package
+    }
+
+    /// Why the automatic path is unavailable, phrased for the sheet. `nil` when
+    /// it is available.
+    ///
+    /// Two independent reasons, kept apart because they call for different
+    /// actions: a dev build will never install updates, while a release without
+    /// a digest can be fixed by publishing one.
+    var updateInstallBlocker: String? {
+        guard let package = updatePackage else {
+            return "这个版本没有提供可校验的安装包，只能下载后手动安装。"
+        }
+        guard package.isInstallable else {
+            return "发布方没有为安装包提供 SHA-256 摘要，无法校验，只能手动下载。"
+        }
+        guard let runningTeamIdentifier else {
+            return "当前构建不是 Developer ID 签名，无法确认更新包的发布者，因此不会自动安装。"
+        }
+        return "当前应用的签名团队是 \(runningTeamIdentifier)，但下载的更新包必须来自同一个团队。"
+    }
+
+    var canInstallUpdateAutomatically: Bool {
+        runningTeamIdentifier != nil && (updatePackage?.isInstallable ?? false)
+    }
+
+    func resetUpdateDownload() {
+        updateDownloadTask?.cancel()
+        updateDownloadTask = nil
+        updateDownloadPhase = .idle
+    }
+
+    func cancelUpdateDownload() {
+        updateDownloadTask?.cancel()
+        updateDownloadTask = nil
+        if case .installing = updateDownloadPhase { return }
+        updateDownloadPhase = .idle
+    }
+
+    /// Downloads, verifies and unpacks, stopping short of the swap.
+    ///
+    /// Every step is a refusal waiting to happen: a size mismatch, a digest
+    /// mismatch, a signature that is not Developer ID, a team that is not ours,
+    /// or a bundle whose version is not the one announced. Nothing is written
+    /// outside the staging directory until the user confirms the install.
+    func startUpdateDownload() {
+        guard updateDownloadTask == nil else { return }
+        guard let package = updatePackage, package.isInstallable,
+              let team = runningTeamIdentifier else { return }
+
+        updateDownloadTask = Task { [weak self] in
+            await self?.performUpdateDownload(package: package, team: team)
+            await MainActor.run { self?.updateDownloadTask = nil }
+        }
+    }
+
+    private func performUpdateDownload(package: UpdatePackage, team: String) async {
+        let updates = UpdateInstaller.updatesDirectory()
+        let staging = UpdateInstaller.stagingDirectory(for: package.version, in: updates)
+        let archive = staging.appendingPathComponent(package.archive.name)
+        let throttle = UpdateProgressThrottle()
+
+        do {
+            try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+            updateDownloadPhase = .downloading(UpdateDownloadProgress(
+                receivedBytes: 0,
+                expectedBytes: package.archive.byteCount
+            ))
+
+            _ = try await UpdateDownloader().download(package.archive, to: archive) { progress in
+                guard throttle.shouldReport(progress) else { return }
+                Task { @MainActor [weak self] in
+                    // A late callback must not overwrite the result of a
+                    // download that has already finished.
+                    guard let self, case .downloading = self.updateDownloadPhase else { return }
+                    self.updateDownloadPhase = .downloading(progress)
+                }
+            }
+
+            try Task.checkCancellation()
+            updateDownloadPhase = .verifying
+
+            let installer = UpdateInstaller()
+            let expanded = staging.appendingPathComponent("expanded", isDirectory: true)
+            let bundle = try await installer.unpack(archive: archive, into: expanded)
+            try await installer.verify(stagedBundle: bundle, version: package.version, team: team)
+
+            guard !Task.isCancelled else { return }
+            updateDownloadPhase = .ready(stagedBundle: bundle, version: package.version)
+            AppLog.shared.record(
+                .info,
+                "更新 \(package.version) 已下载并通过校验，等待用户确认安装",
+                category: "update"
+            )
+        } catch is CancellationError {
+            updateDownloadPhase = .idle
+        } catch let error as UpdateDownloadError {
+            if case .cancelled = error {
+                updateDownloadPhase = .idle
+            } else {
+                updateDownloadPhase = .failed(error.errorDescription ?? "下载失败。")
+                AppLog.shared.record(.warning, "更新下载失败：\(error.errorDescription ?? "")", category: "update")
+            }
+        } catch let error as UpdateInstallError {
+            updateDownloadPhase = .failed(error.errorDescription ?? "更新包校验失败。")
+            AppLog.shared.record(.warning, "更新包校验失败：\(error.errorDescription ?? "")", category: "update")
+        } catch {
+            updateDownloadPhase = .failed(error.localizedDescription)
+            AppLog.shared.record(.warning, "更新处理失败：\(error.localizedDescription)", category: "update")
+        }
+    }
+
+    /// Hands the swap to a helper that waits for this process to exit.
+    func installUpdateAndRelaunch() {
+        guard case .ready(let stagedBundle, let version) = updateDownloadPhase else { return }
+        let destination = Bundle.main.bundleURL
+        let helper = UpdateInstaller.updatesDirectory().appendingPathComponent("install.sh")
+        do {
+            _ = try UpdateInstaller().install(
+                stagedBundle: stagedBundle,
+                destination: destination,
+                helper: helper,
+                relaunch: true
+            )
+            updateDownloadPhase = .installing
+            AppLog.shared.record(
+                .info,
+                "已启动安装助手，退出后替换 \(destination.path) 为 \(version)",
+                category: "update"
+            )
+            NSApp.terminate(nil)
+        } catch let error as UpdateInstallError {
+            updateDownloadPhase = .failed(error.errorDescription ?? "无法启动安装。")
+            AppLog.shared.record(.error, "安装更新失败：\(error.errorDescription ?? "")", category: "update")
+        } catch {
+            updateDownloadPhase = .failed(error.localizedDescription)
+            AppLog.shared.record(.error, "安装更新失败：\(error.localizedDescription)", category: "update")
         }
     }
 

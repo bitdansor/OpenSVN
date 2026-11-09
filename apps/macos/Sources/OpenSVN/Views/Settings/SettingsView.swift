@@ -127,6 +127,7 @@ private struct SVNSettingsPane: View {
     @State private var autoRefresh = true
     @State private var previewBeforeUpdate = true
     @State private var checkForUpdates = false
+    @State private var autoDownloadUpdates = false
     @FocusState private var pathFocused: Bool
 
     var body: some View {
@@ -163,6 +164,8 @@ private struct SVNSettingsPane: View {
 
             Section {
                 Toggle("启动时检查新版本", isOn: $checkForUpdates)
+                Toggle("发现新版本时自动下载", isOn: $autoDownloadUpdates)
+                    .disabled(!checkForUpdates)
                 HStack {
                     Text(appState.isCheckingForUpdates ? "正在检查…" : "手动检查")
                     Spacer()
@@ -174,7 +177,7 @@ private struct SVNSettingsPane: View {
             } header: {
                 Text("版本")
             } footer: {
-                SettingsFooter("启动时检查默认关闭：这是本应用唯一会主动连接项目服务器的请求（GitHub 的 Releases 接口），只读取公开的版本信息，不携带任何本机数据，每天最多一次。关了也不影响菜单里的「检查更新…」。检查到新版本时只会给出下载页，不会自行下载或替换应用。")
+                SettingsFooter("启动时检查默认关闭：这是本应用唯一会主动连接项目服务器的请求（GitHub 的 Releases 接口），只读取公开的版本信息，不携带任何本机数据，每天最多一次。关了也不影响菜单里的「检查更新…」。自动下载只在启动检查开启时生效，而且只下载带 SHA-256 摘要、可校验的安装包；安装仍需你点「重新启动并安装」。更新包必须由与当前应用相同的 Developer ID 团队签名，否则会被拒绝——ad-hoc 签名的本地构建因此永远走手动下载。")
             }
         }
         .formStyle(.grouped)
@@ -194,6 +197,10 @@ private struct SVNSettingsPane: View {
             // `rebuildService: false`: this only changes what the next launch
             // does, so there is nothing to re-discover now.
             applySettings(appState, rebuildService: false) { $0.checkForUpdatesOnLaunch = value }
+            if !value { autoDownloadUpdates = false }
+        }
+        .onChange(of: autoDownloadUpdates) { _, value in
+            applySettings(appState, rebuildService: false) { $0.autoDownloadUpdates = value }
         }
     }
 
@@ -232,6 +239,7 @@ private struct SVNSettingsPane: View {
         autoRefresh = settings.autoRefresh
         previewBeforeUpdate = settings.previewBeforeUpdate
         checkForUpdates = settings.checkForUpdatesOnLaunch
+        autoDownloadUpdates = settings.autoDownloadUpdates
     }
 
     private func commitPath() {
