@@ -252,6 +252,14 @@ jobs:
     needs: [version, macos]
     if: startsWith(github.ref, 'refs/tags/v') && (inputs.dry_run == false || inputs.dry_run == null)
     steps:
+      # `gh release create --verify-tag` reads the local repository to confirm
+      # the tag exists, so this job needs one. Downloading the artifact alone was
+      # not enough: it failed with "fatal: not a git repository" the first time
+      # this step ever actually ran, because the job used to end in `exit 1`
+      # before reaching it. `fetch-depth: 0` brings the tags with it.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
       - name: Check the artifact set
         run: |
