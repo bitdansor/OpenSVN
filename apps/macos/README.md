@@ -1,6 +1,6 @@
 # OpenSVN for macOS (Swift 6 + SwiftUI/AppKit)
 
-> **Status: implemented and tested.** 256 tests in 44 suites pass (`swift test`),
+> **Status: implemented and tested.** 344 tests in 62 suites pass (`swift test`),
 > including round trips against a real svn 1.14.5. The app builds, launches, and
 > covers the working-copy loop end to end: checkout, edit, update preview,
 > three-way conflict resolution, commit, merge/switch, branch and repository
@@ -70,6 +70,11 @@ Locked-down environments that deny `~/.swiftpm` need
   nearest `.svn` root.
 - Destructive operations require an explicit `confirmed:` argument at the service
   layer. The UI cannot bypass it.
+- The updater replaces the app only after `codesign --verify --deep --strict`
+  passes **and** the staged bundle's `TeamIdentifier` matches the running one.
+  There is no override flag: on an ad-hoc build there is no team to compare, so
+  the in-app install is unavailable and the sheet says so instead of loosening
+  the check.
 - `--store-pristine=no` is refused below svn 1.15 *before* a process is spawned:
   opting in upgrades the working copy to format 32, which older clients cannot
   open at all.

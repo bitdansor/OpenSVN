@@ -12,7 +12,7 @@ macOS 端是 Swift 6 + SwiftUI/AppKit；Windows 端是 C++20 核心 + C ABI + C#
 
 > **当前状态：`v0.1.0-dev`，没有可下载的构建。** `release.yml` 的 `publish` job 以
 > `exit 1` 结束，这是故意的；唯一的产物是你自己构建的 `build/OpenSVN.app`。
-> macOS 是成熟的一侧：**256 个测试 / 44 个套件**全部通过，其中包含对真实 svn 1.14.5
+> macOS 是成熟的一侧：**344 个测试 / 62 个套件**全部通过，其中包含对真实 svn 1.14.5
 > 的往返验证，整条工作副本流程都能在窗口里走完。Windows 端可以构建、**110 个原生测试**
 > 全部通过，但只跑过 `fake_svn` 这个测试替身，从未在真实 `svn.exe` 上运行，也没有安装包。
 > 分平台细节见 [apps/macos/README.md](apps/macos/README.md)、
@@ -34,13 +34,14 @@ macOS 端是 Swift 6 + SwiftUI/AppKit；Windows 端是 C++20 核心 + C ABI + C#
 | 锁 | 加锁、解锁、强制抢占，逐路径显示持有者与锁定说明 |
 | 组织 | 变更列表及筛选、`svn:externals` 单独归类并排除在提交边界之外 |
 | 连接 | 单次操作的 HTTPS 证书信任、代理、SASL、客户端证书、密码存 Keychain |
+| 更新 | 读取发布列表比对版本、下载后算 SHA-256、校验 Developer ID 团队，确认后退出时替换并重启；未签名构建回退为手动下载 |
 
 Windows 端实现的是同一套契约的一个更窄子集；上表是 macOS 的陈述，不是跨平台承诺。
 
 ## 尚未实现
 
-- 自动检查更新；任何签名或公证的构建（需要 Developer ID 证书）。Mac App Store 路线已评估并否决，
-  三处结构性冲突记录在 [packaging/macos/distribution-decision.md](packaging/macos/distribution-decision.md)。
+- 任何签名或公证的构建（需要 Developer ID 证书）。更新器同时校验安装包摘要与签名团队，因此在 ad-hoc 构建上会拒绝安装、只给下载链接。
+  Mac App Store 路线已评估并否决，三处结构性冲突记录在 [packaging/macos/distribution-decision.md](packaging/macos/distribution-decision.md)。
 - 除 `svnadmin create` 之外的仓库管理：没有 `svnsync`、没有 dump/load 工作台、不能编辑 hook。
 - Windows 端：安装包、MSIX、签名、内置 `svn.exe`、三方合并编辑器。
 
@@ -88,7 +89,7 @@ Apache Subversion 1.10+。1.10 是 `--password-from-stdin` 出现的版本，而
 ```bash
 scripts/bootstrap-macos.sh                  # 检查工具链与 svn
 cd apps/macos && swift build                # 构建核心层与应用
-cd apps/macos && swift test                 # 256 个测试 / 44 个套件，需要真实 svn
+cd apps/macos && swift test                 # 344 个测试 / 62 个套件，需要真实 svn
 scripts/build-macos-app.sh                  # 生成 build/OpenSVN.app（debug，不带运行时）
 CONFIG=release scripts/build-macos-app.sh   # release 构建，自带 svn 运行时
 open build/OpenSVN.app
@@ -117,7 +118,7 @@ scripts/create-conflict-demo.sh        # ~/OpenSVN 合并演示
 
 ```bash
 scripts/bootstrap-macos.sh              # 缺什么依赖
-cd apps/macos && swift test             # 256 个测试 / 44 个套件
+cd apps/macos && swift test             # 344 个测试 / 62 个套件
 python3 scripts/verify-release.py       # VERSION / CHANGELOG / Info.plist / fixture 一致性
 python3 scripts/verify-release.py --bundle build/OpenSVN.app
 ```

@@ -6,6 +6,56 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (macOS: an updater that verifies before it replaces anything)
+
+- **The update is a verifiable package, not a link.** The release feed now reads
+  each asset's `digest` and `size`, and an installable update requires a `.zip`
+  whose SHA-256 GitHub computed. `dmg` remains what 下载 opens: a disk image has
+  to be mounted and dragged by a person, so it is the manual path and never the
+  automatic one. A zip without a digest degrades to a manual download instead of
+  being trusted — and an algorithm this code cannot compute (`sha512:…`) parses
+  to nothing, because a digest that *looks* verified while checking nothing is
+  worse than no digest at all.
+- **The bytes are checked before they are unpacked.** `UpdateDownloader` streams
+  to `~/Library/Application Support/OpenSVN/Updates/<version>/`, reports
+  progress, and refuses on a size mismatch, a digest mismatch, or a file above
+  the 512 MiB cap; a rejected archive is deleted rather than left for someone to
+  double-click. The digest is hashed in 1 MiB chunks so a 40 MB download does not
+  become an 80 MB memory spike.
+- **The trust anchor is the signature, not the server.** GitHub is treated as a
+  transport: whoever can publish to the release page can replace the bytes. So
+  the staged bundle must pass `codesign --verify --deep --strict`, and its
+  `TeamIdentifier` must equal the running app's — both read from the bundle, not
+  from a pinned constant that a fork would silently fail to update. An ad-hoc
+  build has no team to compare against, which is why the in-app install is
+  **unavailable** there and the sheet offers 下载 instead of pretending.
+- **The swap happens after the app is gone, because it has to.** The app cannot
+  replace its own bundle while it runs, so `UpdateInstaller` writes a POSIX
+  script that waits for this PID to exit (up to three minutes), expands the
+  staged copy to `<app>.new`, moves the old bundle to `<app>.previous` rather
+  than deleting it, and moves the new one in — restoring the backup if that last
+  move fails. It strips `com.apple.quarantine` and relaunches. Paths are
+  single-quoted (`'` becomes `'\''`), the backup path must end in `.previous`, and
+  an unwritable destination is refused before a script is written, so a
+  `/Applications` install without permission fails with a sentence instead of a
+  half-replaced app.
+- **Downloading can be automatic; installing cannot.** 设置 → 版本 gains 发现新版本时
+  自动下载 (off by default, and disabled unless launch checks are on). It starts
+  the download during a launch check and stops there: 重新启动并安装 is a separate
+  confirmation, because replacing the running application is the one action in
+  this app that cannot be undone from inside it. Nothing outside the staging
+  directory is touched before that confirmation.
+- **The sheet states which of the two reasons applies.** A release with no digest
+  is a publishing fix; a build with no Developer ID team never will install
+  updates. Collapsing both into "自动更新不可用" would send the user to the wrong
+  place, so `updateInstallBlocker` keeps them apart.
+- 27 tests, none of which replace a real application: digest parsing and
+  selection, SHA-256 over one chunk and three, the generated script's ordering
+  and quoting, and every refusal on the verification path (invalid signature,
+  ad-hoc bundle, another team, another bundle identifier, another version,
+  unwritable destination, archive with no app). The Swift suite is now 344 tests
+  across 62 suites.
+
 ### Added (macOS: sparse working copies, patches, and a version check)
 
 - **`svn update --set-depth` closes the sparse-working-copy loop.** Checking out
