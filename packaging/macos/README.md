@@ -9,7 +9,8 @@ Stage 6. What ships today, and what is still missing:
 | `entitlements.plist` | **done** — intentionally empty; the file documents why no hardened-runtime exception is needed |
 | `../../scripts/sign-macos-app.sh` | **done** — inside-out signing with `--options runtime`, Developer ID verification, manifest re-measurement |
 | `notarize.sh` | **done** — `notarytool submit --wait`, rejection-log retrieval, `stapler staple`, `spctl` check |
-| `dmg.json` | **missing** — `create-dmg` layout. S6-7 renames the artifact from `-UNSIGNED.zip` to `OpenSVN-<ver>-macos-<arch>.dmg` at the same time. |
+| `dmg.json` | **missing** — `create-dmg` layout. S6-7 changes the artifact from a `.zip` to `OpenSVN-<ver>-macos-<arch>.dmg` at the same time. |
+| `../../scripts/update-signing-key.swift` | **done** — generates the Ed25519 release key and signs `SHA256SUMS`; no Apple account involved |
 
 ## The app icon
 
@@ -83,18 +84,73 @@ reads a password from a file in the repo.
 
 ### CI secrets
 
-| secret | purpose |
-| --- | --- |
-| `MACOS_CERTIFICATE_P12` | base64 of the Developer ID Application certificate + private key (`.p12`) |
-| `MACOS_CERTIFICATE_PASSWORD` | password for that `.p12` |
-| `MACOS_KEYCHAIN_PASSWORD` | throwaway password for the temporary keychain |
-| `MACOS_SIGN_IDENTITY` | exact identity string, e.g. `Developer ID Application: Name (TEAMID)` |
-| `NOTARY_APPLE_ID` / `NOTARY_TEAM_ID` / `NOTARY_PASSWORD` | notary credentials |
+| secret | purpose | needed for |
+| --- | --- | --- |
+| `MACOS_CERTIFICATE_P12` | base64 of the Developer ID Application certificate + private key (`.p12`) | Apple signing |
+| `MACOS_CERTIFICATE_PASSWORD` | password for that `.p12` | Apple signing |
+| `MACOS_KEYCHAIN_PASSWORD` | throwaway password for the temporary keychain | Apple signing |
+| `MACOS_SIGN_IDENTITY` | exact identity string, e.g. `Developer ID Application: Name (TEAMID)` | Apple signing |
+| `NOTARY_APPLE_ID` / `NOTARY_TEAM_ID` / `NOTARY_PASSWORD` | notary credentials | Apple signing |
+| `UPDATE_SIGNING_KEY` | the single base64 line of `.secrets/update-signing-key` | every release |
 
-With the signing secrets absent, `release.yml` still builds an `-UNSIGNED`
-artifact for dry runs and **fails a tag build** at the end of the job. With them
-present it signs, notarises, staples, and re-verifies with
-`--require-signed --require-notarized`.
+Two ways to make a release verifiable, and a tag build needs one of them:
+
+- **Developer ID + notarisation.** The app's updater compares the staged
+  bundle's TeamIdentifier with the running app's. Costs an Apple Developer
+  account.
+- **A signed digest list.** The app carries an Ed25519 public key and checks the
+  signature on `SHA256SUMS`; the digest in that file then has to match the
+  archive byte for byte. Costs nothing, and it is what a public repository should
+  default to.
+
+With neither, `release.yml` still builds and uploads an artifact for a dry run,
+but a tag build fails at `Require a verifiable artifact` — publishing bytes that
+nothing can check would turn the updater's verification into decoration.
+
+## Free distribution: signing the digest list
+
+The whole chain is three files: `OpenSVN-<ver>-macos-arm64.zip`, `SHA256SUMS`,
+`SHA256SUMS.sig`. The last one is a detached Ed25519 signature over the exact
+bytes of `SHA256SUMS`, base64, one line.
+
+```bash
+# once per project, on your own machine
+swift scripts/update-signing-key.swift generate      # writes .secrets/update-signing-key (0600)
+swift scripts/update-signing-key.swift public-key    # paste the output into UpdateSigningKey.swift
+
+# once per release, after the zip exists
+shasum -a 256 OpenSVN-0.2.0-macos-arm64.zip > SHA256SUMS
+swift scripts/update-signing-key.swift sign SHA256SUMS
+swift scripts/update-signing-key.swift verify SHA256SUMS   # the same check the app performs
+```
+
+`release.yml` does the last three steps itself when `UPDATE_SIGNING_KEY` is set,
+and verifies the signature before uploading so a mistyped key fails in CI rather
+than on a user's Mac.
+
+**What this proves, and what it does not.** The signature says the digest list
+came from the holder of the private key, and the digest says the archive is
+exactly the bytes that list describes. Together that is enough to install safely.
+It says nothing about Apple having seen the build, so a *manual* download is still
+quarantined and has to be approved once:
+
+- macOS 14: right-click the app → 打开, then confirm.
+- macOS 15 and later: double-click, then 系统设置 → 隐私与安全性 → 仍要打开.
+
+An in-app update never hits this: the archive is fetched by the app itself, which
+carries no quarantine flag, and the install script strips the attribute anyway.
+
+**Rotation.** `UpdateSigningKey.trustedPublicKeysBase64` is a list. To rotate,
+add the new key, ship a release, then remove the old entry in the next one. A
+build only trusts what was compiled into it, so dropping the old key in the same
+release that introduces the new one would make that release unverifiable to
+everyone still on the previous version.
+
+**Losing the key** means no future release can be installed by existing builds
+without a new entry shipped in a build that still trusts the old one — which is
+why the key file is worth backing up somewhere that is not this repository.
+`.secrets/` is git-ignored; a private key inside a public repository would make
+every signature it ever produced worthless.
 
 ## What the clean-machine script does not prove
 
@@ -106,8 +162,10 @@ install, which is S6-6's last mile and needs a VM or spare machine.
 
 ## Known gap
 
-No Developer ID Application certificate exists in this project's possession yet,
-so every path above is exercised only with an Apple
-Development identity: signing and manifest refresh are verified, notarisation is
-not. `notarize.sh` refuses such a signature explicitly instead of failing later
-inside `notarytool`.
+No Developer ID Application certificate exists in this project's possession, so
+the Apple signing path is exercised only with an Apple Development identity:
+signing and manifest refresh are verified, notarisation is not. `notarize.sh`
+refuses such a signature explicitly instead of failing later inside
+`notarytool`. The unsigned path — signed digest list, ad-hoc bundle — is the one
+the project actually ships, and it is verified end to end by
+`UpdateManifestTests` plus `update-signing-key.swift verify`.

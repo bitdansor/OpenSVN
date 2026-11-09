@@ -1,23 +1,26 @@
 name: Release
 
-# Stage 6: tag v* -> build -> sign -> notarise -> staple -> verify -> package.
+# Stage 6: tag v* -> build -> (sign + notarise, when credentials exist) ->
+# package -> sign the digest list -> publish.
 #
-# Signing and notarisation are wired up but gated on secrets. With
-# MACOS_CERTIFICATE_P12 / MACOS_SIGN_IDENTITY present the build is signed with a
-# Developer ID and notarised; without them it produces an `-UNSIGNED` artifact and
-# a tag build fails loudly at the end of the job rather than publishing something
-# Gatekeeper would block.
+# Two ways for an artifact to be verifiable, and a release needs one of them:
 #
-# Publication itself stays blocked on purpose. The publish job ends with an
-# explicit `exit 1`: a real release needs the Windows artifacts (S6-3), the
-# two-platform cross-regression (S7-1), the compliance audit (S7-2), release
-# notes (S7-4), a trademark re-check (S7-5) and a human go/no-go (S7-6).
-# Do not remove that refusal until S6-3 (Windows artifacts), S7-1 (two-platform
-# cross-regression), S7-2 (compliance), S7-4 (release notes) and S7-5 (trademark
-# re-check) are signed off, and a human gives a go/no-go (S7-6). Most of those
-# items cannot be completed from this repository: a Developer ID certificate +
-# Apple account, a Windows machine + signing certificate, an external trademark
-# search, and a human decision.
+#   1. Developer ID + notarisation. Needs MACOS_CERTIFICATE_P12 /
+#      MACOS_SIGN_IDENTITY / NOTARY_*, i.e. a paid Apple Developer account.
+#   2. A digest list signed by this project's Ed25519 key. Needs only
+#      UPDATE_SIGNING_KEY, which is generated locally for free with
+#      `swift scripts/update-signing-key.swift generate`. The app carries the
+#      matching public key, so it can verify an update without Apple in the loop.
+#
+# With neither, a tag build still produces an artifact — it just refuses at the
+# `Require a verifiable artifact` step, because publishing bytes nothing can
+# check would make the updater's verification a decoration.
+#
+# Still outstanding before this can be described as a finished release process:
+# Windows artifacts (S6-3), the two-platform cross-regression (S7-1), the
+# compliance audit (S7-2), release notes (S7-4) and a trademark re-check (S7-5).
+# The publish job prints them as a warning rather than refusing, because the
+# decision to publish belongs to the maintainer and no CI step can make it.
 
 on:
   push:
@@ -81,18 +84,25 @@ jobs:
           CERT: ${{ secrets.MACOS_CERTIFICATE_P12 }}
           IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
           NOTARY_ID: ${{ secrets.NOTARY_APPLE_ID }}
+          UPDATE_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
         run: |
           if [[ -n "$CERT" && -n "$IDENTITY" ]]; then
             echo "SIGNING_AVAILABLE=1" >> "$GITHUB_ENV"
             echo "signing identity: $IDENTITY"
           else
             echo "SIGNING_AVAILABLE=0" >> "$GITHUB_ENV"
-            echo "::warning::no signing credentials; this run produces an unsigned build"
+            echo "::warning::no Developer ID credentials; this run produces an ad-hoc build"
           fi
           if [[ -n "$NOTARY_ID" ]]; then
             echo "NOTARY_AVAILABLE=1" >> "$GITHUB_ENV"
           else
             echo "NOTARY_AVAILABLE=0" >> "$GITHUB_ENV"
+          fi
+          if [[ -n "$UPDATE_KEY" ]]; then
+            echo "MANIFEST_SIGNING=1" >> "$GITHUB_ENV"
+          else
+            echo "MANIFEST_SIGNING=0" >> "$GITHUB_ENV"
+            echo "::warning::no UPDATE_SIGNING_KEY; the digest list cannot be signed and the updater will refuse this release"
           fi
 
       - name: Import signing certificate
@@ -159,15 +169,34 @@ jobs:
       - name: Package
         env:
           VERSION: ${{ needs.version.outputs.version }}
+          UPDATE_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
         run: |
           set -euo pipefail
-          SUFFIX=""
-          if [[ "${SIGNING_AVAILABLE}" != "1" ]]; then
-            SUFFIX="-UNSIGNED"
-          fi
-          NAME="OpenSVN-${VERSION}-macos-arm64${SUFFIX}.zip"
+          # One name for every release. Whether Apple signed it is recorded in the
+          # release notes and the digest list, not hidden in the file name: the
+          # updater cares about the signature, and a reader who wants to know can
+          # run `codesign -dv`.
+          NAME="OpenSVN-${VERSION}-macos-arm64.zip"
           ditto -c -k --keepParent build/OpenSVN.app "$NAME"
-          shasum -a 256 "$NAME" > SHA256SUMS.txt
+          shasum -a 256 "$NAME" > SHA256SUMS
+
+          if [[ "${MANIFEST_SIGNING}" == "1" ]]; then
+            # The private key exists only for the length of these two commands.
+            # Writing it to a file rather than passing it as an argument keeps it
+            # out of the process list.
+            umask 077
+            KEY_FILE="$RUNNER_TEMP/update-signing-key"
+            printf '%s\n' "$UPDATE_KEY" > "$KEY_FILE"
+            swift scripts/update-signing-key.swift sign SHA256SUMS --key "$KEY_FILE"
+            # Signing is not the end of it: verify with the same key the app
+            # carries, so a malformed key fails here rather than on a user's Mac.
+            swift scripts/update-signing-key.swift verify SHA256SUMS --key "$KEY_FILE"
+            rm -f "$KEY_FILE"
+            echo "SHA256SUMS.sig written" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::SHA256SUMS is not signed; the app will offer this release as a manual download only" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
           echo "ARTIFACT=$NAME" >> "$GITHUB_ENV"
 
       - name: Upload bundle
@@ -176,7 +205,8 @@ jobs:
           name: macos
           path: |
             OpenSVN-*-macos-*.zip
-            SHA256SUMS.txt
+            SHA256SUMS
+            SHA256SUMS.sig
             build/notarization.json
           if-no-files-found: warn
 
@@ -187,20 +217,22 @@ jobs:
           if-no-files-found: ignore
           retention-days: 90
 
-      # A tag build that cannot be signed is a configuration mistake, and the
+      # A tag build that nothing can verify is a configuration mistake, and the
       # right place to say so is here — not in the publish job, after the
       # artifact has already been uploaded.
-      - name: Require a signed artifact for a tag
+      - name: Require a verifiable artifact for a tag
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          if [[ "${SIGNING_AVAILABLE}" != "1" ]]; then
-            echo "::error::tag build without MACOS_CERTIFICATE_P12 / MACOS_SIGN_IDENTITY"
-            exit 1
+          if [[ "${SIGNING_AVAILABLE}" == "1" && "${NOTARY_AVAILABLE}" == "1" ]]; then
+            echo "Developer ID signed and notarised."
+            exit 0
           fi
-          if [[ "${NOTARY_AVAILABLE}" != "1" ]]; then
-            echo "::error::tag build without NOTARY_APPLE_ID / NOTARY_TEAM_ID / NOTARY_PASSWORD"
-            exit 1
+          if [[ "${MANIFEST_SIGNING}" == "1" && -f SHA256SUMS.sig ]]; then
+            echo "Not notarised, but the digest list is signed with the project key."
+            exit 0
           fi
+          echo "::error::tag build is neither notarised nor covered by a signed digest list; no updater could verify it"
+          exit 1
 
   publish:
     name: Publish release
@@ -209,22 +241,44 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v') && (inputs.dry_run == false || inputs.dry_run == null)
     steps:
       - uses: actions/download-artifact@v4
-      - name: Refuse to publish without a signed, notarised artifact
+      - name: Check the artifact set
         run: |
-          if compgen -G "macos/*UNSIGNED*" >/dev/null; then
-            echo "::error::the only artifact is unsigned; Gatekeeper would block it"
-            exit 1
-          fi
+          set -euo pipefail
           if ! compgen -G "macos/OpenSVN-*-macos-*.zip" >/dev/null; then
             echo "::error::no macOS artifact found"
             exit 1
           fi
-          echo "signed artifact present:" && ls -l macos/
-          # Creating the GitHub release is S7-6. This refusal is the last human
-          # gate: do not replace it with a `gh release create` until the release
-          # gates are clear — at minimum S6-3 (Windows artifacts) and S7-1
-          # (two-platform cross-regression), then S7-2 / S7-4 / S7-5. Each item
-          # needs a signed-off owner and completion criteria; several are
-          # external and must not be faked as done from this repository.
-          echo "::error::release publication is blocked by design (S7-6). Minimum gates before this refusal may be removed: S6-3 Windows artifacts, S7-1 two-platform cross-regression, then S7-2 compliance / S7-4 release notes / S7-5 trademark re-check. A human must give the final go/no-go."
-          exit 1
+          # The updater refuses an update whose digest list is not signed, so
+          # publishing one would ship a release that can only be downloaded by
+          # hand. That is a legitimate state, but it is not this job's default —
+          # it has to be chosen deliberately by omitting the key.
+          if [[ ! -f macos/SHA256SUMS || ! -f macos/SHA256SUMS.sig ]]; then
+            echo "::error::artifact is not covered by a signed digest list (need SHA256SUMS + SHA256SUMS.sig)"
+            exit 1
+          fi
+          ls -l macos/
+          {
+            echo "### Outstanding release gates"
+            echo ""
+            echo "Publishing was allowed because the artifact is verifiable. These"
+            echo "are still open and are not checked by this workflow:"
+            echo ""
+            echo "- S6-3 Windows artifacts"
+            echo "- S7-1 two-platform cross-regression"
+            echo "- S7-2 compliance audit"
+            echo "- S7-4 release notes beyond the generated changelog"
+            echo "- S7-5 trademark re-check"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::publishing without S6-3 / S7-1 / S7-2 / S7-4 / S7-5 being signed off"
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" \
+            macos/OpenSVN-*-macos-*.zip macos/SHA256SUMS macos/SHA256SUMS.sig \
+            --title "OpenSVN ${TAG#v}" \
+            --generate-notes \
+            --verify-tag

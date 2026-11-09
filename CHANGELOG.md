@@ -6,6 +6,37 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added (macOS: a free trust anchor for updates)
+
+- **Releases are verifiable without an Apple account.** The updater now accepts
+  two independent anchors: a Developer ID team that matches the running app, or a
+  `SHA256SUMS` digest list signed with an Ed25519 key this project owns
+  (`SHA256SUMS` + `SHA256SUMS.sig` beside the archive). The second costs nothing
+  and is what the project itself publishes, because `codesign` identity is
+  optional for an open-source project and a trustworthy update is not.
+  `scripts/update-signing-key.swift` generates the key and signs the list; the
+  matching public key is compiled into `UpdateSigningKey`, so verification needs
+  no network round trip beyond the two small files.
+- **Signature first, digest second, and they must agree.** `UpdateManifestLoader`
+  fetches the manifest, verifies its signature, and only then reads a digest out
+  of it — a feed that swaps both the archive and the manifest still fails. When
+  GitHub also reports a digest for the asset, the two must be identical: they
+  describe the same bytes, so a disagreement is a broken release, not a
+  preference. A manifest that does not name the archive, a signature from an
+  unknown key, a malformed list, and a build compiled without any trusted key are
+  each their own refusal, with their own sentence.
+- **Only the two named assets count.** `SHA256SUMS` and `SHA256SUMS.sig` are
+  matched by exact name; a loose match would let an asset called
+  `SHA256SUMS-old` decide what gets installed.
+- **Install works on an ad-hoc build.** `UpdateInstaller.verify` takes the
+  expected team as optional. `nil` means identity came from the signed manifest,
+  so the swap proceeds; a Developer ID build still requires a matching team, and
+  always did.
+- Publishing no longer waits on a certificate: `release.yml` signs the digest
+  list when `UPDATE_SIGNING_KEY` exists, and creates the GitHub release once the
+  artifact is verifiable. Without a signed list a tag build still fails, because
+  a release the updater has to refuse is not worth publishing.
+
 ### Added (macOS: an updater that verifies before it replaces anything)
 
 - **The update is a verifiable package, not a link.** The release feed now reads
@@ -27,8 +58,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the staged bundle must pass `codesign --verify --deep --strict`, and its
   `TeamIdentifier` must equal the running app's — both read from the bundle, not
   from a pinned constant that a fork would silently fail to update. An ad-hoc
-  build has no team to compare against, which is why the in-app install is
-  **unavailable** there and the sheet offers 下载 instead of pretending.
+  build has no team to compare against, so it relies on the signed release
+  manifest described above instead.
 - **The swap happens after the app is gone, because it has to.** The app cannot
   replace its own bundle while it runs, so `UpdateInstaller` writes a POSIX
   script that waits for this PID to exit (up to three minutes), expands the

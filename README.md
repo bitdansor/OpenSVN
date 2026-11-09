@@ -12,10 +12,12 @@ repository that already works from the command line keeps working here. The macO
 app is Swift 6 with SwiftUI/AppKit; the Windows app is a C++20 core behind a C ABI
 with a C# WinUI 3 shell. No Electron, no Qt, no embedded browser.
 
-> **Status: `v0.1.0-dev`, and there is no downloadable build.** The `publish` job
-> in `release.yml` ends in `exit 1` on purpose, so the only artifact is the
-> `build/OpenSVN.app` you build yourself. macOS is the mature half: 344 tests
-> across 62 suites pass, including a round trip against a real svn 1.14.5, and the
+> **Status: `v0.1.0-dev`, and no release has been tagged yet.** A tag build
+> produces `OpenSVN-<ver>-macos-arm64.zip` with a signed `SHA256SUMS` and
+> publishes it, so a downloadable build is one `git tag` away; nothing has been
+> tagged so far. Until then the only app to run is the `build/OpenSVN.app`
+> you build yourself. macOS is the mature half: 361 tests
+> across 66 suites pass, including a round trip against a real svn 1.14.5, and the
 > whole working-copy loop is reachable from the window. The Windows app builds and
 > passes its 110-test native suite, but has never run against a real `svn.exe` —
 > only a test double — and has no installer. Details:
@@ -39,17 +41,19 @@ service-layer API waiting for a button.
 | Locks | lock, unlock and steal, with owner and comment shown per path |
 | Organisation | changelists with filtering, `svn:externals` shown separately and kept outside the commit boundary |
 | Connections | per-operation HTTPS certificate trust, proxy, SASL, client certificates, passwords in the Keychain |
-| Updates | version check against the release feed, SHA-256 download, Developer ID signature check, and an in-place swap after the app quits; unsigned builds fall back to a manual download |
+| Updates | version check against the release feed, a signed digest list, SHA-256 verification of the download, and an in-place swap after the app quits. Two trust anchors: the project's own Ed25519 key (free) or a matching Developer ID team (needs a certificate) |
 
 Windows implements the same contract in a narrower slice; the table is a macOS
 claim, not a cross-platform one.
 
 ## Not implemented
 
-- Signed or notarised builds — those need a Developer ID certificate. The updater
-  verifies both the archive digest and the signature team, so on an ad-hoc build
-  it refuses to install and offers the download instead. Distribution through the
-  Mac App Store was evaluated and rejected; the three structural conflicts are
+- Apple-signed or notarised builds. Releases are ad-hoc signed and made
+  verifiable by an Ed25519 signature over `SHA256SUMS`;
+  [packaging/macos/README.md](packaging/macos/README.md) explains the trade and
+  the one-time approval Gatekeeper asks for on a manual download. Without an
+  Apple account that approval cannot be removed. Distribution through the Mac
+  App Store was evaluated and rejected; the three structural conflicts are
   recorded in
   [packaging/macos/distribution-decision.md](packaging/macos/distribution-decision.md).
 - Repository administration beyond `svnadmin create`: no `svnsync`, no dump/load
@@ -109,7 +113,7 @@ needs one on `PATH` or in a well-known location.
 ```bash
 scripts/bootstrap-macos.sh                  # checks toolchain and svn
 cd apps/macos && swift build                # build core + app
-cd apps/macos && swift test                 # 344 tests across 62 suites; needs a real svn
+cd apps/macos && swift test                 # 361 tests across 66 suites; needs a real svn
 scripts/build-macos-app.sh                  # build/OpenSVN.app (debug, no runtime)
 CONFIG=release scripts/build-macos-app.sh   # release build, bundles its own svn
 open build/OpenSVN.app
@@ -143,7 +147,7 @@ three ways — the guide explains the difference instead of asserting it.
 
 ```bash
 scripts/bootstrap-macos.sh              # what is missing in this environment?
-cd apps/macos && swift test             # 344 tests across 62 suites
+cd apps/macos && swift test             # 361 tests across 66 suites
 python3 scripts/verify-release.py       # VERSION / CHANGELOG / Info.plist / fixtures agree
 python3 scripts/verify-release.py --bundle build/OpenSVN.app
 ```
