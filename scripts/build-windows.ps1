@@ -73,8 +73,35 @@ if ($Generator) {
     $configureArgs += @('-G', $Generator)
     if ($Generator -like 'Visual Studio*') { $configureArgs += @('-A', 'x64') }
 }
-& cmake @configureArgs
-if ($LASTEXITCODE -ne 0) { throw "CMake configure failed (exit $LASTEXITCODE)" }
+# Configure downloads three dependency archives. A 504 from the host serving
+# them, or a dropped connection, fails this step for a reason that has nothing
+# to do with the checkout, so such a failure is retried a bounded number of
+# times. Only download-shaped failures are retried: a CMake script error or a
+# rejected hash is reported on the first attempt, because retrying those would
+# just delay a correct answer.
+$downloadFailure = 'The requested URL returned error|Failed to download|' +
+    'Could not resolve host|Failed to connect|Connection (timed out|was reset)|' +
+    'Transfer closed|SSL_ERROR|Build step for \S+ failed'
+$maxAttempts = 3
+
+for ($attempt = 1; ; $attempt++) {
+    $configureOutput = & cmake @configureArgs 2>&1 | Tee-Object
+    if ($LASTEXITCODE -eq 0) { break }
+    $exitCode = $LASTEXITCODE
+
+    $retryable = ($configureOutput | Out-String) -match $downloadFailure
+    if (-not $retryable -or $attempt -ge $maxAttempts) {
+        throw "CMake configure failed (exit $exitCode)"
+    }
+
+    Write-Host "`n  A dependency could not be fetched; retrying ($attempt/$maxAttempts)" -ForegroundColor Yellow
+    # A half-populated FetchContent tree keeps whatever the failed download
+    # left behind, so the sub-builds are dropped to force a fresh fetch.
+    $deps = Join-Path $BuildDir '_deps'
+    Get-ChildItem $deps -Directory -Filter '*-subbuild' -ErrorAction SilentlyContinue |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds (5 * $attempt)
+}
 
 Step "Building the native core"
 & cmake --build $BuildDir --config $Configuration --parallel
