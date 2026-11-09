@@ -29,7 +29,8 @@ could not be generated without them. The split here keeps the native layer a
 plain CMake library and makes the UI a SDK-style C# project.
 
 The first configure downloads pugixml 1.14, nlohmann/json 3.11.3 and GoogleTest
-1.14.0; the first app build restores Windows App SDK packages from NuGet.
+1.14.0, each verified against a pinned SHA-256; the first app build restores
+Windows App SDK packages from NuGet.
 
 ## Build and test
 

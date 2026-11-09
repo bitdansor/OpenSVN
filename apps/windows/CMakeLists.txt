@@ -10,9 +10,21 @@ option(OPENSVN_BUILD_TESTS "Build the Windows core tests" ON)
 
 include(FetchContent)
 
+# Each dependency is pinned by URL and by SHA-256. The hash is not a formality:
+# a gateway error page is served with HTTP 200 and an innocent file name, so
+# without it the failure only surfaces later as an extraction error that says
+# nothing about the network. With it, the mismatch is reported as what it is.
+#
+# pugixml comes from the tag archive, not the release asset. The v1.14 asset
+# answered 504 from GitHub's release CDN -- once in CI and twice by hand --
+# which is enough to turn `main` red over nothing, while the archive endpoint
+# kept serving the same tag throughout. nlohmann/json stays on its release
+# asset: that asset is a curated 110 KB package, where the repository archive
+# is 8 MB for a header-only library.
 FetchContent_Declare(
     pugixml
-    URL https://github.com/zeux/pugixml/releases/download/v1.14/pugixml-1.14.zip
+    URL https://github.com/zeux/pugixml/archive/refs/tags/v1.14.tar.gz
+    URL_HASH SHA256=610f98375424b5614754a6f34a491adbddaaec074e9044577d965160ec103d2e
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 set(PUGIXML_BUILD_TESTS OFF CACHE BOOL "" FORCE)
@@ -22,6 +34,7 @@ FetchContent_MakeAvailable(pugixml)
 FetchContent_Declare(
     nlohmann_json
     URL https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+    URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 set(JSON_BuildTests OFF CACHE BOOL "" FORCE)
@@ -32,6 +45,7 @@ if(OPENSVN_BUILD_TESTS)
     FetchContent_Declare(
         googletest
         URL https://github.com/google/googletest/archive/refs/tags/v1.14.0.tar.gz
+        URL_HASH SHA256=8ad598c73ad796e0d8280b082cebd82a630d73e73cd3c70057938a6501bba5d7
         DOWNLOAD_EXTRACT_TIMESTAMP TRUE
     )
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
