@@ -105,7 +105,7 @@ struct UpdateCheckSheet: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("安装包会先下载到「应用支持」目录，校验 SHA-256 与 Developer ID 签名之后才允许替换当前应用。")
+                Text("安装包会先下载到「应用支持」目录，校验 SHA-256 与发布签名（项目密钥或 Developer ID）之后才允许替换当前应用。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -124,7 +124,7 @@ struct UpdateCheckSheet: View {
         case .verifying:
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text("正在校验更新包…")
+                Text("正在校验发布清单与更新包…")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

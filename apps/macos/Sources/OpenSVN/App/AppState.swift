@@ -61,8 +61,11 @@ final class AppState {
     }
     private(set) var updateDownloadPhase: UpdateDownloadPhase = .idle
     /// The Developer ID team of the *running* bundle. `nil` for an ad-hoc build,
-    /// which is the normal state of a local build; it is also the reason the
-    /// installer is unavailable there rather than lenient.
+    /// which is the normal state of a build made from source without a
+    /// certificate. It is not a blocker by itself: an ad-hoc build can install a
+    /// release whose manifest is signed by a key compiled into the app. It only
+    /// matters for releases that offer GitHub's digest and nothing else, where
+    /// the team is the only identity available to compare.
     private(set) var runningTeamIdentifier: String?
     private var updateDownloadTask: Task<Void, Never>?
     private(set) var demoPhase: DemoPhase = .idle
@@ -699,24 +702,35 @@ final class AppState {
     /// Why the automatic path is unavailable, phrased for the sheet. `nil` when
     /// it is available.
     ///
-    /// Two independent reasons, kept apart because they call for different
-    /// actions: a dev build will never install updates, while a release without
-    /// a digest can be fixed by publishing one.
+    /// Three independent reasons, kept apart because each calls for a different
+    /// action: a build with no trusted key (rebuild it, or use a release that
+    /// carries a Developer ID), a release with no verifiable digest at all (the
+    /// publisher fixes it), and an unsigned build looking at a release that only
+    /// offers GitHub's digest (nothing to compare identity against).
     var updateInstallBlocker: String? {
         guard let package = updatePackage else {
             return "这个版本没有提供可校验的安装包，只能下载后手动安装。"
         }
-        guard package.isInstallable else {
-            return "发布方没有为安装包提供 SHA-256 摘要，无法校验，只能手动下载。"
+        if package.hasSignedManifest {
+            guard UpdateSigningKey.isConfigured else {
+                return "这个发布用项目密钥签了摘要，但当前构建没有内置对应的公钥，无法校验，只能手动下载。"
+            }
+            // Identity comes from the manifest key, so an ad-hoc build can
+            // install this without a Developer ID certificate. That is the
+            // point: the project's own key is the anchor.
+            return nil
         }
-        guard let runningTeamIdentifier else {
-            return "当前构建不是 Developer ID 签名，无法确认更新包的发布者，因此不会自动安装。"
+        guard package.archive.sha256 != nil else {
+            return "发布方既没有提供签名清单，也没有提供 SHA-256 摘要，无法校验，只能手动下载。"
         }
-        return "当前应用的签名团队是 \(runningTeamIdentifier)，但下载的更新包必须来自同一个团队。"
+        guard runningTeamIdentifier != nil else {
+            return "这个发布没有附带签名清单，而当前构建不是 Developer ID 签名，无法确认发布者，因此不会自动安装。"
+        }
+        return nil
     }
 
     var canInstallUpdateAutomatically: Bool {
-        runningTeamIdentifier != nil && (updatePackage?.isInstallable ?? false)
+        updateInstallBlocker == nil
     }
 
     func resetUpdateDownload() {
@@ -734,14 +748,15 @@ final class AppState {
 
     /// Downloads, verifies and unpacks, stopping short of the swap.
     ///
-    /// Every step is a refusal waiting to happen: a size mismatch, a digest
-    /// mismatch, a signature that is not Developer ID, a team that is not ours,
-    /// or a bundle whose version is not the one announced. Nothing is written
+    /// Every step is a refusal waiting to happen: a manifest whose signature
+    /// does not verify, a digest that disagrees with the feed, a size mismatch, a
+    /// bundle that is not an app, a version that is not the one announced, or a
+    /// bundle whose identifier is not this application. Nothing is written
     /// outside the staging directory until the user confirms the install.
     func startUpdateDownload() {
         guard updateDownloadTask == nil else { return }
-        guard let package = updatePackage, package.isInstallable,
-              let team = runningTeamIdentifier else { return }
+        guard let package = updatePackage, updateInstallBlocker == nil else { return }
+        let team = runningTeamIdentifier
 
         updateDownloadTask = Task { [weak self] in
             await self?.performUpdateDownload(package: package, team: team)
@@ -749,7 +764,7 @@ final class AppState {
         }
     }
 
-    private func performUpdateDownload(package: UpdatePackage, team: String) async {
+    private func performUpdateDownload(package: UpdatePackage, team: String?) async {
         let updates = UpdateInstaller.updatesDirectory()
         let staging = UpdateInstaller.stagingDirectory(for: package.version, in: updates)
         let archive = staging.appendingPathComponent(package.archive.name)
@@ -757,12 +772,28 @@ final class AppState {
 
         do {
             try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true)
+
+            // The digest is resolved before a byte is downloaded: asking for the
+            // archive first and then looking for something to compare it against
+            // would waste the transfer and invite skipping the check.
+            let expectedDigest: String
+            if package.hasSignedManifest {
+                updateDownloadPhase = .verifying
+                expectedDigest = try await UpdateManifestLoader().verifiedDigest(for: package)
+            } else if let digest = package.archive.sha256 {
+                expectedDigest = digest
+            } else {
+                throw UpdateManifestError.manifestMissing
+            }
+
+            var asset = package.archive
+            asset.sha256 = expectedDigest
             updateDownloadPhase = .downloading(UpdateDownloadProgress(
                 receivedBytes: 0,
                 expectedBytes: package.archive.byteCount
             ))
 
-            _ = try await UpdateDownloader().download(package.archive, to: archive) { progress in
+            _ = try await UpdateDownloader().download(asset, to: archive) { progress in
                 guard throttle.shouldReport(progress) else { return }
                 Task { @MainActor [weak self] in
                     // A late callback must not overwrite the result of a
@@ -796,6 +827,9 @@ final class AppState {
                 updateDownloadPhase = .failed(error.errorDescription ?? "下载失败。")
                 AppLog.shared.record(.warning, "更新下载失败：\(error.errorDescription ?? "")", category: "update")
             }
+        } catch let error as UpdateManifestError {
+            updateDownloadPhase = .failed(error.errorDescription ?? "发布清单校验失败。")
+            AppLog.shared.record(.warning, "发布清单校验失败：\(error.errorDescription ?? "")", category: "update")
         } catch let error as UpdateInstallError {
             updateDownloadPhase = .failed(error.errorDescription ?? "更新包校验失败。")
             AppLog.shared.record(.warning, "更新包校验失败：\(error.errorDescription ?? "")", category: "update")

@@ -71,7 +71,7 @@ public enum UpdateInstallError: Error, LocalizedError, Sendable, Equatable {
         case .signatureInvalid(let detail):
             return "更新包的代码签名无效：\(detail)"
         case .notDeveloperIDSigned:
-            return "更新包不是 Developer ID 签名，无法确认发布者，已拒绝安装。"
+            return "当前应用是这个 Developer ID 团队签名的，但更新包没有团队标识，已拒绝安装。"
         case .teamIdentifierMismatch(let expected, let found):
             return "更新包的签名团队是 \(found)，与当前应用的 \(expected) 不一致，已拒绝安装。"
         case .bundleIdentifierMismatch(let expected, let found):
@@ -88,11 +88,15 @@ public enum UpdateInstallError: Error, LocalizedError, Sendable, Equatable {
 
 /// Verifies a staged update, then swaps it in after the app exits.
 ///
-/// The trust anchor is the signature, not the feed. GitHub is treated as a
-/// transport: anyone who can publish to the release page can replace the bytes,
-/// so the one check that matters is that the staged `.app` is signed by the same
-/// Developer ID team as the running copy. An ad-hoc build has no team to compare
-/// against, and the installer refuses rather than accepting itself.
+/// GitHub is treated as transport, not as authority: anyone who can publish to
+/// the release page can replace the bytes. Authenticity comes from one of two
+/// anchors — a release manifest signed by a key this build trusts (free, and the
+/// default for an open-source project), or a Developer ID signature whose team
+/// equals the running app's (needs a certificate that costs money every year).
+/// `verify(stagedBundle:version:team:)` takes the team as optional for exactly
+/// that reason; `nil` means "identity was established by the signed manifest".
+/// Integrity and identity are still both required, and neither check has an
+/// override flag.
 public struct UpdateInstaller: Sendable {
     public static let bundleIdentifier = "cn.opensvn.app"
 
@@ -128,9 +132,15 @@ public struct UpdateInstaller: Sendable {
         return nil
     }
 
-    /// Signature valid, signed by `team`, and the staged bundle is the version
-    /// the release announced.
-    public func verify(stagedBundle: URL, version: AppVersion, team: String) async throws {
+    /// Signature valid, and the staged bundle is the version the release
+    /// announced.
+    ///
+    /// `team` is the *expected* Developer ID team, which is `nil` when the
+    /// running build is ad-hoc. In that case identity was established by the
+    /// signed release manifest instead, and there is no team to compare against
+    /// — requiring one would refuse every update of an unsigned build, which is
+    /// the build most users of a free project will have.
+    public func verify(stagedBundle: URL, version: AppVersion, team: String?) async throws {
         guard stagedBundle.pathExtension == "app" else {
             throw UpdateInstallError.notAnAppBundle(stagedBundle.path)
         }
@@ -143,11 +153,13 @@ public struct UpdateInstaller: Sendable {
             throw UpdateInstallError.signatureInvalid(check.output.trimmingCharacters(in: .whitespacesAndNewlines))
         }
 
-        guard let foundTeam = try await teamIdentifier(of: stagedBundle) else {
-            throw UpdateInstallError.notDeveloperIDSigned
-        }
-        guard foundTeam == team else {
-            throw UpdateInstallError.teamIdentifierMismatch(expected: team, found: foundTeam)
+        if let team {
+            guard let foundTeam = try await teamIdentifier(of: stagedBundle) else {
+                throw UpdateInstallError.notDeveloperIDSigned
+            }
+            guard foundTeam == team else {
+                throw UpdateInstallError.teamIdentifierMismatch(expected: team, found: foundTeam)
+            }
         }
 
         let info = Bundle(url: stagedBundle)?.infoDictionary
