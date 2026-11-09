@@ -76,18 +76,30 @@ if ($Generator) {
 # Configure downloads three dependency archives. A 504 from the host serving
 # them, or a dropped connection, fails this step for a reason that has nothing
 # to do with the checkout, so such a failure is retried a bounded number of
-# times. Only download-shaped failures are retried: a CMake script error or a
-# rejected hash is reported on the first attempt, because retrying those would
-# just delay a correct answer.
+# times. Only the transport failures themselves are matched, never the
+# `Build step for <dep> failed` summary that follows every one of them: a hash
+# mismatch produces that same summary, and retrying a rejected hash would only
+# delay a correct answer.
 $downloadFailure = 'The requested URL returned error|Failed to download|' +
     'Could not resolve host|Failed to connect|Connection (timed out|was reset)|' +
-    'Transfer closed|SSL_ERROR|Build step for \S+ failed'
+    'Transfer closed|SSL_ERROR'
 $maxAttempts = 3
 
 for ($attempt = 1; ; $attempt++) {
-    $configureOutput = & cmake @configureArgs 2>&1 | Tee-Object
-    if ($LASTEXITCODE -eq 0) { break }
+    # Reading the log is what tells a download failure apart from a real error,
+    # but redirected native stderr arrives as an error record, and `Stop` would
+    # turn that into a terminating error before it could be read. Relaxed for
+    # the call only; the exit code is checked by hand straight after.
+    $stopOnError = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    # Reset first: Windows PowerShell 5.1 appends to the variable handed to
+    # Tee-Object instead of replacing it.
+    $configureOutput = $null
+    & cmake @configureArgs 2>&1 | Tee-Object -Variable configureOutput
     $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = $stopOnError
+
+    if ($exitCode -eq 0) { break }
 
     $retryable = ($configureOutput | Out-String) -match $downloadFailure
     if (-not $retryable -or $attempt -ge $maxAttempts) {
