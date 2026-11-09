@@ -22,7 +22,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP="${APP:-$ROOT/build/OpenSVN.app}"
-VERSION="$(tr -d '[:space:]' < "$ROOT/VERSION")"
+# `VERSION` is normally read from the file, which is authoritative. CI already
+# exports the version its own `version` job validated, so honour that when it is
+# set: two places computing the name is how a zip and a dmg end up with
+# different versions in the same release.
+VERSION="${VERSION:-$(tr -d '[:space:]' < "$ROOT/VERSION")}"
 
 if [[ ! -d "$APP" ]]; then
   echo "error: no bundle at $APP" >&2
