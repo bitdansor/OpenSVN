@@ -134,6 +134,10 @@ public struct ReleaseInfo: Sendable, Hashable {
     public var pageURL: URL?
     /// Direct asset URL when a release carries a `.dmg`; `nil` otherwise.
     public var downloadURL: URL?
+    /// The `.zip` this build could verify and install, when the release has one.
+    /// `nil` is the normal state for a release that is only meant to be
+    /// downloaded by hand.
+    public var archive: UpdateAsset?
     public var isPrerelease: Bool
     public var publishedAt: Date?
 
@@ -144,6 +148,7 @@ public struct ReleaseInfo: Sendable, Hashable {
         notes: String? = nil,
         pageURL: URL? = nil,
         downloadURL: URL? = nil,
+        archive: UpdateAsset? = nil,
         isPrerelease: Bool = false,
         publishedAt: Date? = nil
     ) {
@@ -153,6 +158,7 @@ public struct ReleaseInfo: Sendable, Hashable {
         self.notes = notes
         self.pageURL = pageURL
         self.downloadURL = downloadURL
+        self.archive = archive
         // Two independent signals, either of which is enough: GitHub's
         // `prerelease` flag (which a maintainer sets) and the tag's own
         // pre-release suffix. A `-rc.1` tag marked as a normal release is still
@@ -164,6 +170,22 @@ public struct ReleaseInfo: Sendable, Hashable {
     /// What to show as the version: the parsed form when there is one, else the
     /// tag verbatim.
     public var displayVersion: String { version?.description ?? tag }
+
+    /// The installable form of this release, or `nil` when it can only be
+    /// downloaded by hand.
+    ///
+    /// Version-less tags (`nightly`) are excluded here, not later: an installer
+    /// has to compare what it staged against a number, and there is no number.
+    public var package: UpdatePackage? {
+        guard let version, let archive else { return nil }
+        return UpdatePackage(
+            version: version,
+            tag: tag,
+            archive: archive,
+            pageURL: pageURL,
+            isPrerelease: isPrerelease
+        )
+    }
 }
 
 /// The three answers a check can give.
@@ -204,6 +226,12 @@ public enum UpdateCheckResult: Sendable, Hashable {
                 parts.append(clipped)
             }
             parts.append("这个版本不会自动安装：下载后手动替换应用即可。")
+            // The sentence above is the fallback, not the whole truth: when the
+            // release carries a verifiable archive, the sheet offers an in-app
+            // install instead and this line is replaced.
+            if release.package?.isInstallable == true {
+                parts[parts.count - 1] = "可以在应用内下载、校验并安装这个版本；安装会在你确认后、退出应用时替换旧版本。"
+            }
             return parts.joined(separator: "\n\n")
         case .upToDate(let current, let latest):
             if let latest, latest != current {

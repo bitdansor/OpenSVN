@@ -77,10 +77,27 @@ public struct GitHubReleaseFeed: UpdateFeed {
     private struct Asset: Decodable {
         var name: String
         var browserDownloadURL: String
+        /// `"sha256:<hex>"`, when GitHub computed one for the asset. Optional
+        /// because an asset uploaded through the API before this field existed
+        /// has no digest, and inventing one here would defeat the check.
+        var digest: String?
+        var size: Int64?
 
         enum CodingKeys: String, CodingKey {
             case name
             case browserDownloadURL = "browser_download_url"
+            case digest
+            case size
+        }
+
+        var updateAsset: UpdateAsset? {
+            guard let url = URL(string: browserDownloadURL) else { return nil }
+            return UpdateAsset(
+                name: name,
+                url: url,
+                byteCount: (size ?? 0) > 0 ? size : nil,
+                sha256: UpdateAsset.parseDigest(digest)
+            )
         }
     }
 
@@ -110,12 +127,23 @@ public struct GitHubReleaseFeed: UpdateFeed {
             // Prefer a disk image; a source archive is not something a user can
             // drag into /Applications, so it is never offered as the download.
             let dmg = assets.first { $0.name.lowercased().hasSuffix(".dmg") }
+            // The automatic path needs a `.zip`: it can be unpacked into a
+            // staging directory and inspected before anything is replaced, and
+            // it does not require mounting a disk image on the user's desktop.
+            // A `.zip` that is really a source snapshot is filtered by requiring
+            // a digest — GitHub computes one for uploaded binaries, and a
+            // compromised feed can strip it, which only downgrades the release
+            // to manual download rather than bypassing the check.
+            let bundleZip = assets.first {
+                $0.name.lowercased().hasSuffix(".zip") && $0.updateAsset?.sha256 != nil
+            }
             return ReleaseInfo(
                 tag: tagName,
                 name: name,
                 notes: body,
                 pageURL: URL(string: htmlURL),
                 downloadURL: (dmg ?? assets.first).flatMap { URL(string: $0.browserDownloadURL) },
+                archive: bundleZip?.updateAsset,
                 isPrerelease: prerelease,
                 publishedAt: publishedAt
             )
