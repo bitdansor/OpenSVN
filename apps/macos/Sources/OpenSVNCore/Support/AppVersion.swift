@@ -138,6 +138,10 @@ public struct ReleaseInfo: Sendable, Hashable {
     /// `nil` is the normal state for a release that is only meant to be
     /// downloaded by hand.
     public var archive: UpdateAsset?
+    /// `SHA256SUMS`, when the release publishes one.
+    public var manifest: UpdateAsset?
+    /// `SHA256SUMS.sig`, when the release publishes one.
+    public var manifestSignature: UpdateAsset?
     public var isPrerelease: Bool
     public var publishedAt: Date?
 
@@ -149,6 +153,8 @@ public struct ReleaseInfo: Sendable, Hashable {
         pageURL: URL? = nil,
         downloadURL: URL? = nil,
         archive: UpdateAsset? = nil,
+        manifest: UpdateAsset? = nil,
+        manifestSignature: UpdateAsset? = nil,
         isPrerelease: Bool = false,
         publishedAt: Date? = nil
     ) {
@@ -159,6 +165,8 @@ public struct ReleaseInfo: Sendable, Hashable {
         self.pageURL = pageURL
         self.downloadURL = downloadURL
         self.archive = archive
+        self.manifest = manifest
+        self.manifestSignature = manifestSignature
         // Two independent signals, either of which is enough: GitHub's
         // `prerelease` flag (which a maintainer sets) and the tag's own
         // pre-release suffix. A `-rc.1` tag marked as a normal release is still
@@ -182,6 +190,8 @@ public struct ReleaseInfo: Sendable, Hashable {
             version: version,
             tag: tag,
             archive: archive,
+            manifest: manifest,
+            manifestSignature: manifestSignature,
             pageURL: pageURL,
             isPrerelease: isPrerelease
         )

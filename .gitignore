@@ -45,6 +45,10 @@ tmp/
 /tests/
 
 # Credentials / secrets — never commit
+# `.secrets/` holds the Ed25519 key that signs release manifests. A private key
+# in a public repository would make every signature worthless, so the directory
+# is ignored as a whole rather than by extension.
+/.secrets/
 .env
 .env.*
 *.pem

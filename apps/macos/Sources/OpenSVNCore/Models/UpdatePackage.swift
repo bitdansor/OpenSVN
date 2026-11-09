@@ -48,6 +48,12 @@ public struct UpdatePackage: Sendable, Hashable {
     /// A `.zip`, not a `.dmg`: it can be unpacked into a staging directory and
     /// inspected before anything is swapped, and it needs no user-visible mount.
     public var archive: UpdateAsset
+    /// `SHA256SUMS`, published beside the archive and signed by a key this build
+    /// trusts. Optional because a release may predate the key or be meant for
+    /// manual download only.
+    public var manifest: UpdateAsset?
+    /// `SHA256SUMS.sig` — base64 Ed25519 over the exact bytes of `SHA256SUMS`.
+    public var manifestSignature: UpdateAsset?
     public var pageURL: URL?
     public var isPrerelease: Bool
 
@@ -55,16 +61,33 @@ public struct UpdatePackage: Sendable, Hashable {
         version: AppVersion,
         tag: String,
         archive: UpdateAsset,
+        manifest: UpdateAsset? = nil,
+        manifestSignature: UpdateAsset? = nil,
         pageURL: URL? = nil,
         isPrerelease: Bool = false
     ) {
         self.version = version
         self.tag = tag
         self.archive = archive
+        self.manifest = manifest
+        self.manifestSignature = manifestSignature
         self.pageURL = pageURL
         self.isPrerelease = isPrerelease
     }
 
-    /// Whether the bytes can be checked before they are installed.
-    public var isInstallable: Bool { archive.sha256 != nil }
+    /// Whether the release carries a signed digest list. This is the free trust
+    /// anchor: no Apple account, no annual fee, just a key this project owns.
+    public var hasSignedManifest: Bool {
+        manifest != nil && manifestSignature != nil
+    }
+
+    /// Whether the bytes can be checked at all before they are installed.
+    ///
+    /// Two independent sources: a signed manifest (self-managed key), or the
+    /// digest GitHub computed for the uploaded asset combined with a matching
+    /// Developer ID team on the staged bundle. The second needs a certificate;
+    /// the first does not, which is why both exist.
+    public var isInstallable: Bool {
+        hasSignedManifest || archive.sha256 != nil
+    }
 }
