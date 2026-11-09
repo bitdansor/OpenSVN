@@ -142,6 +142,7 @@ LAYOUT_FILES = [
     "apps/windows/src/ui/OpenSVN.App/OpenSVN.App.csproj",
     "scripts/bootstrap-macos.sh",
     "scripts/build-macos-app.sh",
+    "scripts/package-macos-dmg.sh",
     "scripts/bootstrap-windows.ps1",
     "scripts/build-windows.ps1",
     "scripts/setup-test-repo.sh",
