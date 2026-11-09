@@ -32,6 +32,14 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   expected team as optional. `nil` means identity came from the signed manifest,
   so the swap proceeds; a Developer ID build still requires a matching team, and
   always did.
+- **A first install that does not trip Gatekeeper.** `scripts/install-macos.sh`
+  fetches the latest release from a terminal, checks the archive's SHA-256 against
+  the published `SHA256SUMS`, refuses a bundle that fails `codesign --verify`, and
+  copies it to `/Applications` — moving an existing install to `~/.Trash` instead
+  of deleting it. `curl` writes no quarantine flag, so an ad-hoc build opens
+  without the one-time 仍要打开 detour. It verifies integrity, not authorship, and
+  the script says so: a shell has no Ed25519 verifier, so authenticity begins with
+  the first in-app update.
 - Publishing no longer waits on a certificate: `release.yml` signs the digest
   list when `UPDATE_SIGNING_KEY` exists, and creates the GitHub release once the
   artifact is verifiable. Without a signed list a tag build still fails, because

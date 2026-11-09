@@ -69,6 +69,15 @@ third_party/           第三方依赖清单与许可证义务
 之后「检查更新…」装的新版本不再经过 Gatekeeper。自己从源码构建的产物没有 quarantine 标记，
 不会有这一步。界面是中文的，下面写的都是界面上真实的字。
 
+不想走这一步，就用终端装——`curl` 下载的文件不带 quarantine 标记，装完直接打开：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bitdansor/OpenSVN/main/scripts/install-macos.sh | bash
+```
+
+脚本会校验 `SHA256SUMS` 里的 SHA-256，再装到 `/Applications`。要说清楚的是：**第一步的信任
+只到 TLS 为止**——shell 没有 Ed25519 校验器，签名链从应用内的第一次更新才开始生效。
+
 1. **检出** — 工具栏「检出」，或「检出仓库…」（⇧⌘O），填「仓库 URL」「目标目录」。只想看看、
    不留工作副本，就用「只看仓库（不检出）…」。
 2. **提交** — 「变更」页列出改动，点「去提交」到「提交」页，勾选文件、写「提交说明」，

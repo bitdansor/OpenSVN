@@ -87,6 +87,18 @@ Gatekeeper does not evaluate. A bundle you build from source carries no quaranti
 flag at all. The interface is in Chinese, so the labels below are the literal
 strings you will see.
 
+To skip that step, install from a terminal — `curl` writes no quarantine flag, so
+the app opens straight away:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bitdansor/OpenSVN/main/scripts/install-macos.sh | bash
+```
+
+The script checks the archive's SHA-256 against the release's `SHA256SUMS` before
+copying it to `/Applications`. Be clear about what that means: **the first install
+trusts TLS to github.com only.** A shell script has no Ed25519 verifier, so the
+signed chain starts with the first in-app update.
+
 1. **Check out** — **检出** in the toolbar, or **检出仓库…** (⇧⌘O): fill **仓库 URL**
    and **目标目录**. To look around without creating a working copy, use
    **只看仓库（不检出）…**.

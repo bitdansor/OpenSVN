@@ -140,6 +140,21 @@ quarantined and has to be approved once:
 An in-app update never hits this: the archive is fetched by the app itself, which
 carries no quarantine flag, and the install script strips the attribute anyway.
 
+A user who would rather not be prompted at all can install from a terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/bitdansor/OpenSVN/main/scripts/install-macos.sh | bash
+```
+
+`scripts/install-macos.sh` resolves the latest tag from the `/releases/latest`
+redirect (no JSON parser, no python3), downloads the archive and `SHA256SUMS`,
+compares the digest, refuses an archive that fails `codesign --verify`, and copies
+the result to `/Applications` — moving any previous version to `~/.Trash` rather
+than deleting it. `curl` sets no quarantine flag, so Gatekeeper never sees the
+bundle. The honest limit: the bootstrap step verifies integrity, not authorship,
+because a shell has no Ed25519 verifier. Authenticity starts with the first
+in-app update, which is checked against the key compiled into the app.
+
 **Rotation.** `UpdateSigningKey.trustedPublicKeysBase64` is a list. To rotate,
 add the new key, ship a release, then remove the old entry in the next one. A
 build only trusts what was compiled into it, so dropping the old key in the same
