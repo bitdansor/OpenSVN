@@ -88,12 +88,12 @@ public struct MergeRequest: Sendable, Hashable {
         switch style {
         case .automatic(let sourceURL, let revisions):
             guard !sourceURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw SVNError(code: .invalidInvocation, message: "合并来源 URL 不能为空")
+                throw SVNError(code: .invalidInvocation, message: L.t("合并来源 URL 不能为空"))
             }
             if let revisions {
                 switch revisions {
                 case .changes(let list) where list.isEmpty:
-                    throw SVNError(code: .invalidInvocation, message: "挑拣合并至少需要一个修订号")
+                    throw SVNError(code: .invalidInvocation, message: L.t("挑拣合并至少需要一个修订号"))
                 default:
                     break
                 }
@@ -101,7 +101,7 @@ public struct MergeRequest: Sendable, Hashable {
         case .twoURL(let leftURL, let rightURL):
             guard !leftURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   !rightURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                throw SVNError(code: .invalidInvocation, message: "两 URL 合并的两个来源都不能为空")
+                throw SVNError(code: .invalidInvocation, message: L.t("两 URL 合并的两个来源都不能为空"))
             }
         }
     }
@@ -155,21 +155,21 @@ public enum MergePreview {
         let summary: String
         switch request.style {
         case .automatic(let sourceURL, _):
-            summary = "将「\(leaf(sourceURL))」合并到「\(targetName)」"
+            summary = L.f("将「%@」合并到「%@」", String(describing: leaf(sourceURL)), String(describing: targetName))
         case .twoURL(let leftURL, let rightURL):
-            summary = "将「\(leaf(leftURL))」与「\(leaf(rightURL))」的差异合并到「\(targetName)」"
+            summary = L.f("将「%@」与「%@」的差异合并到「%@」", String(describing: leaf(leftURL)), String(describing: leaf(rightURL)), String(describing: targetName))
         }
 
         var notes: [String] = [
-            "这是本地合并：改动先进入工作副本，需要再执行一次提交才会进入仓库。",
-            "工作副本里未提交的修改可能与合并结果冲突；合并不会自动解决冲突，冲突会保留为待解决状态。",
-            "本预览不扫描工作副本，合并前请先刷新状态查看本地改动。"
+            L.t("这是本地合并：改动先进入工作副本，需要再执行一次提交才会进入仓库。"),
+            L.t("工作副本里未提交的修改可能与合并结果冲突；合并不会自动解决冲突，冲突会保留为待解决状态。"),
+            L.t("本预览不扫描工作副本，合并前请先刷新状态查看本地改动。")
         ]
         if request.recordOnly {
-            notes.append("已启用 --record-only：只更新 svn:mergeinfo 合并记录，不改动文件内容。")
+            notes.append(L.t("已启用 --record-only：只更新 svn:mergeinfo 合并记录，不改动文件内容。"))
         }
         if request.accept.isOverwriting {
-            notes.append("已指定 --accept \(request.accept.rawValue)：冲突处理会覆盖本地或服务器端内容，不可撤销。")
+            notes.append(L.f("已指定 --accept %@：冲突处理会覆盖本地或服务器端内容，不可撤销。", String(describing: request.accept.rawValue)))
         }
 
         return OperationPreview(

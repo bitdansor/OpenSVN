@@ -19,21 +19,21 @@ public enum UpdateManifestError: Error, LocalizedError, Sendable, Equatable {
     public var errorDescription: String? {
         switch self {
         case .manifestMissing:
-            return "这个发布没有附带签名清单（SHA256SUMS 与 .sig），无法确认安装包来源。"
+            return L.t("这个发布没有附带签名清单（SHA256SUMS 与 .sig），无法确认安装包来源。")
         case .noTrustedKey:
-            return "当前构建没有内置更新公钥，无法校验发布清单。"
+            return L.t("当前构建没有内置更新公钥，无法校验发布清单。")
         case .malformedManifest:
-            return "发布清单格式不正确，已拒绝安装。"
+            return L.t("发布清单格式不正确，已拒绝安装。")
         case .signatureInvalid:
-            return "发布清单的签名无效，安装包可能不是发布者上传的那一份，已拒绝安装。"
+            return L.t("发布清单的签名无效，安装包可能不是发布者上传的那一份，已拒绝安装。")
         case .assetNotListed(let name):
-            return "发布清单里没有 \(name) 的摘要，已拒绝安装。"
+            return L.f("发布清单里没有 %@ 的摘要，已拒绝安装。", String(describing: name))
         case .digestConflict:
-            return "发布清单里的摘要与发布服务器给出的摘要不一致，已拒绝安装。"
+            return L.t("发布清单里的摘要与发布服务器给出的摘要不一致，已拒绝安装。")
         case .tooLarge(let limit):
-            return "发布清单元数据超过 \(limit) 字节，已拒绝读取。"
+            return L.f("发布清单元数据超过 %@ 字节，已拒绝读取。", String(describing: limit))
         case .transport(let detail):
-            return "无法读取发布清单：\(detail)"
+            return L.f("无法读取发布清单：%@", String(describing: detail))
         }
     }
 }

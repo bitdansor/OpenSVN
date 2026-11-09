@@ -72,9 +72,9 @@ public enum CredentialStoreError: Error, Sendable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .keychain(let status, let message):
-            return "Keychain 操作失败（\(status)）：\(message)"
+            return L.f("Keychain 操作失败（%@）：%@", String(describing: status), String(describing: message))
         case .corruptedEntry:
-            return "Keychain 中的凭据数据已损坏"
+            return L.t("Keychain 中的凭据数据已损坏")
         }
     }
 }

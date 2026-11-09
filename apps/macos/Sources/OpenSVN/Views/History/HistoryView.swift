@@ -119,15 +119,15 @@ struct HistoryView: View {
         HStack(spacing: 8) {
             Image(systemName: "doc.text.magnifyingglass")
                 .foregroundStyle(.tint)
-            Text("仅显示「\(session.logTarget ?? "")」的历史")
+            Text(L.f("仅显示「%@」的历史", String(describing: session.logTarget ?? "")))
                 .font(.callout)
             if session.logHasMore || session.isLogLoading {
-                Text("（沿改名/复制向上追溯）")
+                Text(L.t("（沿改名/复制向上追溯）"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("显示全部") {
+            Button(L.t("显示全部")) {
                 Task { await session.clearLogTarget() }
             }
             .controlSize(.small)
@@ -141,13 +141,13 @@ struct HistoryView: View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass.circle.fill")
                 .foregroundStyle(.orange)
-            Text("服务器搜索结果：\(session.log.count) 条匹配「\(session.logServerSearchText)」")
+            Text(L.f("服务器搜索结果：%@ 条匹配「%@」", String(describing: session.log.count), String(describing: session.logServerSearchText)))
                 .font(.callout)
-            Text("匹配提交说明、作者、日期与路径")
+            Text(L.t("匹配提交说明、作者、日期与路径"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
-            Button("返回完整历史") {
+            Button(L.t("返回完整历史")) {
                 Task { await session.clearServerSearch() }
             }
             .controlSize(.small)
@@ -165,17 +165,17 @@ struct HistoryView: View {
             Divider()
 
             if session.log.isEmpty {
-                ContentUnavailableView("尚无历史", systemImage: "clock")
+                ContentUnavailableView(L.t("尚无历史"), systemImage: "clock")
                     .frame(maxHeight: .infinity)
             } else if session.filteredLog.isEmpty {
                 ContentUnavailableView {
-                    Label("没有匹配的修订", systemImage: "line.3.horizontal.decrease.circle")
+                    Label(L.t("没有匹配的修订"), systemImage: "line.3.horizontal.decrease.circle")
                 } description: {
-                    Text("已加载 \(session.log.count) 条历史，没有一条符合当前筛选。")
+                    Text(L.n("已加载 %d 条历史，没有一条符合当前筛选。", session.log.count))
                 } actions: {
-                    Button("清除筛选") { session.logFilter = LogFilter() }
+                    Button(L.t("清除筛选")) { session.logFilter = LogFilter() }
                     if let pattern = session.logFilter.serverSearchPattern {
-                        Button("在服务器上搜索「\(pattern)」") {
+                        Button(L.f("在服务器上搜索「%@」", String(describing: pattern))) {
                             Task { await session.searchLog(pattern) }
                         }
                     }
@@ -197,7 +197,7 @@ struct HistoryView: View {
                                 if session.isLogLoading {
                                     ProgressView().controlSize(.small)
                                 } else {
-                                    Text("加载更早的提交")
+                                    Text(L.t("加载更早的提交"))
                                 }
                                 Spacer()
                             }
@@ -225,7 +225,7 @@ struct HistoryView: View {
         HStack(spacing: 8) {
             FilterField(
                 text: $session.logFilter.text,
-                prompt: "筛选说明、作者、路径、r1234"
+                prompt: L.t("筛选说明、作者、路径、r1234")
             )
             .frame(minWidth: 110, maxWidth: .infinity)
 
@@ -248,7 +248,7 @@ struct HistoryView: View {
                 }
                 .buttonStyle(.borderless)
                 .disabled(session.isLogSearching)
-                .help("在服务器上搜索全部历史（不只已加载的部分）")
+                .help(L.t("在服务器上搜索全部历史（不只已加载的部分）"))
             }
 
             Button {
@@ -258,7 +258,7 @@ struct HistoryView: View {
             }
             .buttonStyle(.borderless)
             .disabled(session.isLogLoading)
-            .help("重新读取最新历史")
+            .help(L.t("重新读取最新历史"))
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
@@ -266,7 +266,7 @@ struct HistoryView: View {
 
     private var countLabel: String {
         if session.logFilter.isEmpty {
-            return "\(session.log.count) 条"
+            return L.n("%d 条", session.log.count)
         }
         return "\(session.filteredLog.count) / \(session.log.count)"
     }
@@ -278,8 +278,8 @@ struct HistoryView: View {
     /// which a free-text author field can.
     private var filterMenu: some View {
         Menu {
-            Section("作者") {
-                Button("全部作者") { session.logFilter.author = nil }
+            Section(L.t("作者")) {
+                Button(L.t("全部作者")) { session.logFilter.author = nil }
                 ForEach(authors, id: \.self) { author in
                     Button {
                         session.logFilter.author = author
@@ -293,8 +293,8 @@ struct HistoryView: View {
                 }
             }
 
-            Section("提交日期") {
-                Button("不限") {
+            Section(L.t("提交日期")) {
+                Button(L.t("不限")) {
                     session.logFilter.from = nil
                     session.logFilter.to = nil
                 }
@@ -308,24 +308,24 @@ struct HistoryView: View {
 
             if let path = session.logFilter.path {
                 Section {
-                    Button("清除路径筛选") { session.logFilter.path = nil }
-                    Text("当前：\(path)")
+                    Button(L.t("清除路径筛选")) { session.logFilter.path = nil }
+                    Text(L.f("当前：%@", String(describing: path)))
                 }
             }
 
             if !session.logFilter.isEmpty {
                 Divider()
-                Button("清除全部筛选") { session.logFilter = LogFilter() }
+                Button(L.t("清除全部筛选")) { session.logFilter = LogFilter() }
             }
         } label: {
             Label(
-                session.logFilter.isEmpty ? "筛选" : "筛选 · \(session.logFilter.conditionCount)",
+                session.logFilter.isEmpty ? L.t("筛选") : L.f("筛选 · %@", String(describing: session.logFilter.conditionCount)),
                 systemImage: "line.3.horizontal.decrease.circle"
             )
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
-        .help("按作者、日期或路径筛选已加载的历史")
+        .help(L.t("按作者、日期或路径筛选已加载的历史"))
     }
 
     private func row(_ entry: LogEntry) -> some View {
@@ -356,19 +356,19 @@ struct HistoryView: View {
 
     @ViewBuilder
     private func contextMenu(for entry: LogEntry) -> some View {
-        Button("查看此版本差异") {
+        Button(L.t("查看此版本差异")) {
             Task {
                 await session.loadDiffForRevision(entry.revision, entry: entry)
                 tab = .diff
             }
         }
-        Button("复制摘要") { copy(entry) }
+        Button(L.t("复制摘要")) { copy(entry) }
         Divider()
         if let author = entry.author, !author.isEmpty {
-            Button("只看 \(author) 的提交") { session.logFilter.author = author }
+            Button(L.f("只看 %@ 的提交", String(describing: author))) { session.logFilter.author = author }
         }
         if let path = entry.changedPaths.first?.path {
-            Button("只看包含「\(shortName(path))」的提交") {
+            Button(L.f("只看包含「%@」的提交", String(describing: shortName(path)))) {
                 session.logFilter.path = path
             }
         }
@@ -389,22 +389,22 @@ struct HistoryView: View {
                         Button {
                             copy(entry)
                         } label: {
-                            Label("复制摘要", systemImage: "doc.on.doc")
+                            Label(L.t("复制摘要"), systemImage: "doc.on.doc")
                         }
-                        .help("复制为 Markdown，可直接贴进工单或聊天")
+                        .help(L.t("复制为 Markdown，可直接贴进工单或聊天"))
                         Button {
                             Task {
                                 await session.loadDiffForRevision(entry.revision, entry: entry)
                                 tab = .diff
                             }
                         } label: {
-                            Label("查看此版本差异", systemImage: "plus.forwardslash.minus")
+                            Label(L.t("查看此版本差异"), systemImage: "plus.forwardslash.minus")
                         }
                     }
 
                     Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 4) {
                         GridRow {
-                            Text("作者").foregroundStyle(.secondary)
+                            Text(L.t("作者")).foregroundStyle(.secondary)
                             Button(entry.author ?? "—") {
                                 if let author = entry.author {
                                     session.logFilter.author = author
@@ -412,10 +412,10 @@ struct HistoryView: View {
                             }
                             .buttonStyle(.link)
                             .disabled(entry.author == nil)
-                            .help("只看该作者的提交")
+                            .help(L.t("只看该作者的提交"))
                         }
                         GridRow {
-                            Text("时间").foregroundStyle(.secondary)
+                            Text(L.t("时间")).foregroundStyle(.secondary)
                             Text(RelativeTime.absolute(entry.date))
                         }
                     }
@@ -423,16 +423,16 @@ struct HistoryView: View {
 
                     Divider()
 
-                    TicketLinkedText(text: entry.message.isEmpty ? "（无提交说明）" : entry.message)
+                    TicketLinkedText(text: entry.message.isEmpty ? L.t("（无提交说明）") : entry.message)
                         .font(.body)
 
                     if !entry.changedPaths.isEmpty {
                         Divider()
                         HStack {
-                            Text("变更路径（\(entry.changedPaths.count)）")
+                            Text(L.f("变更路径（%@）", String(describing: entry.changedPaths.count)))
                                 .font(.headline)
                             Spacer()
-                            Text("点击路径可只显示它的历史")
+                            Text(L.t("点击路径可只显示它的历史"))
                                 .font(.caption2)
                                 .foregroundStyle(.tertiary)
                         }
@@ -447,7 +447,7 @@ struct HistoryView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         } else {
-            ContentUnavailableView("选择一个修订版本", systemImage: "clock.arrow.circlepath")
+            ContentUnavailableView(L.t("选择一个修订版本"), systemImage: "clock.arrow.circlepath")
                 .frame(maxHeight: .infinity)
         }
     }
@@ -467,7 +467,7 @@ struct HistoryView: View {
                     .truncationMode(.middle)
             }
             .buttonStyle(.plain)
-            .help("只显示包含该路径的提交")
+            .help(L.t("只显示包含该路径的提交"))
             if let copyFrom = path.copyFromPath {
                 Text("← \(copyFrom)@\(path.copyFromRevision.map(String.init) ?? "?")")
                     .font(.caption2)
@@ -498,7 +498,7 @@ struct HistoryView: View {
     }
 
     private func firstLine(of message: String) -> String {
-        message.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? "（无提交说明）"
+        message.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? L.t("（无提交说明）")
     }
 
     private func shortName(_ path: String) -> String {
@@ -528,10 +528,10 @@ private enum DateWindow: CaseIterable {
 
     var title: String {
         switch self {
-        case .week: return "最近 7 天"
-        case .month: return "最近 30 天"
-        case .quarter: return "最近 90 天"
-        case .year: return "最近一年"
+        case .week: return L.t("最近 7 天")
+        case .month: return L.t("最近 30 天")
+        case .quarter: return L.t("最近 90 天")
+        case .year: return L.t("最近一年")
         }
     }
 

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import OpenSVNCore
 
 /// Quick Look / Terminal / Finder menu items for a Changes row.
 ///
@@ -11,9 +12,9 @@ struct ChangesRowQuickActions: View {
     let onQuickLook: (URL) -> Void
 
     var body: some View {
-        Button("快速查看") { onQuickLook(url) }
-        Button("在终端打开") { FileActions.openInTerminal(url.deletingLastPathComponent()) }
-        Button("在 Finder 中显示") { FileActions.revealInFinder([url]) }
+        Button(L.t("快速查看")) { onQuickLook(url) }
+        Button(L.t("在终端打开")) { FileActions.openInTerminal(url.deletingLastPathComponent()) }
+        Button(L.t("在 Finder 中显示")) { FileActions.revealInFinder([url]) }
     }
 }
 

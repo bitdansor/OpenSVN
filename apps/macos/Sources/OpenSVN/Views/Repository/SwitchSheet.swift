@@ -24,24 +24,24 @@ struct SwitchSheet: View {
             header
             Divider()
             Form {
-                Section("目标") {
-                    LabeledContent("切换到的 URL") {
+                Section(L.t("目标")) {
+                    LabeledContent(L.t("切换到的 URL")) {
                         TextField("https://…/branches/feature", text: $url)
                             .textFieldStyle(.roundedBorder)
                             .labelsHidden()
                     }
-                    LabeledContent("修订版本") {
-                        TextField("留空表示 HEAD", text: $revisionText)
+                    LabeledContent(L.t("修订版本")) {
+                        TextField(L.t("留空表示 HEAD"), text: $revisionText)
                             .textFieldStyle(.roundedBorder)
                             .labelsHidden()
                     }
                 }
 
-                Section("选项") {
-                    Toggle("外挂工作副本保持不动（--ignore-externals）", isOn: $ignoreExternals)
-                    Toggle("覆盖未纳入版本控制的同名文件（--force）", isOn: $force)
+                Section(L.t("选项")) {
+                    Toggle(L.t("外挂工作副本保持不动（--ignore-externals）"), isOn: $ignoreExternals)
+                    Toggle(L.t("覆盖未纳入版本控制的同名文件（--force）"), isOn: $force)
                     if force {
-                        Text("--force 会让未纳入版本控制的同名文件被切换后的内容替换掉，那些文件没有任何备份。")
+                        Text(L.t("--force 会让未纳入版本控制的同名文件被切换后的内容替换掉，那些文件没有任何备份。"))
                             .font(.caption2)
                             .foregroundStyle(.red)
                     }
@@ -53,13 +53,13 @@ struct SwitchSheet: View {
                 }
 
                 Section {
-                    Text("当前地址：\(session.info?.url ?? "—")")
+                    Text(L.f("当前地址：%@", String(describing: session.info?.url ?? "—")))
                         .font(.caption.monospaced())
                         .textSelection(.enabled)
                         .lineLimit(2)
                         .truncationMode(.middle)
                 } footer: {
-                    Text("只想换协议、主机或路径、而内容还是同一个仓库？那是「信息」页的「切换仓库地址」（relocate），不是这里。svn 会校验仓库 UUID，切到另一个仓库会失败。")
+                    Text(L.t("只想换协议、主机或路径、而内容还是同一个仓库？那是「信息」页的「切换仓库地址」（relocate），不是这里。svn 会校验仓库 UUID，切到另一个仓库会失败。"))
                         .font(.caption2)
                 }
             }
@@ -79,9 +79,9 @@ struct SwitchSheet: View {
                 .font(.system(size: 22))
                 .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 3) {
-                Text("切换「\(session.displayName)」")
+                Text(L.f("切换「%@」", String(describing: session.displayName)))
                     .font(.headline)
-                Text("把工作副本整体指向同一仓库内的另一个 URL。")
+                Text(L.t("把工作副本整体指向同一仓库内的另一个 URL。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -95,7 +95,7 @@ struct SwitchSheet: View {
             HStack(spacing: 8) {
                 Image(systemName: riskIcon)
                     .foregroundStyle(riskColor)
-                Text(preview?.summary ?? "填写目标 URL 后这里会显示这次切换做什么")
+                Text(preview?.summary ?? L.t("填写目标 URL 后这里会显示这次切换做什么"))
                     .font(.callout.weight(.medium))
                     .lineLimit(2)
                 Spacer()
@@ -115,10 +115,10 @@ struct SwitchSheet: View {
         HStack(spacing: 10) {
             if isRunning { ProgressView().controlSize(.small) }
             Spacer()
-            Button("取消") { dismiss() }
+            Button(L.t("取消")) { dismiss() }
                 .keyboardShortcut(.cancelAction)
                 .disabled(isRunning)
-            Button(isRunning ? "切换中…" : "切换") {
+            Button(isRunning ? L.t("切换中…") : L.t("切换")) {
                 Task { await runSwitch() }
             }
             .buttonStyle(.borderedProminent)

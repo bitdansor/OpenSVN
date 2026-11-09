@@ -36,21 +36,21 @@ public enum UpdateDownloadError: Error, LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .checksumUnavailable:
-            return "这个版本的安装包没有可校验的摘要，只能手动下载。"
+            return L.t("这个版本的安装包没有可校验的摘要，只能手动下载。")
         case .tooLarge(let limit):
-            return "更新包超过 \(ByteCountFormatter.string(fromByteCount: limit, countStyle: .file))，已停止下载。"
+            return L.f("更新包超过 %@，已停止下载。", String(describing: ByteCountFormatter.string(fromByteCount: limit, countStyle: .file)))
         case .cancelled:
-            return "下载已取消。"
+            return L.t("下载已取消。")
         case .transport(let detail):
-            return "下载更新包失败：\(detail)"
+            return L.f("下载更新包失败：%@", String(describing: detail))
         case .unexpectedStatus(let code):
-            return "下载服务器返回了 HTTP \(code)。"
+            return L.f("下载服务器返回了 HTTP %@。", String(describing: code))
         case .sizeMismatch(let expected, let actual):
-            return "更新包大小不符（应为 \(expected) 字节，实际 \(actual) 字节），已丢弃。"
+            return L.f("更新包大小不符（应为 %@ 字节，实际 %@ 字节），已丢弃。", String(describing: expected), String(describing: actual))
         case .checksumMismatch:
-            return "更新包校验不一致，文件可能损坏或不是发布者上传的那一份，已丢弃。"
+            return L.t("更新包校验不一致，文件可能损坏或不是发布者上传的那一份，已丢弃。")
         case .fileSystem(let detail):
-            return "无法写入暂存目录：\(detail)"
+            return L.f("无法写入暂存目录：%@", String(describing: detail))
         }
     }
 }
@@ -273,7 +273,7 @@ private final class DownloadObserver: NSObject, URLSessionDownloadDelegate, @unc
         guard let error else {
             // `didFinishDownloadingTo` already resumed. Reaching here first means
             // the server finished without delivering a file.
-            finish(.failure(UpdateDownloadError.transport("服务器结束了下载，但没有返回文件。")))
+            finish(.failure(UpdateDownloadError.transport(L.t("服务器结束了下载，但没有返回文件。"))))
             return
         }
         if let urlError = error as? URLError {

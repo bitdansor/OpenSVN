@@ -13,13 +13,18 @@ struct OpenSVNApp: App {
             MainWindowView()
                 .environment(appState)
                 .frame(minWidth: 1040, minHeight: 680)
-                .task { await appState.start() }
+                // A new identity rebuilds the window's whole view tree, which is
+                // what makes every literal inside it re-resolve. It sits before
+                // `.task` so the rebuild does not restart the launch work; the
+                // task's own view identity is unchanged.
+                .id(appState.interfaceLanguage)
+                .task { await appState.startOnce() }
         }
         .windowToolbarStyle(.unified)
         .commands {
             // The conventional place for this item: right under 关于 OpenSVN.
             CommandGroup(after: .appInfo) {
-                Button("检查更新…") {
+                Button(L.t("检查更新…")) {
                     Task { await appState.checkForUpdates(explicitlyRequested: true) }
                 }
                 .disabled(appState.isCheckingForUpdates)
@@ -27,12 +32,12 @@ struct OpenSVNApp: App {
             // Appending (rather than replacing) keeps the system "新建窗口" ⌘N
             // item, which is what opens another window of the WindowGroup.
             CommandGroup(after: .newItem) {
-                Button("添加工作副本…") {
+                Button(L.t("添加工作副本…")) {
                     appState.presentAddWorkingCopyPanel()
                 }
                 .keyboardShortcut("o", modifiers: .command)
 
-                Button("检出仓库…") {
+                Button(L.t("检出仓库…")) {
                     appState.showingCheckoutSheet = true
                 }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
@@ -40,19 +45,19 @@ struct OpenSVNApp: App {
                 // Browsing a repository costs no working copy, so it belongs
                 // next to the two actions that do create one — not hidden
                 // behind a checkbox in a checkout dialog.
-                Button("只看仓库（不检出）…") {
+                Button(L.t("只看仓库（不检出）…")) {
                     appState.promptForRepositoryBookmark()
                 }
             }
-            CommandMenu("仓库") {
-                Button("刷新状态") {
+            CommandMenu(L.t("仓库")) {
+                Button(L.t("刷新状态")) {
                     if let session = appState.selectedSession {
                         Task { await session.refresh() }
                     }
                 }
                 .keyboardShortcut("r", modifiers: .command)
 
-                Button("更新") {
+                Button(L.t("更新")) {
                     if let session = appState.selectedSession {
                         Task { await session.requestUpdate() }
                     }
@@ -61,25 +66,26 @@ struct OpenSVNApp: App {
 
                 Divider()
 
-                Button("清理工作副本") {
+                Button(L.t("清理工作副本")) {
                     if let session = appState.selectedSession {
                         Task { await session.cleanup() }
                     }
                 }
             }
-            CommandMenu("任务") {
-                Button("任务中心…") { appState.showingTaskCenter = true }
+            CommandMenu(L.t("任务")) {
+                Button(L.t("任务中心…")) { appState.showingTaskCenter = true }
                     .keyboardShortcut("j", modifiers: [.command, .shift])
-                Button("取消全部任务") { appState.taskCenter.clear() }
+                Button(L.t("取消全部任务")) { appState.taskCenter.clear() }
             }
             CommandGroup(replacing: .help) {
-                Button("试一次三方合并…") { appState.showingDemoSheet = true }
+                Button(L.t("试一次三方合并…")) { appState.showingDemoSheet = true }
             }
         }
 
         Settings {
             SettingsView()
                 .environment(appState)
+                .id(appState.interfaceLanguage)
         }
     }
 }

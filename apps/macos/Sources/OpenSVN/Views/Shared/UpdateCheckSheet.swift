@@ -22,13 +22,13 @@ struct UpdateCheckSheet: View {
             footer
         }
         .frame(width: 560, height: 440)
-        .alert("安装更新并重新启动？", isPresented: $confirmingInstall) {
-            Button("取消", role: .cancel) {}
-            Button("重新启动并安装") {
+        .alert(L.t("安装更新并重新启动？"), isPresented: $confirmingInstall) {
+            Button(L.t("取消"), role: .cancel) {}
+            Button(L.t("重新启动并安装")) {
                 appState.installUpdateAndRelaunch()
             }
         } message: {
-            Text("应用会退出，更新包会被复制到 \(Bundle.main.bundleURL.path) 并重新打开。签名校验已通过，替换失败时会自动恢复旧版本。")
+            Text(L.f("应用会退出，更新包会被复制到 %@ 并重新打开。签名校验已通过，替换失败时会自动恢复旧版本。", String(describing: Bundle.main.bundleURL.path)))
         }
     }
 
@@ -61,7 +61,7 @@ struct UpdateCheckSheet: View {
                         .font(.callout)
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
-                    Text("检查更新只读取项目 Releases 的公开信息，不发送任何本机数据。失败不影响工作副本的任何操作。")
+                    Text(L.t("检查更新只读取项目 Releases 的公开信息，不发送任何本机数据。失败不影响工作副本的任何操作。"))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -85,7 +85,7 @@ struct UpdateCheckSheet: View {
                         updateStatus
                     }
                 } else {
-                    Text("还没有结果。")
+                    Text(L.t("还没有结果。"))
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }
@@ -105,7 +105,7 @@ struct UpdateCheckSheet: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("安装包会先下载到「应用支持」目录，校验 SHA-256 与发布签名（项目密钥或 Developer ID）之后才允许替换当前应用。")
+                Text(L.t("安装包会先下载到「应用支持」目录，校验 SHA-256 与发布签名（项目密钥或 Developer ID）之后才允许替换当前应用。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -124,18 +124,18 @@ struct UpdateCheckSheet: View {
         case .verifying:
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text("正在校验发布清单与更新包…")
+                Text(L.t("正在校验发布清单与更新包…"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         case .ready(_, let version):
-            Label("\(version) 已下载并通过签名校验。", systemImage: "checkmark.seal.fill")
+            Label(L.f("%@ 已下载并通过签名校验。", String(describing: version)), systemImage: "checkmark.seal.fill")
                 .font(.callout)
                 .foregroundStyle(.green)
         case .installing:
             HStack(spacing: 8) {
                 ProgressView().controlSize(.small)
-                Text("正在安装并重新启动…")
+                Text(L.t("正在安装并重新启动…"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -149,23 +149,23 @@ struct UpdateCheckSheet: View {
 
     private func downloadDetail(_ progress: UpdateDownloadProgress) -> String {
         let received = ByteCountFormatter.string(fromByteCount: progress.receivedBytes, countStyle: .file)
-        guard let expected = progress.expectedBytes else { return "已下载 \(received)" }
+        guard let expected = progress.expectedBytes else { return L.f("已下载 %@", String(describing: received)) }
         let total = ByteCountFormatter.string(fromByteCount: expected, countStyle: .file)
-        return "已下载 \(received) / \(total)"
+        return L.f("已下载 %@ / %@", String(describing: received), String(describing: total))
     }
 
     private var footer: some View {
         HStack(spacing: 10) {
-            Toggle("启动时检查", isOn: launchToggle)
+            Toggle(L.t("启动时检查"), isOn: launchToggle)
                 .toggleStyle(.checkbox)
                 .font(.caption)
-                .help("只在启动时询问一次，每天最多一次")
+                .help(L.t("只在启动时询问一次，每天最多一次"))
             Spacer()
-            Button("关闭") { dismiss() }
+            Button(L.t("关闭")) { dismiss() }
                 .keyboardShortcut(.cancelAction)
             updateButtons
             if appState.updateCheckError != nil {
-                Button("重试") {
+                Button(L.t("重试")) {
                     Task { await appState.checkForUpdates(explicitlyRequested: true) }
                 }
             }
@@ -180,18 +180,18 @@ struct UpdateCheckSheet: View {
     private var updateButtons: some View {
         switch appState.updateDownloadPhase {
         case .downloading:
-            Button("取消下载") { appState.cancelUpdateDownload() }
+            Button(L.t("取消下载")) { appState.cancelUpdateDownload() }
         case .verifying, .installing:
             EmptyView()
         case .ready:
-            Button("重新启动并安装") { confirmingInstall = true }
+            Button(L.t("重新启动并安装")) { confirmingInstall = true }
                 .buttonStyle(.borderedProminent)
         case .failed:
-            Button("重试") { appState.startUpdateDownload() }
+            Button(L.t("重试")) { appState.startUpdateDownload() }
                 .buttonStyle(.borderedProminent)
         case .idle:
             if appState.canInstallUpdateAutomatically {
-                Button("下载并安装") { appState.startUpdateDownload() }
+                Button(L.t("下载并安装")) { appState.startUpdateDownload() }
                     .buttonStyle(.borderedProminent)
             } else {
                 manualDownloadButtons
@@ -203,10 +203,10 @@ struct UpdateCheckSheet: View {
     private var manualDownloadButtons: some View {
         if case .updateAvailable(_, let release) = appState.updateCheckResult {
             if let download = release.downloadURL {
-                Button("下载") { NSWorkspace.shared.open(download) }
+                Button(L.t("下载")) { NSWorkspace.shared.open(download) }
                     .buttonStyle(.borderedProminent)
             } else if let page = release.pageURL {
-                Button("打开发布页") { NSWorkspace.shared.open(page) }
+                Button(L.t("打开发布页")) { NSWorkspace.shared.open(page) }
                     .buttonStyle(.borderedProminent)
             }
         }
@@ -230,13 +230,13 @@ struct UpdateCheckSheet: View {
     }
 
     private var title: String {
-        if appState.updateCheckError != nil { return "检查更新失败" }
-        return appState.updateCheckResult?.title ?? "检查更新"
+        if appState.updateCheckError != nil { return L.t("检查更新失败") }
+        return appState.updateCheckResult?.title ?? L.t("检查更新")
     }
 
     private var subtitle: String {
-        if appState.isCheckingForUpdates { return "正在查询发布信息…" }
-        return "当前版本 \(UpdateChecker.bundleVersion())"
+        if appState.isCheckingForUpdates { return L.t("正在查询发布信息…") }
+        return L.f("当前版本 %@", String(describing: UpdateChecker.bundleVersion()))
     }
 
     private var icon: String {

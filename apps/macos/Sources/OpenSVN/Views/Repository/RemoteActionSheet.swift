@@ -34,7 +34,7 @@ struct RemoteActionSheet: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(request.title)
                     .font(.headline)
-                Text("这是一次提交，会立刻写进仓库历史。")
+                Text(L.t("这是一次提交，会立刻写进仓库历史。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -56,7 +56,7 @@ struct RemoteActionSheet: View {
     private var form: some View {
         Form {
             if let source = request.sourceURL, request.kind != .makeDirectory {
-                LabeledContent("源") {
+                LabeledContent(L.t("源")) {
                     Text(source)
                         .font(.caption.monospaced())
                         .textSelection(.enabled)
@@ -66,7 +66,7 @@ struct RemoteActionSheet: View {
             }
 
             if request.kind == .delete {
-                LabeledContent("将删除") {
+                LabeledContent(L.t("将删除")) {
                     Text(request.sourceURL ?? "")
                         .font(.caption.monospaced())
                         .foregroundStyle(.red)
@@ -75,24 +75,24 @@ struct RemoteActionSheet: View {
                         .truncationMode(.middle)
                 }
             } else {
-                LabeledContent("目标") {
-                    TextField("完整 URL", text: $request.destination)
+                LabeledContent(L.t("目标")) {
+                    TextField(L.t("完整 URL"), text: $request.destination)
                         .textFieldStyle(.roundedBorder)
                 }
             }
 
-            LabeledContent("提交说明") {
-                TextField("会显示在历史里", text: $request.message)
+            LabeledContent(L.t("提交说明")) {
+                TextField(L.t("会显示在历史里"), text: $request.message)
                     .textFieldStyle(.roundedBorder)
             }
 
             if request.kind == .tag {
-                Text("tag 就是一次目录 copy：`svn copy trunk tags/v1.0`。svn 没有单独的 tag 命令，这个约定就是全部。")
+                Text(L.t("tag 就是一次目录 copy：`svn copy trunk tags/v1.0`。svn 没有单独的 tag 命令，这个约定就是全部。"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
             if request.isDestructive {
-                Text("删除后路径会从 HEAD 消失，所有工作副本下次更新时都会收到删除。svn 保留历史，但找回它需要知道修订号并执行命令。")
+                Text(L.t("删除后路径会从 HEAD 消失，所有工作副本下次更新时都会收到删除。svn 保留历史，但找回它需要知道修订号并执行命令。"))
                     .font(.caption2)
                     .foregroundStyle(.red)
             }
@@ -106,7 +106,7 @@ struct RemoteActionSheet: View {
                 ProgressView().controlSize(.small)
             }
             Spacer()
-            Button("取消") {
+            Button(L.t("取消")) {
                 browser.cancelAction()
             }
             .keyboardShortcut(.cancelAction)

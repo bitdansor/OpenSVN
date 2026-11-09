@@ -41,22 +41,22 @@ struct ConflictGuideBanner: View {
                     Button {
                         session.beginMerge(first)
                     } label: {
-                        Label(mergeableEntries.count == 1 ? "开始三方合并" : "先合并「\(shortName(first))」", systemImage: "arrow.triangle.branch")
+                        Label(mergeableEntries.count == 1 ? L.t("开始三方合并") : L.f("先合并「%@」", String(describing: shortName(first))), systemImage: "arrow.triangle.branch")
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.regular)
-                    .help("并排比较我的改动、共同基线和服务器改动，逐块决定保留哪一边")
+                    .help(L.t("并排比较我的改动、共同基线和服务器改动，逐块决定保留哪一边"))
                 }
 
                 Menu {
-                    Button("全部用我的") { session.resolveAllConflicts(strategy: .mineFull) }
-                    Button("全部用服务器") { session.resolveAllConflicts(strategy: .theirsFull) }
+                    Button(L.t("全部用我的")) { session.resolveAllConflicts(strategy: .mineFull) }
+                    Button(L.t("全部用服务器")) { session.resolveAllConflicts(strategy: .theirsFull) }
                 } label: {
-                    Label("其他方式", systemImage: "ellipsis.circle")
+                    Label(L.t("其他方式"), systemImage: "ellipsis.circle")
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
-                .help("放弃逐块比较，整个文件采用某一边")
+                .help(L.t("放弃逐块比较，整个文件采用某一边"))
 
                 Button {
                     withAnimation(.easeInOut(duration: 0.15)) { isExpanded.toggle() }
@@ -65,7 +65,7 @@ struct ConflictGuideBanner: View {
                         .font(.caption)
                 }
                 .buttonStyle(.plain)
-                .help(isExpanded ? "收起说明" : "展开说明")
+                .help(isExpanded ? L.t("收起说明") : L.t("展开说明"))
             }
 
             if isExpanded {
@@ -85,22 +85,22 @@ struct ConflictGuideBanner: View {
     private var title: String {
         let total = session.conflictedEntries.count
         if mergeableEntries.isEmpty {
-            return "\(total) 个文件有冲突（都不能三方合并）"
+            return L.n("%d 个文件有冲突（都不能三方合并）", total)
         }
         if otherCount == 0 {
-            return "\(total) 个文件有文本冲突，可以逐块合并"
+            return L.n("%d 个文件有文本冲突，可以逐块合并", total)
         }
-        return "\(total) 个文件有冲突，其中 \(mergeableEntries.count) 个可以三方合并"
+        return L.f("%@ 个文件有冲突，其中 %@ 个可以三方合并", String(describing: total), String(describing: mergeableEntries.count))
     }
 
     private var explanation: String {
         if mergeableEntries.isEmpty {
-            return "属性冲突和树冲突没有三份可比较的文本，需要整体选一边。用右键菜单「解决冲突」里的策略，或右上角「其他方式」。"
+            return L.t("属性冲突和树冲突没有三份可比较的文本，需要整体选一边。用右键菜单「解决冲突」里的策略，或右上角「其他方式」。")
         }
-        var text = "三方合并并排显示三份内容：左边是我的改动，中间是双方共同的基线，右边是服务器上的改动。"
-            + "只有两边都改了同一处才需要你决定，其余部分会自动合并。写入前会把当前冲突文件备份到应用支持目录。"
+        var text = L.t("三方合并并排显示三份内容：左边是我的改动，中间是双方共同的基线，右边是服务器上的改动。")
+            + L.t("只有两边都改了同一处才需要你决定，其余部分会自动合并。写入前会把当前冲突文件备份到应用支持目录。")
         if otherCount > 0 {
-            text += " 另有 \(otherCount) 个属性或树冲突不能三方合并，需要整体选一边。"
+            text += L.n(" 另有 %d 个属性或树冲突不能三方合并，需要整体选一边。", otherCount)
         }
         return text
     }

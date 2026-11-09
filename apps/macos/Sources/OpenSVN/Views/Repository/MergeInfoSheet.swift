@@ -35,7 +35,7 @@ struct MergeInfoSheet: View {
                 .font(.system(size: 22))
                 .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 3) {
-                Text("合并记录")
+                Text(L.t("合并记录"))
                     .font(.headline)
                 Text(state?.target ?? session.path.path)
                     .font(.caption.monospaced())
@@ -47,7 +47,7 @@ struct MergeInfoSheet: View {
             Button {
                 Task { await session.loadMergeInfo(source: source) }
             } label: {
-                Label("重新读取", systemImage: "arrow.clockwise")
+                Label(L.t("重新读取"), systemImage: "arrow.clockwise")
             }
             .disabled(state?.isLoading ?? true)
         }
@@ -58,14 +58,14 @@ struct MergeInfoSheet: View {
     private var content: some View {
         if let failure = state?.failure {
             ContentUnavailableView {
-                Label("读不到合并记录", systemImage: "exclamationmark.triangle")
+                Label(L.t("读不到合并记录"), systemImage: "exclamationmark.triangle")
             } description: {
                 Text(failure)
             }
         } else if state?.isLoading == true, state?.lines.isEmpty ?? true {
             VStack(spacing: 10) {
                 ProgressView()
-                Text("正在读取 svn:mergeinfo…")
+                Text(L.t("正在读取 svn:mergeinfo…"))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -84,7 +84,7 @@ struct MergeInfoSheet: View {
 
     private var recordedSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("已记录的合并（svn:mergeinfo）")
+            Text(L.t("已记录的合并（svn:mergeinfo）"))
                 .font(.headline)
             if let lines = state?.lines, !lines.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
@@ -107,7 +107,7 @@ struct MergeInfoSheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
             } else {
-                Text("这个路径上没有任何合并记录。首次成功合并之后 svn 才会写入 svn:mergeinfo。")
+                Text(L.t("这个路径上没有任何合并记录。首次成功合并之后 svn 才会写入 svn:mergeinfo。"))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -116,23 +116,23 @@ struct MergeInfoSheet: View {
 
     private var querySection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("某个来源还有哪些没收")
+            Text(L.t("某个来源还有哪些没收"))
                 .font(.headline)
             HStack(spacing: 8) {
-                TextField("来源 URL，例如 https://…/trunk", text: $source)
+                TextField(L.t("来源 URL，例如 https://…/trunk"), text: $source)
                     .textFieldStyle(.roundedBorder)
-                Button("查询") {
+                Button(L.t("查询")) {
                     Task { await session.loadMergeInfo(source: source) }
                 }
                 .disabled(source.trimmingCharacters(in: .whitespaces).isEmpty || state?.isLoading == true)
             }
-            Text("svn mergeinfo --show-revs eligible：只读，不碰工作副本，但要访问服务器。")
+            Text(L.t("svn mergeinfo --show-revs eligible：只读，不碰工作副本，但要访问服务器。"))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
             if !(state?.source.isEmpty ?? true) {
-                revisionRow("待合并", revisions: state?.eligible ?? [], tint: .blue)
-                revisionRow("已合并", revisions: state?.merged ?? [], tint: .secondary)
+                revisionRow(L.t("待合并"), revisions: state?.eligible ?? [], tint: .blue)
+                revisionRow(L.t("已合并"), revisions: state?.merged ?? [], tint: .secondary)
             }
         }
     }
@@ -143,7 +143,7 @@ struct MergeInfoSheet: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .frame(width: 44, alignment: .leading)
-            Text(revisions.isEmpty ? "无" : revisions.map { "r\($0)" }.joined(separator: " "))
+            Text(revisions.isEmpty ? L.t("无") : revisions.map { "r\($0)" }.joined(separator: " "))
                 .font(.caption.monospaced())
                 .foregroundStyle(tint)
                 .textSelection(.enabled)
@@ -155,7 +155,7 @@ struct MergeInfoSheet: View {
     private var footer: some View {
         HStack {
             Spacer()
-            Button("关闭") { dismiss() }
+            Button(L.t("关闭")) { dismiss() }
                 .keyboardShortcut(.cancelAction)
         }
         .padding(14)

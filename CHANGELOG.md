@@ -6,6 +6,42 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [0.1.0] - 2026-11-09
 
+### Added (macOS: a Chinese/English interface, switchable without relaunching)
+
+- **The interface speaks the system's language.** A Chinese Mac gets Chinese, any
+  other language gets English, and Settings → General offers 跟随系统 / 简体中文 /
+  English for the users the guess is wrong for. The manual choice applies at
+  once — there is no relaunch and no window to reopen.
+- **A dictionary, not `.lproj` tables.** A `Bundle`'s language is fixed when it is
+  created, so resource-based localisation could only ever be honoured at launch.
+  Instead the Chinese source text *is* the key, exactly as `NSLocalizedString`
+  uses it, and `L.t` / `L.f` / `L.n` resolve it against `LocalizationCatalog`.
+  A missing translation falls back to the correct Chinese sentence rather than to
+  `settings.interface.language.title` — the failure mode a key-based table hides
+  until someone switches languages.
+- **Switching rebuilds, rather than re-labels.** `AppState.interfaceLanguage`
+  drives `.id(…)` on the main and Settings windows, so a change rebuilds both
+  view trees and every literal re-resolves in place, including menu titles,
+  toolbar labels, alerts already described by a view, and the Settings pane the
+  switch was made in. Launch work moved behind `AppState.startOnce()`, so the
+  rebuild cannot replay the svn probe or the journal recovery.
+- **A coverage test, because 95% right is not right.** `LocalizationCoverageTests`
+  lexes the sources and fails on a Chinese literal that bypasses the catalog, on
+  a key the catalog does not define, on an `L.n` key written with `%@` (which
+  would make `String(format:)` read the count as a pointer), and on a catalog
+  entry no source references any more. The two kinds of text that are *not*
+  translated — log lines, and the sample data `DemoWorkspace` writes to disk —
+  are explicit sets in that test, so a new unwrapped string fails the build
+  instead of shipping.
+- **Log lines stay in one language on purpose.** They are read by whoever debugs
+  the app, against reports from users who chose the other language; a fixed
+  language keeps a whole report greppable. Everything the user is meant to read
+  is surfaced through the UI separately, already translated.
+- **The bundle declares both localisations.** `Info.plist` now lists `en` and
+  `zh-Hans` with English as the development region. Without it, macOS treated
+  the app as Chinese-only and localised its own chrome — About, Hide, Quit, and
+  the standard File/Edit menus — to Chinese for every user.
+
 ### Added (macOS: a free trust anchor for updates)
 
 - **Releases are verifiable without an Apple account.** The updater now accepts

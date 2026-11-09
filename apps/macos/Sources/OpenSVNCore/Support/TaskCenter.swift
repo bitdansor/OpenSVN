@@ -90,7 +90,7 @@ public final class TaskCenter {
 
     public func cancel(_ id: UUID) {
         cancelHandlers[id]?()
-        update(id) { $0.detail = "正在取消…" }
+        update(id) { $0.detail = L.t("正在取消…") }
     }
 
     public func dismissFinished() {

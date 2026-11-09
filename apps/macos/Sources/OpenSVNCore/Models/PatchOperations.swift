@@ -46,12 +46,12 @@ public struct PatchRequest: Sendable, Hashable {
 
     public func validate() throws {
         guard strip >= 0 else {
-            throw SVNError(code: .invalidInvocation, message: "剥离层数不能为负数")
+            throw SVNError(code: .invalidInvocation, message: L.t("剥离层数不能为负数"))
         }
         guard FileManager.default.isReadableFile(atPath: patchFile.path) else {
             throw SVNError(
                 code: .pathNotFound,
-                message: "读不到补丁文件：\(patchFile.path)"
+                message: L.f("读不到补丁文件：%@", String(describing: patchFile.path))
             )
         }
     }
@@ -143,13 +143,16 @@ public struct PatchOutcome: Sendable, Hashable {
     /// Shown after a real run. A dry run says so, because "已应用 0 个文件" is
     /// confusing when the user only asked what *would* happen.
     public var summary: String {
-        let verb = isDryRun ? "将影响" : "已应用"
-        var parts = ["\(verb) \(appliedCount) 个文件"]
-        if !added.isEmpty { parts.append("新增 \(added.count)") }
-        if !deleted.isEmpty { parts.append("删除 \(deleted.count)") }
-        if !merged.isEmpty { parts.append("合并 \(merged.count)") }
-        if !conflicted.isEmpty { parts.append("冲突 \(conflicted.count)") }
-        if !skipped.isEmpty { parts.append("跳过 \(skipped.count)") }
-        return parts.joined(separator: "，")
+        var parts = [
+            isDryRun
+                ? L.n("将影响 %d 个文件", appliedCount)
+                : L.n("已应用 %d 个文件", appliedCount)
+        ]
+        if !added.isEmpty { parts.append(L.f("新增 %@", String(added.count))) }
+        if !deleted.isEmpty { parts.append(L.f("删除 %@", String(deleted.count))) }
+        if !merged.isEmpty { parts.append(L.f("合并 %@", String(merged.count))) }
+        if !conflicted.isEmpty { parts.append(L.f("冲突 %@", String(conflicted.count))) }
+        if !skipped.isEmpty { parts.append(L.f("跳过 %@", String(skipped.count))) }
+        return parts.joined(separator: L.t("，"))
     }
 }

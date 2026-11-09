@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import OpenSVNCore
 
 /// A filter field that lives in the content, directly above the list it filters.
 ///
@@ -51,7 +52,7 @@ struct FilterField: View {
                         .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.borderless)
-                .help("清除筛选内容")
+                .help(L.t("清除筛选内容"))
             }
         }
         .padding(.horizontal, 6)
@@ -72,7 +73,7 @@ struct FilterField: View {
             // A system search field registers ⌘F itself. This one has to say so;
             // the button is 1 pt and invisible, but it is what puts the shortcut
             // in the responder chain.
-            Button("筛选") { focused = true }
+            Button(L.t("筛选")) { focused = true }
                 .keyboardShortcut("f", modifiers: .command)
                 .buttonStyle(.borderless)
                 .frame(width: 1, height: 1)

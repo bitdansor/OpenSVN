@@ -27,14 +27,14 @@ struct BlameSheet: View {
                 .foregroundStyle(.tint)
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(session.blameState?.displayPath ?? "注解")
+                Text(session.blameState?.displayPath ?? L.t("注解"))
                     .font(.headline)
                 if let result = session.blameState?.result {
                     Text(summaryLine(result))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 } else if session.blameState?.isLoading == true {
-                    Text("正在逐行归属…")
+                    Text(L.t("正在逐行归属…"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -42,7 +42,7 @@ struct BlameSheet: View {
 
             Spacer()
 
-            Button("关闭") { session.dismissBlame() }
+            Button(L.t("关闭")) { session.dismissBlame() }
                 .keyboardShortcut(.cancelAction)
         }
         .padding(16)
@@ -52,12 +52,12 @@ struct BlameSheet: View {
         let people = result.authorship
         let parts = people
             .prefix(3)
-            .map { "\($0.author) \($0.lines) 行" }
+            .map { L.f("%@ %@ 行", String(describing: $0.author), String(describing: $0.lines)) }
             .joined(separator: " · ")
-        let more = people.count > 3 ? " 等 \(people.count) 人" : ""
+        let more = people.count > 3 ? L.n(" 等 %d 人", people.count) : ""
         let uncommitted = result.uncommittedLineCount
-        let tail = uncommitted > 0 ? " · 其中 \(uncommitted) 行未提交" : ""
-        return "\(result.lines.count) 行 · \(parts)\(more)\(tail)"
+        let tail = uncommitted > 0 ? L.n(" · 其中 %d 行未提交", uncommitted) : ""
+        return L.f("%@ 行 · %@%@%@", String(describing: result.lines.count), String(describing: parts), String(describing: more), String(describing: tail))
     }
 
     // MARK: - Content
@@ -69,14 +69,14 @@ struct BlameSheet: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 28))
                     .foregroundStyle(.orange)
-                Text("无法注解此文件")
+                Text(L.t("无法注解此文件"))
                     .font(.headline)
                 Text(error)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .textSelection(.enabled)
-                Button("重试") { Task { await session.loadBlame() } }
+                Button(L.t("重试")) { Task { await session.loadBlame() } }
             }
             .padding(28)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -85,7 +85,7 @@ struct BlameSheet: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let result = session.blameState?.result {
             if result.isEmpty {
-                ContentUnavailableView("没有可注解的行", systemImage: "text.alignleft")
+                ContentUnavailableView(L.t("没有可注解的行"), systemImage: "text.alignleft")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 VStack(spacing: 0) {
@@ -104,10 +104,10 @@ struct BlameSheet: View {
 
     private var columnHeader: some View {
         HStack(spacing: 8) {
-            Text("行").frame(width: 44, alignment: .trailing)
-            Text("修订").frame(width: 56, alignment: .leading)
-            Text("作者").frame(width: 120, alignment: .leading)
-            Text("内容")
+            Text(L.t("行")).frame(width: 44, alignment: .trailing)
+            Text(L.t("修订")).frame(width: 56, alignment: .leading)
+            Text(L.t("作者")).frame(width: 120, alignment: .leading)
+            Text(L.t("内容"))
             Spacer(minLength: 0)
         }
         .font(.system(.caption2, design: .monospaced).weight(.semibold))
@@ -121,7 +121,7 @@ struct BlameSheet: View {
         HStack(spacing: 6) {
             Image(systemName: "pencil.circle")
                 .foregroundStyle(.orange)
-            Text("其中 \(result.uncommittedLineCount) 行是本地未提交的修改，没有作者归属。")
+            Text(L.n("其中 %d 行是本地未提交的修改，没有作者归属。", result.uncommittedLineCount))
                 .font(.caption)
             Spacer()
         }
@@ -138,7 +138,7 @@ struct BlameSheet: View {
                         Text("\(line.lineNumber)")
                             .frame(width: 44, alignment: .trailing)
                             .foregroundStyle(.tertiary)
-                        Text(line.revision.map { "r\($0)" } ?? "未提交")
+                        Text(line.revision.map { "r\($0)" } ?? L.t("未提交"))
                             .frame(width: 56, alignment: .leading)
                             .foregroundStyle(line.revision == nil ? .orange : .primary)
                             .lineLimit(1)

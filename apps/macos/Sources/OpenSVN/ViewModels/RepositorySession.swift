@@ -168,13 +168,13 @@ final class RepositorySession: Identifiable {
         var summary: String {
             switch self {
             case .unknown:
-                return "尚未检查服务器连通性"
+                return L.t("尚未检查服务器连通性")
             case .reachable(let at):
-                return "服务器可达（\(at.formatted(date: .omitted, time: .shortened))）"
+                return L.f("服务器可达（%@）", String(describing: at.formatted(Date.FormatStyle(date: .omitted, time: .shortened, locale: L.locale))))
             case .needsAuthentication:
-                return "服务器需要认证，尚未保存可用的凭据"
+                return L.t("服务器需要认证，尚未保存可用的凭据")
             case .unreachable(let reason):
-                return "服务器不可达：\(reason)"
+                return L.f("服务器不可达：%@", String(describing: reason))
             }
         }
     }
@@ -440,7 +440,7 @@ final class RepositorySession: Identifiable {
     func update() async {
         guard let service else { return }
         let target = path
-        await perform("更新 \(displayName)") { credential, progress in
+        await perform(L.f("更新 %@", String(describing: displayName))) { credential, progress in
             try await service.update(at: target, credential: credential, progress: progress)
         }
         await loadLog(reset: true)
@@ -449,7 +449,7 @@ final class RepositorySession: Identifiable {
     func cleanup() async {
         guard let service else { return }
         let target = path
-        await perform("清理 \(displayName)") { _, _ in
+        await perform(L.f("清理 %@", String(describing: displayName))) { _, _ in
             try await service.cleanup(at: target)
         }
     }
@@ -457,7 +457,7 @@ final class RepositorySession: Identifiable {
     func add(_ paths: [String]) async {
         guard let service, !paths.isEmpty else { return }
         let urls = paths.map { URL(fileURLWithPath: $0) }
-        await perform("添加到版本控制") { _, _ in
+        await perform(L.t("添加到版本控制")) { _, _ in
             try await service.add(urls)
         }
     }
@@ -471,11 +471,11 @@ final class RepositorySession: Identifiable {
                 confirmation = Confirmation(
                     title: preview.summary,
                     message: preview.detail,
-                    confirmLabel: "删除",
+                    confirmLabel: L.t("删除"),
                     isDestructive: true,
                     action: { [weak self] in
                         guard let self else { return }
-                        await self.perform("删除 \(urls.count) 项") { _, _ in
+                        await self.perform(L.n("删除 %d 项", urls.count)) { _, _ in
                             try await service.delete(urls, confirmed: true)
                         }
                     }
@@ -495,11 +495,11 @@ final class RepositorySession: Identifiable {
                 confirmation = Confirmation(
                     title: preview.summary,
                     message: preview.detail,
-                    confirmLabel: "还原",
+                    confirmLabel: L.t("还原"),
                     isDestructive: true,
                     action: { [weak self] in
                         guard let self else { return }
-                        await self.perform("还原 \(urls.count) 项") { _, _ in
+                        await self.perform(L.n("还原 %d 项", urls.count)) { _, _ in
                             try await service.revert(urls, confirmed: true)
                         }
                     }
@@ -640,7 +640,7 @@ final class RepositorySession: Identifiable {
         guard let url = logQueryURL() else {
             handle(SVNError(
                 code: .notAWorkingCopy,
-                message: "无法确定仓库地址，历史搜索需要先读取工作副本信息"
+                message: L.t("无法确定仓库地址，历史搜索需要先读取工作副本信息")
             ))
             return
         }
@@ -732,21 +732,21 @@ final class RepositorySession: Identifiable {
         var header = "r\(entry.revision)"
         if let author = entry.author, !author.isEmpty { header += " · \(author)" }
         if let date = entry.date {
-            header += " · " + date.formatted(date: .abbreviated, time: .shortened)
+            header += " · " + RelativeTime.absolute(date)
         }
         lines.append(header)
 
         let body = entry.message.trimmingCharacters(in: .whitespacesAndNewlines)
-        lines.append(body.isEmpty ? "（无提交说明）" : body)
+        lines.append(body.isEmpty ? L.t("（无提交说明）") : body)
 
         if !entry.changedPaths.isEmpty {
             lines.append("")
-            lines.append("变更 \(entry.changedPaths.count) 个路径：")
+            lines.append(L.n("变更 %d 个路径：", entry.changedPaths.count))
             for path in entry.changedPaths.prefix(20) {
                 lines.append("- `\(path.action.rawValue)` \(path.path)")
             }
             if entry.changedPaths.count > 20 {
-                lines.append("- … 其余 \(entry.changedPaths.count - 20) 个")
+                lines.append(L.n("- … 其余 %d 个", entry.changedPaths.count - 20))
             }
         }
         return lines.joined(separator: "\n")
@@ -758,7 +758,7 @@ final class RepositorySession: Identifiable {
         guard !paths.isEmpty else {
             presentedError = PresentedError(error: SVNError(
                 code: .invalidInvocation,
-                message: "请先勾选要提交的文件"
+                message: L.t("请先勾选要提交的文件")
             ))
             return
         }
@@ -766,7 +766,7 @@ final class RepositorySession: Identifiable {
         guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             presentedError = PresentedError(error: SVNError(
                 code: .invalidInvocation,
-                message: "提交说明不能为空"
+                message: L.t("提交说明不能为空")
             ))
             return
         }
@@ -780,7 +780,7 @@ final class RepositorySession: Identifiable {
         do {
             guard let taskCenter else { return }
             let summary = try await withAuthRetry { credential in
-                try await taskCenter.run("提交 \(urls.count) 个文件") { progress in
+                try await taskCenter.run(L.n("提交 %d 个文件", urls.count)) { progress in
                     try await service.commit(
                         urls,
                         message: message,
@@ -844,10 +844,10 @@ final class RepositorySession: Identifiable {
         if strategy.isDestructive || isBatch {
             confirmation = Confirmation(
                 title: isBatch
-                    ? "解决 \(urls.count) 个冲突"
-                    : "解决冲突：\(relativePath(entries[0].path))",
+                    ? L.n("解决 %d 个冲突", urls.count)
+                    : L.f("解决冲突：%@", String(describing: relativePath(entries[0].path))),
                 message: confirmationMessage(for: entries, strategy: strategy, isBatch: isBatch),
-                confirmLabel: "确认解决",
+                confirmLabel: L.t("确认解决"),
                 isDestructive: strategy.isDestructive,
                 action: { [weak self] in
                     await self?.performResolve(urls, strategy: strategy, service: service)
@@ -882,7 +882,7 @@ final class RepositorySession: Identifiable {
                 guard let artifacts = try await service.conflictArtifacts(for: url) else {
                     presentedError = PresentedError(error: SVNError(
                         code: .conflictRemains,
-                        message: "该路径当前没有冲突副本，无法进行三方合并"
+                        message: L.t("该路径当前没有冲突副本，无法进行三方合并")
                     ))
                     return
                 }
@@ -893,8 +893,8 @@ final class RepositorySession: Identifiable {
                     presentedError = PresentedError(error: SVNError(
                         code: .conflictRemains,
                         message: artifacts.kind == "text"
-                            ? "冲突副本不完整（可能是树冲突或已被清理），请改用「解决冲突」菜单"
-                            : "只有文本冲突支持三方合并；这是\(artifacts.kind ?? "非文本")冲突"
+                            ? L.t("冲突副本不完整（可能是树冲突或已被清理），请改用「解决冲突」菜单")
+                            : L.f("只有文本冲突支持三方合并；这是%@冲突", String(describing: artifacts.kind ?? L.t("非文本")))
                     ))
                     return
                 }
@@ -941,7 +941,7 @@ final class RepositorySession: Identifiable {
                     reason: "merge-editor"
                 )
                 try text.write(to: url, atomically: true, encoding: .utf8)
-                let outcome = try await taskCenter.run("写入合并结果") { _ in
+                let outcome = try await taskCenter.run(L.t("写入合并结果")) { _ in
                     try await service.resolve([url], strategy: .working, confirmed: true)
                 }
                 mergeEditor = nil
@@ -950,7 +950,7 @@ final class RepositorySession: Identifiable {
                 if let backup {
                     report = ResolveReport(
                         title: report.title,
-                        message: report.message + "\n\n合并前的内容已备份到：\n"
+                        message: report.message + L.t("\n\n合并前的内容已备份到：\n")
                             + (backup.directory.path as NSString).abbreviatingWithTildeInPath,
                         backupDirectory: backup.directory
                     )
@@ -971,16 +971,16 @@ final class RepositorySession: Identifiable {
         var lines: [String] = [strategy.consequence]
         if isBatch {
             lines.append("")
-            lines.append("将一次处理 \(entries.count) 个文件：")
+            lines.append(L.n("将一次处理 %d 个文件：", entries.count))
             for entry in entries.prefix(8) {
                 lines.append("· \(relativePath(entry.path))")
             }
             if entries.count > 8 {
-                lines.append("… 其余 \(entries.count - 8) 个")
+                lines.append(L.n("… 其余 %d 个", entries.count - 8))
             }
         }
         lines.append("")
-        lines.append("解决前会把冲突相关文件备份到应用支持目录，出问题可以从那里取回。")
+        lines.append(L.t("解决前会把冲突相关文件备份到应用支持目录，出问题可以从那里取回。"))
         return lines.joined(separator: "\n")
     }
 
@@ -990,7 +990,7 @@ final class RepositorySession: Identifiable {
         service: SVNService
     ) async {
         guard let taskCenter else { return }
-        let title = urls.count == 1 ? "解决冲突" : "解决 \(urls.count) 个冲突"
+        let title = urls.count == 1 ? L.t("解决冲突") : L.n("解决 %d 个冲突", urls.count)
         do {
             let outcome = try await taskCenter.run(title) { _ in
                 try await service.resolve(urls, strategy: strategy, confirmed: true)
@@ -1006,9 +1006,9 @@ final class RepositorySession: Identifiable {
         var lines: [String] = []
         if let backup = outcome.backup {
             let path = (backup.directory.path as NSString).abbreviatingWithTildeInPath
-            lines.append("已备份 \(backup.entries.count) 个冲突文件到：\n\(path)")
+            lines.append(L.f("已备份 %@ 个冲突文件到：\n%@", String(describing: backup.entries.count), String(describing: path)))
         } else {
-            lines.append("没有需要备份的冲突副本（可能已被他人解决或文件已删除）。")
+            lines.append(L.t("没有需要备份的冲突副本（可能已被他人解决或文件已删除）。"))
         }
 
         let residual = outcome.scans.filter(\.hasUnresolvedMarkers)
@@ -1018,25 +1018,25 @@ final class RepositorySession: Identifiable {
                 return false
             }
             if !skipped.isEmpty {
-                lines.append("\(skipped.count) 个文件无法扫描（二进制或超过 8 MB）。")
+                lines.append(L.n("%d 个文件无法扫描（二进制或超过 8 MB）。", skipped.count))
             }
             return ResolveReport(
-                title: "已解决 \(outcome.resolvedPaths.count) 个冲突",
+                title: L.n("已解决 %d 个冲突", outcome.resolvedPaths.count),
                 message: lines.joined(separator: "\n\n"),
                 backupDirectory: outcome.backup?.directory
             )
         }
 
-        lines.append("以下文件仍含冲突标记（`<<<<<<<` / `>>>>>>>`），直接提交会把标记写进仓库：")
+        lines.append(L.t("以下文件仍含冲突标记（`<<<<<<<` / `>>>>>>>`），直接提交会把标记写进仓库："))
         for scan in residual {
             guard case .unresolved(let markers) = scan.result else { continue }
-            let sample = markers.prefix(5).map(String.init).joined(separator: "、")
+            let sample = markers.prefix(5).map(String.init).joined(separator: L.t("、"))
             let suffix = markers.count > 5 ? "…" : ""
-            lines.append("· \(relativePath(scan.path))（第 \(sample)\(suffix) 行）")
+            lines.append(L.f("· %@（第 %@%@ 行）", String(describing: relativePath(scan.path)), String(describing: sample), String(describing: suffix)))
         }
-        lines.append("请手工编辑这些文件，或在「变更」页改用其它解决方式。")
+        lines.append(L.t("请手工编辑这些文件，或在「变更」页改用其它解决方式。"))
         return ResolveReport(
-            title: "已标记为已解决，但仍有 \(residual.count) 个文件含冲突标记",
+            title: L.n("已标记为已解决，但仍有 %d 个文件含冲突标记", residual.count),
             message: lines.joined(separator: "\n\n"),
             backupDirectory: outcome.backup?.directory
         )
@@ -1083,7 +1083,7 @@ final class RepositorySession: Identifiable {
     func setProperty(name: String, value: String) async {
         guard let service, let editor = propertyEditor else { return }
         let url = editor.url
-        await runPropertyWrite("设置属性 \(name)") {
+        await runPropertyWrite(L.f("设置属性 %@", String(describing: name))) {
             try await service.setProperty(name: name, value: value, on: [url])
         }
     }
@@ -1091,7 +1091,7 @@ final class RepositorySession: Identifiable {
     func deleteProperty(name: String) async {
         guard let service, let editor = propertyEditor else { return }
         let url = editor.url
-        await runPropertyWrite("删除属性 \(name)") {
+        await runPropertyWrite(L.f("删除属性 %@", String(describing: name))) {
             _ = try await service.deleteProperty(name: name, on: [url])
         }
     }
@@ -1101,8 +1101,8 @@ final class RepositorySession: Identifiable {
         guard let service, !paths.isEmpty else { return }
         let urls = paths.map { URL(fileURLWithPath: $0) }
         let title = urls.count == 1
-            ? "忽略「\(urls[0].lastPathComponent)」"
-            : "忽略 \(urls.count) 项"
+            ? L.f("忽略「%@」", String(describing: urls[0].lastPathComponent))
+            : L.n("忽略 %d 项", urls.count)
         await runPropertyWrite(title) {
             _ = try await service.ignore(urls)
         }
@@ -1122,7 +1122,7 @@ final class RepositorySession: Identifiable {
         }
         let pattern = "*.\(ext)"
         let directory = url.deletingLastPathComponent()
-        await runPropertyWrite("忽略 \(pattern)") {
+        await runPropertyWrite(L.f("忽略 %@", String(describing: pattern))) {
             _ = try await service.addIgnorePattern(pattern, in: directory)
         }
     }
@@ -1190,16 +1190,16 @@ final class RepositorySession: Identifiable {
         let comment = editor.comment.trimmingCharacters(in: .whitespacesAndNewlines)
         let steal = editor.steal
         let title = urls.count == 1
-            ? "锁定「\(urls[0].lastPathComponent)」"
-            : "锁定 \(urls.count) 项"
+            ? L.f("锁定「%@」", String(describing: urls[0].lastPathComponent))
+            : L.n("锁定 %d 项", urls.count)
 
         if steal {
             confirmation = Confirmation(
-                title: title + "（强制）",
-                message: "强制锁定会抢占以下路径上他人持有的锁：\n"
+                title: title + L.t("（强制）"),
+                message: L.t("强制锁定会抢占以下路径上他人持有的锁：\n")
                     + editor.displayPaths.prefix(8).map { "· \($0)" }.joined(separator: "\n")
-                    + "\n\n持有者将无法提交，直到他发现锁已易主。",
-                confirmLabel: "强制锁定",
+                    + L.t("\n\n持有者将无法提交，直到他发现锁已易主。"),
+                confirmLabel: L.t("强制锁定"),
                 isDestructive: true,
                 action: { [weak self] in
                     await self?.runLock(urls: urls, comment: comment, steal: true, title: title, service: service)
@@ -1254,7 +1254,7 @@ final class RepositorySession: Identifiable {
         }
         return SVNError(
             code: error.code,
-            message: "该路径已由 \(owner) 锁定",
+            message: L.f("该路径已由 %@ 锁定", String(describing: owner)),
             diagnosticOutput: error.diagnosticOutput,
             svnCode: error.svnCode,
             exitCode: error.exitCode
@@ -1272,22 +1272,22 @@ final class RepositorySession: Identifiable {
         let foreign = lockSnapshot.foreignLocks(among: paths)
         let needsForce = !foreign.isEmpty
         let preview = paths.prefix(8).map { "· \(relativePath($0))" }.joined(separator: "\n")
-        let overflow = paths.count > 8 ? "\n… 其余 \(paths.count - 8) 项" : ""
+        let overflow = paths.count > 8 ? L.n("\n… 其余 %d 项", paths.count - 8) : ""
 
-        var lines = ["将解除 \(paths.count) 个路径的锁：", preview + overflow]
+        var lines = [L.n("将解除 %d 个路径的锁：", paths.count), preview + overflow]
         if needsForce {
             lines.append("")
-            lines.append("其中 \(foreign.count) 个锁由他人持有。解除需要强制，持有者将失去保护。")
-            lines.append("如果只是在本地不想被锁影响，也可以不解除，直接继续编辑。")
+            lines.append(L.n("其中 %d 个锁由他人持有。解除需要强制，持有者将失去保护。", foreign.count))
+            lines.append(L.t("如果只是在本地不想被锁影响，也可以不解除，直接继续编辑。"))
         }
 
         confirmation = Confirmation(
-            title: needsForce ? "强制解除 \(paths.count) 个锁" : "解除 \(paths.count) 个锁",
+            title: needsForce ? L.n("强制解除 %d 个锁", paths.count) : L.n("解除 %d 个锁", paths.count),
             message: lines.joined(separator: "\n"),
-            confirmLabel: needsForce ? "强制解除" : "解除锁定",
+            confirmLabel: needsForce ? L.t("强制解除") : L.t("解除锁定"),
             isDestructive: needsForce,
             action: { [weak self] in
-                await self?.perform(needsForce ? "强制解除锁" : "解除锁定") { credential, _ in
+                await self?.perform(needsForce ? L.t("强制解除锁") : L.t("解除锁定")) { credential, _ in
                     try await service.unlock(
                         urls,
                         breakLock: needsForce,
@@ -1372,7 +1372,7 @@ final class RepositorySession: Identifiable {
         guard let service else { return }
         let trimmed = newURL.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, trimmed.contains("://") else {
-            handle(SVNError(code: .invalidInvocation, message: "新的仓库地址需要包含协议"))
+            handle(SVNError(code: .invalidInvocation, message: L.t("新的仓库地址需要包含协议")))
             return
         }
         let target = path
@@ -1460,7 +1460,7 @@ final class RepositorySession: Identifiable {
         guard let service, let state = externalsState else { return }
         guard let url = info?.url, url.contains("://") else {
             externalsState?.isLoading = false
-            externalsState?.error = "无法确定仓库地址（file:// 之外的工作副本需要先读取信息）"
+            externalsState?.error = L.t("无法确定仓库地址（file:// 之外的工作副本需要先读取信息）")
             return
         }
         do {
@@ -1611,16 +1611,16 @@ final class RepositorySession: Identifiable {
         guard !valid.isEmpty else {
             presentedError = PresentedError(error: SVNError(
                 code: .invalidInvocation,
-                message: "拖入的文件已不存在，未导入任何内容"
+                message: L.t("拖入的文件已不存在，未导入任何内容")
             ))
             return
         }
-        let names = valid.prefix(3).map(\.lastPathComponent).joined(separator: "、")
-        let more = valid.count > 3 ? " 等 \(valid.count) 项" : ""
+        let names = valid.prefix(3).map(\.lastPathComponent).joined(separator: L.t("、"))
+        let more = valid.count > 3 ? L.f(" 等 %@ 项", String(describing: valid.count)) : ""
         confirmation = Confirmation(
-            title: "导入到工作副本",
-            message: "将把 \(names)\(more) 复制到「\(displayName)」并加入版本控制（svn add），不会立即提交。",
-            confirmLabel: "导入",
+            title: L.t("导入到工作副本"),
+            message: L.f("将把 %@%@ 复制到「%@」并加入版本控制（svn add），不会立即提交。", String(describing: names), String(describing: more), String(describing: displayName)),
+            confirmLabel: L.t("导入"),
             isDestructive: false,
             action: { [weak self] in
                 for url in valid {
@@ -1645,7 +1645,7 @@ final class RepositorySession: Identifiable {
         guard !FileManager.default.fileExists(atPath: destination.path) else {
             presentedError = PresentedError(error: SVNError(
                 code: .invalidInvocation,
-                message: "工作副本里已存在同名项目：\(destination.lastPathComponent)"
+                message: L.f("工作副本里已存在同名项目：%@", String(describing: destination.lastPathComponent))
             ))
             return
         }
@@ -1673,7 +1673,7 @@ final class RepositorySession: Identifiable {
                     : path.appendingPathComponent(raw)
             }
         }
-        await perform("导出 \(sources.count) 项") { _, _ in
+        await perform(L.n("导出 %d 项", sources.count)) { _, _ in
             for source in sources {
                 let destination = sources.count == 1
                     ? directory
@@ -1705,7 +1705,7 @@ final class RepositorySession: Identifiable {
     /// it stops an *unattended* caller, not a user decision.
     func merge(_ request: MergeRequest) async {
         guard let service else { return }
-        let outcome = await performReturning("合并到 \(displayName)") { credential, progress in
+        let outcome = await performReturning(L.f("合并到 %@", String(describing: displayName))) { credential, progress in
             try await service.merge(
                 request,
                 confirmed: true,
@@ -1719,25 +1719,25 @@ final class RepositorySession: Identifiable {
         let changes = outcome.changes
         let touched = changes.updated.count + changes.added.count
             + changes.deleted.count + changes.merged.count
-        lines.append("合并来源：\(request.primarySourceURL)")
+        lines.append(L.f("合并来源：%@", String(describing: request.primarySourceURL)))
         if outcome.recordOnly {
-            lines.append("这是一次 --record-only 合并：只更新 svn:mergeinfo 记录，没有改动任何文件。")
+            lines.append(L.t("这是一次 --record-only 合并：只更新 svn:mergeinfo 记录，没有改动任何文件。"))
         } else if touched == 0 {
-            lines.append("没有文件发生变化：这段修订可能已经合并过了（见「信息」页的合并记录）。")
+            lines.append(L.t("没有文件发生变化：这段修订可能已经合并过了（见「信息」页的合并记录）。"))
         } else {
-            lines.append("改动 \(touched) 个路径。")
+            lines.append(L.n("改动 %d 个路径。", touched))
         }
         if outcome.hasConflicts {
-            lines.append("其中 \(changes.conflicted.count) 个路径冲突，未自动解决——请到「变更」页逐个处理后再提交。")
+            lines.append(L.n("其中 %d 个路径冲突，未自动解决——请到「变更」页逐个处理后再提交。", changes.conflicted.count))
         } else if !outcome.recordOnly && touched > 0 {
-            lines.append("改动还在工作副本里：确认无误后到「提交」页提交。")
+            lines.append(L.t("改动还在工作副本里：确认无误后到「提交」页提交。"))
         }
         if !changes.skipped.isEmpty {
-            lines.append("\(changes.skipped.count) 个路径被跳过（Skipped），通常是本地已存在未纳入版本控制的同名文件。")
+            lines.append(L.n("%d 个路径被跳过（Skipped），通常是本地已存在未纳入版本控制的同名文件。", changes.skipped.count))
         }
 
         branchReport = BranchReport(
-            title: "合并完成",
+            title: L.t("合并完成"),
             message: lines.joined(separator: "\n\n"),
             hasConflicts: outcome.hasConflicts
         )
@@ -1748,7 +1748,7 @@ final class RepositorySession: Identifiable {
     /// repository. The history therefore changes too, so the log is reloaded.
     func switchWorkingCopy(to request: SwitchRequest) async {
         guard let service else { return }
-        let outcome = await performReturning("切换到 \(request.url)") { credential, progress in
+        let outcome = await performReturning(L.f("切换到 %@", String(describing: request.url))) { credential, progress in
             try await service.switchTo(
                 request,
                 confirmed: true,
@@ -1758,18 +1758,18 @@ final class RepositorySession: Identifiable {
         }
         guard let outcome else { return }
 
-        var lines = ["工作副本现在指向：\(outcome.url)"]
+        var lines = [L.f("工作副本现在指向：%@", String(describing: outcome.url))]
         let changes = outcome.changes
         let touched = changes.updated.count + changes.added.count
             + changes.deleted.count + changes.merged.count
-        if touched > 0 { lines.append("内容随之更新了 \(touched) 个路径。") }
+        if touched > 0 { lines.append(L.n("内容随之更新了 %d 个路径。", touched)) }
         if outcome.hasConflicts {
-            lines.append("其中 \(changes.conflicted.count) 个路径冲突——本地未提交的修改与切换后的内容撞在了一起，请到「变更」页处理。")
+            lines.append(L.n("其中 %d 个路径冲突——本地未提交的修改与切换后的内容撞在了一起，请到「变更」页处理。", changes.conflicted.count))
         } else {
-            lines.append("本地未提交的修改已被保留。")
+            lines.append(L.t("本地未提交的修改已被保留。"))
         }
         branchReport = BranchReport(
-            title: "切换完成",
+            title: L.t("切换完成"),
             message: lines.joined(separator: "\n\n"),
             hasConflicts: outcome.hasConflicts
         )
@@ -1799,7 +1799,7 @@ final class RepositorySession: Identifiable {
     @discardableResult
     func changeDepth(of target: URL, to depth: WorkingCopyDepth) async -> Bool {
         guard let service else { return false }
-        let summary = await performReturning("改深度：\(target.lastPathComponent)") { credential, progress in
+        let summary = await performReturning(L.f("改深度：%@", String(describing: target.lastPathComponent))) { credential, progress in
             try await service.update(at: target, setDepth: depth, credential: credential, progress: progress)
         }
         guard summary != nil else { return false }
@@ -1823,7 +1823,7 @@ final class RepositorySession: Identifiable {
     /// has just read the dry-run result.
     func applyPatch(_ request: PatchRequest) async -> PatchOutcome? {
         guard let service else { return nil }
-        let outcome = await performReturning("应用补丁 \(request.patchFile.lastPathComponent)") { _, progress in
+        let outcome = await performReturning(L.f("应用补丁 %@", String(describing: request.patchFile.lastPathComponent))) { _, progress in
             try await service.applyPatch(request.applying(), confirmed: true, progress: progress)
         }
         if outcome == nil { return nil }
@@ -1911,7 +1911,7 @@ final class RepositorySession: Identifiable {
         guard let configuration = ExternalMergeConfiguration.load() else {
             presentedError = PresentedError(error: SVNError(
                 code: .invalidInvocation,
-                message: "尚未配置外部合并工具，请在「扩展设置」里指定可执行文件"
+                message: L.t("尚未配置外部合并工具，请在「扩展设置」里指定可执行文件")
             ))
             return
         }
@@ -1928,7 +1928,7 @@ final class RepositorySession: Identifiable {
                       let theirs = artifacts.theirs else {
                     presentedError = PresentedError(error: SVNError(
                         code: .conflictRemains,
-                        message: "「\(displayPath)」没有完整的三方冲突副本，无法用外部工具合并"
+                        message: L.f("「%@」没有完整的三方冲突副本，无法用外部工具合并", String(describing: displayPath))
                     ))
                     return
                 }
@@ -1957,7 +1957,7 @@ final class RepositorySession: Identifiable {
                 guard status == 0 else {
                     presentedError = PresentedError(error: SVNError(
                         code: .unknown,
-                        message: "外部合并工具以退出码 \(status) 结束，未写入任何改动"
+                        message: L.f("外部合并工具以退出码 %@ 结束，未写入任何改动", String(describing: status))
                     ))
                     try? FileManager.default.removeItem(at: merged)
                     return
@@ -1965,7 +1965,7 @@ final class RepositorySession: Identifiable {
                 guard let mergedText = try? String(contentsOf: merged, encoding: .utf8) else {
                     presentedError = PresentedError(error: SVNError(
                         code: .unknown,
-                        message: "外部合并工具没有在 {merged} 位置写出合并结果"
+                        message: L.t("外部合并工具没有在 {merged} 位置写出合并结果")
                     ))
                     try? FileManager.default.removeItem(at: merged)
                     return
@@ -1977,19 +1977,19 @@ final class RepositorySession: Identifiable {
                 )
                 try mergedText.write(to: fileURL, atomically: true, encoding: .utf8)
                 guard let taskCenter else { return }
-                _ = try await taskCenter.run("写入外部合并结果") { _ in
+                _ = try await taskCenter.run(L.t("写入外部合并结果")) { _ in
                     try await service.resolve([fileURL], strategy: .working, confirmed: true)
                 }
                 try? FileManager.default.removeItem(at: merged)
                 await refresh()
 
                 let backupNote = backup.map {
-                    "\n\n合并前的内容已备份到：\n"
+                    L.t("\n\n合并前的内容已备份到：\n")
                         + ($0.directory.path as NSString).abbreviatingWithTildeInPath
                 } ?? ""
                 resolveReport = ResolveReport(
-                    title: "已用外部工具解决冲突",
-                    message: "「\(displayPath)」的合并结果已写回并标记为已解决。" + backupNote,
+                    title: L.t("已用外部工具解决冲突"),
+                    message: L.f("「%@」的合并结果已写回并标记为已解决。", String(describing: displayPath)) + backupNote,
                     backupDirectory: backup?.directory
                 )
             } catch {

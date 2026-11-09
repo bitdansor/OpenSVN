@@ -32,9 +32,9 @@ struct DemoWorkspaceSheet: View {
                 .font(.system(size: 28, weight: .light))
                 .foregroundStyle(Color.accentColor)
             VStack(alignment: .leading, spacing: 3) {
-                Text("亲手试一次三方合并")
+                Text(L.t("亲手试一次三方合并"))
                     .font(.title3.weight(.semibold))
-                Text("在本机生成一个带冲突的小仓库，不需要联网，也不会动你的其他文件。")
+                Text(L.t("在本机生成一个带冲突的小仓库，不需要联网，也不会动你的其他文件。"))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -45,20 +45,20 @@ struct DemoWorkspaceSheet: View {
 
     private var content: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("三方合并要准备两份工作副本和一次真实冲突 —— 为了试一个功能做这些不值得。点下面的按钮，这些都由 OpenSVN 代劳。")
+            Text(L.t("三方合并要准备两份工作副本和一次真实冲突 —— 为了试一个功能做这些不值得。点下面的按钮，这些都由 OpenSVN 代劳。"))
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             VStack(alignment: .leading, spacing: 9) {
-                Text("生成后你会看到")
+                Text(L.t("生成后你会看到"))
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                item("src/calculator.swift", "3 处自动合并，1 处需要你决定", tint: .blue)
-                item("docs/config.md", "2 处自动合并，1 处需要你决定", tint: .blue)
-                item("docs/发布说明.md", "中文文件名，同样可以合并", tint: .blue)
-                item("docs/属性冲突.txt", "属性冲突 —— 三方合并处理不了，需要整体选一边", tint: .purple)
-                item("src/util.swift", "只有服务器改过，更新时已经自动合并", tint: .secondary)
+                item("src/calculator.swift", L.t("3 处自动合并，1 处需要你决定"), tint: .blue)
+                item("docs/config.md", L.t("2 处自动合并，1 处需要你决定"), tint: .blue)
+                item("docs/发布说明.md", L.t("中文文件名，同样可以合并"), tint: .blue)
+                item("docs/属性冲突.txt", L.t("属性冲突 —— 三方合并处理不了，需要整体选一边"), tint: .purple)
+                item("src/util.swift", L.t("只有服务器改过，更新时已经自动合并"), tint: .secondary)
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -93,26 +93,26 @@ struct DemoWorkspaceSheet: View {
 
     private var footer: some View {
         HStack(spacing: 10) {
-            Button("取消") { dismiss() }
+            Button(L.t("取消")) { dismiss() }
             Spacer()
 
             if appState.demoPhase == .building {
                 ProgressView().controlSize(.small)
-                Text("正在生成…")
+                Text(L.t("正在生成…"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
             if appState.demoWorkingCopy != nil {
-                Button("重新生成") {
+                Button(L.t("重新生成")) {
                     Task { await appState.createDemoWorkspace() }
                 }
                 .disabled(appState.demoPhase == .building)
-                Button("打开演示") { appState.openExistingDemo() }
+                Button(L.t("打开演示")) { appState.openExistingDemo() }
                     .buttonStyle(.borderedProminent)
                     .disabled(appState.demoPhase == .building)
             } else {
-                Button("生成并打开") {
+                Button(L.t("生成并打开")) {
                     Task { await appState.createDemoWorkspace() }
                 }
                 .buttonStyle(.borderedProminent)

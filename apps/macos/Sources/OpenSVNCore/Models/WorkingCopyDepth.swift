@@ -27,11 +27,11 @@ public enum WorkingCopyDepth: String, Sendable, Hashable, CaseIterable, Codable 
 
     public var displayName: String {
         switch self {
-        case .infinity: return "完整（含所有子目录）"
-        case .immediates: return "仅直接子项"
-        case .files: return "仅文件"
-        case .empty: return "仅目录本身"
-        case .exclude: return "排除（从工作副本移除）"
+        case .infinity: return L.t("完整（含所有子目录）")
+        case .immediates: return L.t("仅直接子项")
+        case .files: return L.t("仅文件")
+        case .empty: return L.t("仅目录本身")
+        case .exclude: return L.t("排除（从工作副本移除）")
         }
     }
 
@@ -39,15 +39,15 @@ public enum WorkingCopyDepth: String, Sendable, Hashable, CaseIterable, Codable 
     public var explanation: String {
         switch self {
         case .infinity:
-            return "递归取出全部内容。已经排除的路径不会自动回来，需要单独设置。"
+            return L.t("递归取出全部内容。已经排除的路径不会自动回来，需要单独设置。")
         case .immediates:
-            return "取出这一层和直接子项；子目录保留为空壳，内部内容不下载。"
+            return L.t("取出这一层和直接子项；子目录保留为空壳，内部内容不下载。")
         case .files:
-            return "只取出这一层的文件，子目录整体不下载。"
+            return L.t("只取出这一层的文件，子目录整体不下载。")
         case .empty:
-            return "只保留这个目录本身，子项从磁盘删除但仓库里仍然记得它们。"
+            return L.t("只保留这个目录本身，子项从磁盘删除但仓库里仍然记得它们。")
         case .exclude:
-            return "把这个路径从工作副本里彻底移除，磁盘上的内容会被删除。"
+            return L.t("把这个路径从工作副本里彻底移除，磁盘上的内容会被删除。")
         }
     }
 
@@ -65,9 +65,9 @@ public enum WorkingCopyDepth: String, Sendable, Hashable, CaseIterable, Codable 
     public var warning: String? {
         switch self {
         case .exclude:
-            return "磁盘上的文件会被删除，且仓库不再记得它们。目录里若有未纳入版本控制的文件，svn 会留下一个半成品并可能锁住工作副本，所以必须先清空。"
+            return L.t("磁盘上的文件会被删除，且仓库不再记得它们。目录里若有未纳入版本控制的文件，svn 会留下一个半成品并可能锁住工作副本，所以必须先清空。")
         case .empty:
-            return "子项会从磁盘删除。它们仍在仓库里，改回更大的深度即可重新取回。"
+            return L.t("子项会从磁盘删除。它们仍在仓库里，改回更大的深度即可重新取回。")
         default:
             return nil
         }

@@ -104,9 +104,9 @@ public struct LogFilter: Sendable, Hashable {
     /// Conditions that the server search cannot honour.
     public var conditionsNotSearchableOnServer: [String] {
         var names: [String] = []
-        if author != nil { names.append("作者") }
-        if path != nil { names.append("路径") }
-        if from != nil || to != nil { names.append("日期") }
+        if author != nil { names.append(L.t("作者")) }
+        if path != nil { names.append(L.t("路径")) }
+        if from != nil || to != nil { names.append(L.t("日期")) }
         return names
     }
 }

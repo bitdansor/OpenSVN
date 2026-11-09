@@ -149,13 +149,13 @@ public enum ResolveStrategy: String, Sendable, Hashable, CaseIterable {
     public var title: String {
         switch self {
         case .working:
-            return "保留当前内容，仅清除冲突标记"
+            return L.t("保留当前内容，仅清除冲突标记")
         case .mineFull:
-            return "用我的版本覆盖（丢弃服务器改动）"
+            return L.t("用我的版本覆盖（丢弃服务器改动）")
         case .theirsFull:
-            return "用服务器版本覆盖（丢弃我的改动）"
+            return L.t("用服务器版本覆盖（丢弃我的改动）")
         case .base:
-            return "恢复基线版本（丢弃双方改动）"
+            return L.t("恢复基线版本（丢弃双方改动）")
         }
     }
 
@@ -168,13 +168,13 @@ public enum ResolveStrategy: String, Sendable, Hashable, CaseIterable {
     public var consequence: String {
         switch self {
         case .working:
-            return "保留磁盘上的当前内容（可能仍含冲突标记），仅清除冲突状态。"
+            return L.t("保留磁盘上的当前内容（可能仍含冲突标记），仅清除冲突状态。")
         case .mineFull:
-            return "丢弃服务器带来的修改，只保留本地版本。此操作不可撤销。"
+            return L.t("丢弃服务器带来的修改，只保留本地版本。此操作不可撤销。")
         case .theirsFull:
-            return "丢弃全部本地修改，改用服务器版本。此操作不可撤销。"
+            return L.t("丢弃全部本地修改，改用服务器版本。此操作不可撤销。")
         case .base:
-            return "还原到冲突前的基线版本，本地与该次服务器修改都会被丢弃。"
+            return L.t("还原到冲突前的基线版本，本地与该次服务器修改都会被丢弃。")
         }
     }
 }

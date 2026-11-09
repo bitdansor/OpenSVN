@@ -10,7 +10,7 @@ struct SidebarView: View {
 
         List(selection: $appState.selectedBookmarkID) {
             if !appState.workingCopyBookmarks.isEmpty {
-                Section("工作副本") {
+                Section(L.t("工作副本")) {
                     ForEach(appState.workingCopyBookmarks) { bookmark in
                         RepositoryRow(
                             bookmark: bookmark,
@@ -19,14 +19,14 @@ struct SidebarView: View {
                         )
                         .tag(bookmark.id)
                         .contextMenu {
-                            Button("在 Finder 中显示") {
+                            Button(L.t("在 Finder 中显示")) {
                                 NSWorkspace.shared.activateFileViewerSelecting([bookmark.url])
                             }
-                            Button("检查连接") {
+                            Button(L.t("检查连接")) {
                                 Task { await appState.session(for: bookmark.id)?.probeConnection() }
                             }
                             Divider()
-                            Button("移除", role: .destructive) {
+                            Button(L.t("移除"), role: .destructive) {
                                 appState.removeRepository(id: bookmark.id)
                             }
                         }
@@ -35,7 +35,7 @@ struct SidebarView: View {
             }
 
             if !appState.repositoryBookmarks.isEmpty {
-                Section("仓库") {
+                Section(L.t("仓库")) {
                     ForEach(appState.repositoryBookmarks) { bookmark in
                         RepositoryRow(
                             bookmark: bookmark,
@@ -44,7 +44,7 @@ struct SidebarView: View {
                         )
                         .tag(bookmark.id)
                         .contextMenu {
-                            Button("复制地址") {
+                            Button(L.t("复制地址")) {
                                 NSPasteboard.general.clearContents()
                                 NSPasteboard.general.setString(
                                     bookmark.repositoryURL ?? "",
@@ -52,7 +52,7 @@ struct SidebarView: View {
                                 )
                             }
                             Divider()
-                            Button("移除", role: .destructive) {
+                            Button(L.t("移除"), role: .destructive) {
                                 appState.removeRepository(id: bookmark.id)
                             }
                         }
@@ -64,13 +64,13 @@ struct SidebarView: View {
         .overlay {
             if appState.bookmarks.isEmpty {
                 ContentUnavailableView {
-                    Label("没有工作副本", systemImage: "tray")
+                    Label(L.t("没有工作副本"), systemImage: "tray")
                 } description: {
-                    Text("添加一个已存在的工作副本，或从仓库检出。")
+                    Text(L.t("添加一个已存在的工作副本，或从仓库检出。"))
                 } actions: {
-                    Button("添加…") { appState.presentAddWorkingCopyPanel() }
-                    Button("检出…") { appState.showingCheckoutSheet = true }
-                    Button("只看仓库…") { appState.promptForRepositoryBookmark() }
+                    Button(L.t("添加…")) { appState.presentAddWorkingCopyPanel() }
+                    Button(L.t("检出…")) { appState.showingCheckoutSheet = true }
+                    Button(L.t("只看仓库…")) { appState.promptForRepositoryBookmark() }
                 }
             }
         }
@@ -105,7 +105,7 @@ private struct RepositoryRow: View {
             if let conflicts = session?.conflictedEntries.count, conflicts > 0 {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.red)
-                    .help("\(conflicts) 个冲突")
+                    .help(L.n("%d 个冲突", conflicts))
             }
             // Only problems get an icon. A green dot on every row would be
             // noise; a missing icon means "nothing to report".

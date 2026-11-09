@@ -156,7 +156,7 @@ public struct ConflictGuard: Sendable {
         } catch {
             throw SVNError(
                 code: .backupFailed,
-                message: "无法创建冲突备份目录",
+                message: L.t("无法创建冲突备份目录"),
                 diagnosticOutput: "\(directory.path): \(error.localizedDescription)"
             )
         }
@@ -173,7 +173,7 @@ public struct ConflictGuard: Sendable {
             } catch {
                 throw SVNError(
                     code: .backupFailed,
-                    message: "备份冲突文件失败：\(source.lastPathComponent)",
+                    message: L.f("备份冲突文件失败：%@", String(describing: source.lastPathComponent)),
                     diagnosticOutput: "\(source.path) → \(destination.path): \(error.localizedDescription)"
                 )
             }
@@ -206,22 +206,22 @@ public struct ConflictGuard: Sendable {
         let manager = FileManager.default
         guard let attributes = try? manager.attributesOfItem(atPath: path.path),
               let size = (attributes[.size] as? NSNumber)?.intValue else {
-            return ConflictMarkerScan(path: path.path, result: .skipped(reason: "无法读取文件"))
+            return ConflictMarkerScan(path: path.path, result: .skipped(reason: L.t("无法读取文件")))
         }
         guard size <= Self.maximumScanBytes else {
             return ConflictMarkerScan(
                 path: path.path,
-                result: .skipped(reason: "文件过大（\(size) 字节），未扫描冲突标记")
+                result: .skipped(reason: L.f("文件过大（%@ 字节），未扫描冲突标记", String(describing: size)))
             )
         }
         guard let data = try? Data(contentsOf: path, options: .mappedIfSafe) else {
-            return ConflictMarkerScan(path: path.path, result: .skipped(reason: "无法读取文件"))
+            return ConflictMarkerScan(path: path.path, result: .skipped(reason: L.t("无法读取文件")))
         }
         if data.contains(0) {
-            return ConflictMarkerScan(path: path.path, result: .skipped(reason: "二进制文件"))
+            return ConflictMarkerScan(path: path.path, result: .skipped(reason: L.t("二进制文件")))
         }
         guard let text = String(data: data, encoding: .utf8) else {
-            return ConflictMarkerScan(path: path.path, result: .skipped(reason: "非 UTF-8 文本"))
+            return ConflictMarkerScan(path: path.path, result: .skipped(reason: L.t("非 UTF-8 文本")))
         }
 
         var markers: [Int] = []

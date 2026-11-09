@@ -13,11 +13,11 @@ enum RepositoryTab: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .changes: return "变更"
-        case .commit: return "提交"
-        case .history: return "历史"
-        case .diff: return "差异"
-        case .overview: return "信息"
+        case .changes: return L.t("变更")
+        case .commit: return L.t("提交")
+        case .history: return L.t("历史")
+        case .diff: return L.t("差异")
+        case .overview: return L.t("信息")
         }
     }
 
@@ -125,7 +125,7 @@ struct RepositoryDetailView: View {
     }
 
     private var sectionPicker: some View {
-        Picker("分区", selection: $tab) {
+        Picker(L.t("分区"), selection: $tab) {
             ForEach(RepositoryTab.allCases) { candidate in
                 Label(candidate.title, systemImage: candidate.systemImage)
                     .tag(candidate)
@@ -134,7 +134,7 @@ struct RepositoryDetailView: View {
         .pickerStyle(.segmented)
         .labelStyle(.titleAndIcon)
         .fixedSize()
-        .help("切换工作副本的分区")
+        .help(L.t("切换工作副本的分区"))
     }
 
     @ViewBuilder
@@ -147,29 +147,29 @@ struct RepositoryDetailView: View {
             if session.isLoading {
                 ProgressView().controlSize(.small)
             } else {
-                Label("刷新", systemImage: "arrow.clockwise")
+                Label(L.t("刷新"), systemImage: "arrow.clockwise")
             }
         }
         .keyboardShortcut("r", modifiers: .command)
-        .help("重新读取工作副本状态")
+        .help(L.t("重新读取工作副本状态"))
     }
 
     private var updateButton: some View {
         Button {
             Task { await session.requestUpdate() }
         } label: {
-            Label("更新", systemImage: "arrow.down.circle")
+            Label(L.t("更新"), systemImage: "arrow.down.circle")
         }
-        .help("先看服务器上有什么变化，再决定是否更新")
+        .help(L.t("先看服务器上有什么变化，再决定是否更新"))
     }
 
     private var cleanupButton: some View {
         Button {
             Task { await session.cleanup() }
         } label: {
-            Label("清理", systemImage: "bandage")
+            Label(L.t("清理"), systemImage: "bandage")
         }
-        .help("清理内部锁（svn cleanup）")
+        .help(L.t("清理内部锁（svn cleanup）"))
     }
 
     /// Window subtitle: which revision this working copy is at, and who left it
@@ -218,23 +218,23 @@ private struct BranchMenu: View {
             Button {
                 showingMerge = true
             } label: {
-                Label("合并…", systemImage: "arrow.triangle.branch")
+                Label(L.t("合并…"), systemImage: "arrow.triangle.branch")
             }
             Button {
                 showingSwitch = true
             } label: {
-                Label("切换分支…", systemImage: "arrow.triangle.swap")
+                Label(L.t("切换分支…"), systemImage: "arrow.triangle.swap")
             }
             Divider()
             Button {
                 session.openMergeInfo()
             } label: {
-                Label("合并记录…", systemImage: "arrow.triangle.merge")
+                Label(L.t("合并记录…"), systemImage: "arrow.triangle.merge")
             }
         } label: {
-            Label("分支", systemImage: "arrow.triangle.branch")
+            Label(L.t("分支"), systemImage: "arrow.triangle.branch")
         }
-        .help("合并、切换分支、查看合并记录")
+        .help(L.t("合并、切换分支、查看合并记录"))
     }
 }
 
@@ -255,17 +255,17 @@ private struct WorkingCopyMenu: View {
             Button {
                 showingDepth = true
             } label: {
-                Label("改深度…", systemImage: "square.stack.3d.down.right")
+                Label(L.t("改深度…"), systemImage: "square.stack.3d.down.right")
             }
             Button {
                 showingPatch = true
             } label: {
-                Label("应用补丁…", systemImage: "doc.badge.plus")
+                Label(L.t("应用补丁…"), systemImage: "doc.badge.plus")
             }
         } label: {
-            Label("工作副本", systemImage: "ellipsis.circle")
+            Label(L.t("此工作副本"), systemImage: "ellipsis.circle")
         }
-        .help("改变稀疏工作副本的深度、应用补丁")
+        .help(L.t("改变稀疏工作副本的深度、应用补丁"))
     }
 }
 
@@ -340,21 +340,21 @@ private struct DetailAlerts: ViewModifier {
     func body(content: Content) -> some View {
         content
             .alert(
-                "操作失败",
+                L.t("操作失败"),
                 isPresented: Binding(
                     get: { session.presentedError != nil },
                     set: { if !$0 { session.presentedError = nil } }
                 ),
                 presenting: session.presentedError
             ) { _ in
-                Button("好", role: .cancel) { session.presentedError = nil }
+                Button(L.t("好"), role: .cancel) { session.presentedError = nil }
             } message: { presented in
                 Text(presented.detail.isEmpty
                      ? presented.title
                      : "\(presented.title)\n\n\(presented.detail)")
             }
             .alert(
-                session.resolveReport?.title ?? "解决冲突",
+                session.resolveReport?.title ?? L.t("解决冲突"),
                 isPresented: Binding(
                     get: { session.resolveReport != nil },
                     set: { if !$0 { session.dismissResolveReport() } }
@@ -362,12 +362,12 @@ private struct DetailAlerts: ViewModifier {
                 presenting: session.resolveReport
             ) { report in
                 if let directory = report.backupDirectory {
-                    Button("在 Finder 中显示备份") {
+                    Button(L.t("在 Finder 中显示备份")) {
                         NSWorkspace.shared.activateFileViewerSelecting([directory])
                         session.dismissResolveReport()
                     }
                 }
-                Button("好", role: .cancel) { session.dismissResolveReport() }
+                Button(L.t("好"), role: .cancel) { session.dismissResolveReport() }
             } message: { report in
                 Text(report.message)
             }
@@ -382,7 +382,7 @@ private struct DetailBranchDialogs: ViewModifier {
     func body(content: Content) -> some View {
         content
             .confirmationDialog(
-                session.confirmation?.title ?? "确认操作",
+                session.confirmation?.title ?? L.t("确认操作"),
                 isPresented: Binding(
                     get: { session.confirmation != nil },
                     set: { if !$0 { session.confirmation = nil } }
@@ -395,7 +395,7 @@ private struct DetailBranchDialogs: ViewModifier {
                 ) {
                     session.confirmPending()
                 }
-                Button("取消", role: .cancel) { session.confirmation = nil }
+                Button(L.t("取消"), role: .cancel) { session.confirmation = nil }
             } message: { confirmation in
                 Text(confirmation.message)
             }
@@ -403,7 +403,7 @@ private struct DetailBranchDialogs: ViewModifier {
             // the counts and the "what to do next" sentence live, because a
             // task-centre row is too small to hold them and too easy to miss.
             .alert(
-                session.branchReport?.title ?? "分支操作",
+                session.branchReport?.title ?? L.t("分支操作"),
                 isPresented: Binding(
                     get: { session.branchReport != nil },
                     set: { if !$0 { session.branchReport = nil } }
@@ -411,12 +411,12 @@ private struct DetailBranchDialogs: ViewModifier {
                 presenting: session.branchReport
             ) { report in
                 if report.hasConflicts {
-                    Button("查看冲突") {
+                    Button(L.t("查看冲突")) {
                         tab = .changes
                         session.branchReport = nil
                     }
                 }
-                Button("好", role: .cancel) { session.branchReport = nil }
+                Button(L.t("好"), role: .cancel) { session.branchReport = nil }
             } message: { report in
                 Text(report.message)
             }

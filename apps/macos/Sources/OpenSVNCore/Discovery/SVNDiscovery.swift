@@ -41,10 +41,10 @@ public enum SVNInstallationSource: String, Sendable, Codable, Hashable {
 
     public var displayName: String {
         switch self {
-        case .explicit: return "手动指定"
-        case .bundled: return "应用内置"
-        case .searchPath: return "PATH 探测"
-        case .wellKnownLocation: return "常见安装位置"
+        case .explicit: return L.t("手动指定")
+        case .bundled: return L.t("应用内置")
+        case .searchPath: return L.t("PATH 探测")
+        case .wellKnownLocation: return L.t("常见安装位置")
         }
     }
 }
@@ -170,7 +170,7 @@ public struct SVNDiscovery: Sendable {
                 if candidate.source == .explicit {
                     throw SVNError(
                         code: .svnNotFound,
-                        message: "指定的 svn 无法运行：\(candidate.path)",
+                        message: L.f("指定的 svn 无法运行：%@", String(describing: candidate.path)),
                         diagnosticOutput: error.localizedDescription
                     )
                 }
@@ -182,8 +182,8 @@ public struct SVNDiscovery: Sendable {
         }
         throw SVNError(
             code: .svnNotFound,
-            message: "未找到可用的 svn 可执行文件",
-            diagnosticOutput: searched.isEmpty ? "未检查任何候选路径" : "已检查：\n" + searched.joined(separator: "\n")
+            message: L.t("未找到可用的 svn 可执行文件"),
+            diagnosticOutput: searched.isEmpty ? L.t("未检查任何候选路径") : L.t("已检查：\n") + searched.joined(separator: "\n")
         )
     }
 
@@ -199,19 +199,19 @@ public struct SVNDiscovery: Sendable {
         )
         guard result.isSuccess else {
             throw SVNErrorMapper.error(from: result)
-                ?? SVNError(code: .svnNotFound, message: "svn 探测失败：\(url.path)")
+                ?? SVNError(code: .svnNotFound, message: L.f("svn 探测失败：%@", String(describing: url.path)))
         }
         guard let version = SVNVersion(result.standardOutput) else {
             throw SVNError(
                 code: .unsupportedVersion(found: result.standardOutput, minimum: minimumVersion.description),
-                message: "无法识别 svn 版本：\(result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines))",
+                message: L.f("无法识别 svn 版本：%@", String(describing: result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines))),
                 diagnosticOutput: result.standardError
             )
         }
         guard version >= minimumVersion, version < maximumExclusiveVersion else {
             throw SVNError(
                 code: .unsupportedVersion(found: version.description, minimum: minimumVersion.description),
-                message: "svn \(version) 不在支持区间（>= \(minimumVersion), < \(maximumExclusiveVersion)）",
+                message: L.f("svn %@ 不在支持区间（>= %@, < %@）", String(describing: version), String(describing: minimumVersion), String(describing: maximumExclusiveVersion)),
                 diagnosticOutput: result.standardOutput
             )
         }

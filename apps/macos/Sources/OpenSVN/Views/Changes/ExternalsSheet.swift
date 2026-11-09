@@ -29,7 +29,7 @@ struct ExternalsSheet: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("svn:externals")
                     .font(.headline)
-                Text("挂载在本工作副本内的其它工作副本。它们的改动在「变更」页会标为「外部」，不能从这里提交。")
+                Text(L.t("挂载在本工作副本内的其它工作副本。它们的改动在「变更」页会标为「外部」，不能从这里提交。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -51,12 +51,12 @@ struct ExternalsSheet: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .textSelection(.enabled)
-                Button("重试") { Task { await session.loadExternals() } }
+                Button(L.t("重试")) { Task { await session.loadExternals() } }
             }
             .padding(28)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if session.externalsState?.isLoading == true {
-            ProgressView("正在读取仓库属性…")
+            ProgressView(L.t("正在读取仓库属性…"))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let targets = session.externalsState?.targets, !targets.isEmpty {
             ScrollView {
@@ -82,22 +82,22 @@ struct ExternalsSheet: View {
             }
         } else {
             ContentUnavailableView {
-                Label("没有 svn:externals", systemImage: "link.badge.plus")
+                Label(L.t("没有 svn:externals"), systemImage: "link.badge.plus")
             } description: {
-                Text("这个工作副本没有挂载外部工作副本。")
+                Text(L.t("这个工作副本没有挂载外部工作副本。"))
             }
         }
     }
 
     private var footer: some View {
         HStack {
-            Text("属性只读：svn 不支持直接修改仓库路径的属性，改完需要在工作副本里提交。")
+            Text(L.t("属性只读：svn 不支持直接修改仓库路径的属性，改完需要在工作副本里提交。"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
-            Button("刷新") { Task { await session.loadExternals() } }
+            Button(L.t("刷新")) { Task { await session.loadExternals() } }
                 .disabled(session.externalsState?.isLoading == true)
-            Button("关闭") { session.dismissExternals() }
+            Button(L.t("关闭")) { session.dismissExternals() }
                 .keyboardShortcut(.cancelAction)
         }
         .padding(14)
@@ -106,6 +106,6 @@ struct ExternalsSheet: View {
     private func shorten(_ path: String) -> String {
         guard let root = session.info?.url, path.hasPrefix(root) else { return path }
         let relative = String(path.dropFirst(root.count))
-        return relative.isEmpty ? "（工作副本根）" : relative
+        return relative.isEmpty ? L.t("（工作副本根）") : relative
     }
 }

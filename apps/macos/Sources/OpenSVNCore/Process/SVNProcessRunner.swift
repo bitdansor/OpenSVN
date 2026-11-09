@@ -139,14 +139,14 @@ public struct SVNProcessRunner: Sendable {
         guard fileManager.isExecutableFile(atPath: invocation.executableURL.path) else {
             throw SVNError(
                 code: .svnNotFound,
-                message: "找不到可执行的 svn：\(invocation.executableURL.path)"
+                message: L.f("找不到可执行的 svn：%@", String(describing: invocation.executableURL.path))
             )
         }
         if let workingDirectory = invocation.workingDirectory,
            !fileManager.fileExists(atPath: workingDirectory.path) {
             throw SVNError(
                 code: .pathNotFound,
-                message: "工作目录不存在：\(workingDirectory.path)"
+                message: L.f("工作目录不存在：%@", String(describing: workingDirectory.path))
             )
         }
 
@@ -181,7 +181,7 @@ public struct SVNProcessRunner: Sendable {
             if let svnError = launchError as? SVNError { throw svnError }
             throw SVNError(
                 code: .svnNotFound,
-                message: "无法启动 svn：\(invocation.executableURL.path)",
+                message: L.f("无法启动 svn：%@", String(describing: invocation.executableURL.path)),
                 diagnosticOutput: LogRedactor.redact(launchError.localizedDescription)
             )
         }
@@ -189,7 +189,7 @@ public struct SVNProcessRunner: Sendable {
         if execution.session.isCancelled {
             throw SVNError(
                 code: .cancelled,
-                message: "操作已取消：\(invocation.arguments.first ?? "svn")",
+                message: L.f("操作已取消：%@", String(describing: invocation.arguments.first ?? "svn")),
                 diagnosticOutput: LogRedactor.redact(stderr),
                 exitCode: exitCode
             )

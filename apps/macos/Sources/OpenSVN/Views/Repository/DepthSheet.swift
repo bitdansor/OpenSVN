@@ -30,8 +30,8 @@ struct DepthSheet: View {
             header
             Divider()
             Form {
-                Section("目标") {
-                    LabeledContent("路径") {
+                Section(L.t("目标")) {
+                    LabeledContent(L.t("路径")) {
                         HStack(spacing: 6) {
                             Text(displayPath)
                                 .font(.caption.monospaced())
@@ -39,18 +39,18 @@ struct DepthSheet: View {
                                 .truncationMode(.middle)
                                 .textSelection(.enabled)
                             Spacer()
-                            Button("选择…") { chooseTarget() }
+                            Button(L.t("选择…")) { chooseTarget() }
                                 .disabled(isRunning)
                         }
                     }
-                    LabeledContent("当前深度") {
+                    LabeledContent(L.t("当前深度")) {
                         Text(currentLabel)
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                Section("改为") {
-                    Picker("深度", selection: $selected) {
+                Section(L.t("改为")) {
+                    Picker(L.t("深度"), selection: $selected) {
                         ForEach(WorkingCopyDepth.allCases, id: \.self) { depth in
                             Text(depth.displayName).tag(depth)
                         }
@@ -85,7 +85,7 @@ struct DepthSheet: View {
                 Section {
                     EmptyView()
                 } footer: {
-                    Text("改深度只影响磁盘上有多少内容，不改动仓库，也不需要提交。排除（exclude）是唯一会删除文件的一项：被排除的路径仓库不再记得，要取回得重新设一个深度。被排除过的目录不能靠「完整」自动回来，得在它自己那一层再设一次。")
+                    Text(L.t("改深度只影响磁盘上有多少内容，不改动仓库，也不需要提交。排除（exclude）是唯一会删除文件的一项：被排除的路径仓库不再记得，要取回得重新设一个深度。被排除过的目录不能靠「完整」自动回来，得在它自己那一层再设一次。"))
                         .font(.caption2)
                 }
             }
@@ -103,9 +103,9 @@ struct DepthSheet: View {
                 .font(.system(size: 22))
                 .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 3) {
-                Text("改变「\(session.displayName)」的深度")
+                Text(L.f("改变「%@」的深度", String(describing: session.displayName)))
                     .font(.headline)
-                Text("决定这个路径在磁盘上保留多少内容（svn update --set-depth）。")
+                Text(L.t("决定这个路径在磁盘上保留多少内容（svn update --set-depth）。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -118,10 +118,10 @@ struct DepthSheet: View {
         HStack(spacing: 10) {
             if isRunning { ProgressView().controlSize(.small) }
             Spacer()
-            Button("取消") { dismiss() }
+            Button(L.t("取消")) { dismiss() }
                 .keyboardShortcut(.cancelAction)
                 .disabled(isRunning)
-            Button(isRunning ? "应用中…" : "应用") {
+            Button(isRunning ? L.t("应用中…") : L.t("应用")) {
                 Task { await apply() }
             }
             .buttonStyle(.borderedProminent)
@@ -137,14 +137,14 @@ struct DepthSheet: View {
     private var displayPath: String {
         let root = session.path.standardizedFileURL.path
         let path = target.standardizedFileURL.path
-        if path == root { return "（工作副本根目录）" }
+        if path == root { return L.t("（工作副本根目录）") }
         if path.hasPrefix(root + "/") { return String(path.dropFirst(root.count + 1)) }
         return path
     }
 
     private var currentLabel: String {
-        if isLoading { return "读取中…" }
-        return current?.displayName ?? "未知"
+        if isLoading { return L.t("读取中…") }
+        return current?.displayName ?? L.t("未知")
     }
 
     private func loadCurrent() async {
@@ -161,12 +161,12 @@ struct DepthSheet: View {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.directoryURL = target
-        panel.message = "选择要改变深度的工作副本目录"
+        panel.message = L.t("选择要改变深度的工作副本目录")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         let root = session.path.standardizedFileURL.path
         let chosen = url.standardizedFileURL.path
         guard chosen == root || chosen.hasPrefix(root + "/") else {
-            note = "只能选择这个工作副本里面的目录。"
+            note = L.t("只能选择这个工作副本里面的目录。")
             return
         }
         note = nil
@@ -184,7 +184,7 @@ struct DepthSheet: View {
         } else {
             // `presentedError` is shown by the window's alert; keep the sheet so
             // the user does not have to re-pick everything after reading it.
-            note = "改深度失败，详情见弹窗。"
+            note = L.t("改深度失败，详情见弹窗。")
         }
     }
 }

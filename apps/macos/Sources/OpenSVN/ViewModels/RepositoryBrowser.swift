@@ -34,21 +34,21 @@ final class RepositoryBrowser: Identifiable {
 
         var title: String {
             switch kind {
-            case .makeDirectory: return "新建目录"
-            case .tag: return "创建 tag"
-            case .copy: return "复制到"
-            case .move: return "移动到"
-            case .delete: return "删除仓库路径"
+            case .makeDirectory: return L.t("新建目录")
+            case .tag: return L.t("创建 tag")
+            case .copy: return L.t("复制到")
+            case .move: return L.t("移动到")
+            case .delete: return L.t("删除仓库路径")
             }
         }
 
         var confirmLabel: String {
             switch kind {
-            case .makeDirectory: return "创建"
-            case .tag: return "创建 tag"
-            case .copy: return "复制"
-            case .move: return "移动"
-            case .delete: return "删除"
+            case .makeDirectory: return L.t("创建")
+            case .tag: return L.t("创建 tag")
+            case .copy: return L.t("复制")
+            case .move: return L.t("移动")
+            case .delete: return L.t("删除")
             }
         }
     }
@@ -265,7 +265,7 @@ final class RepositoryBrowser: Identifiable {
             }
 
             actionRequest = nil
-            lastMessage = commit.revision.map { "\(commit.summary)，提交为 r\($0)" } ?? commit.summary
+            lastMessage = commit.revision.map { L.f("%@，提交为 r%@", String(describing: commit.summary), String(describing: $0)) } ?? commit.summary
             await refresh()
         } catch {
             // The sheet stays open: a failed remote write is worth retrying with a
@@ -299,7 +299,7 @@ final class RepositoryBrowser: Identifiable {
                     credential: credential
                 )
             }
-            lastMessage = "已导出到 \(destination.path)"
+            lastMessage = L.f("已导出到 %@", String(describing: destination.path))
         } catch {
             presentedError = (error as? SVNError)?.message ?? error.localizedDescription
         }
@@ -324,7 +324,7 @@ final class RepositoryBrowser: Identifiable {
                     credential: credential
                 )
             }
-            lastMessage = commit.revision.map { "\(commit.summary)，提交为 r\($0)" } ?? commit.summary
+            lastMessage = commit.revision.map { L.f("%@，提交为 r%@", String(describing: commit.summary), String(describing: $0)) } ?? commit.summary
             await refresh()
         } catch {
             presentedError = (error as? SVNError)?.message ?? error.localizedDescription
@@ -334,7 +334,7 @@ final class RepositoryBrowser: Identifiable {
     // MARK: - Plumbing
 
     private static func missingTarget() -> SVNError {
-        SVNError(code: .invalidInvocation, message: "目标路径不能为空")
+        SVNError(code: .invalidInvocation, message: L.t("目标路径不能为空"))
     }
 
     private func withAuthRetry<T: Sendable>(

@@ -26,9 +26,9 @@ struct NewLocalRepositorySheet: View {
                     .font(.title2)
                     .foregroundStyle(.tint)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("新建本地仓库")
+                    Text(L.t("新建本地仓库"))
                         .font(.headline)
-                    Text("在这台 Mac 上创建仓库，不需要服务器。")
+                    Text(L.t("在这台 Mac 上创建仓库，不需要服务器。"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -36,14 +36,14 @@ struct NewLocalRepositorySheet: View {
 
             Form {
                 HStack {
-                    TextField("仓库目录", text: $location)
+                    TextField(L.t("仓库目录"), text: $location)
                         .textFieldStyle(.roundedBorder)
                         .disabled(created != nil)
-                    Button("选择…") { chooseLocation() }
+                    Button(L.t("选择…")) { chooseLocation() }
                         .disabled(created != nil)
                 }
                 if let created {
-                    LabeledContent("仓库 URL") {
+                    LabeledContent(L.t("仓库 URL")) {
                         Text(created.url)
                             .font(.caption.monospaced())
                             .textSelection(.enabled)
@@ -53,7 +53,7 @@ struct NewLocalRepositorySheet: View {
                 }
             }
 
-            Text("这会执行 `svnadmin create`。目标目录必须不存在或为空——已存在非空目录会被拒绝，不会覆盖任何东西。勾选下面的选项时会同时检出这个仓库，得到一个可提交的工作副本（与其同级的 `<名称>-wc` 目录）。")
+            Text(L.t("这会执行 `svnadmin create`。目标目录必须不存在或为空——已存在非空目录会被拒绝，不会覆盖任何东西。勾选下面的选项时会同时检出这个仓库，得到一个可提交的工作副本（与其同级的 `<名称>-wc` 目录）。"))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -67,12 +67,12 @@ struct NewLocalRepositorySheet: View {
 
             HStack {
                 if checkedOut {
-                    Label("已创建并检出", systemImage: "checkmark.circle.fill")
+                    Label(L.t("已创建并检出"), systemImage: "checkmark.circle.fill")
                         .font(.caption)
                         .foregroundStyle(.green)
                 }
                 Spacer()
-                Button(created == nil ? "取消" : "完成") { dismiss() }
+                Button(created == nil ? L.t("取消") : L.t("完成")) { dismiss() }
                     .keyboardShortcut(.cancelAction)
                 Button(buttonTitle) {
                     Task { await create() }
@@ -86,8 +86,8 @@ struct NewLocalRepositorySheet: View {
     }
 
     private var buttonTitle: String {
-        if isRunning { return "创建中…" }
-        return "创建并检出"
+        if isRunning { return L.t("创建中…") }
+        return L.t("创建并检出")
     }
 
     private var trimmedLocation: String {
@@ -99,8 +99,8 @@ struct NewLocalRepositorySheet: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
-        panel.prompt = "在此新建"
-        panel.message = "选择新仓库的父目录，仓库会建在里面"
+        panel.prompt = L.t("在此新建")
+        panel.message = L.t("选择新仓库的父目录，仓库会建在里面")
         guard panel.runModal() == .OK, let chosen = panel.url else { return }
         let parent = chosen.path.hasSuffix("/") ? chosen.path : chosen.path + "/"
         location = parent + "repository"

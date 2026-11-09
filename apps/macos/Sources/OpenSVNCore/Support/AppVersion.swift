@@ -215,41 +215,41 @@ public enum UpdateCheckResult: Sendable, Hashable {
     public var title: String {
         switch self {
         case .updateAvailable(_, let release):
-            return "有可用更新：\(release.displayVersion)"
+            return L.f("有可用更新：%@", String(describing: release.displayVersion))
         case .upToDate:
-            return "已是最新版本"
+            return L.t("已是最新版本")
         case .noReleases:
-            return "还没有发布版本"
+            return L.t("还没有发布版本")
         }
     }
 
     public var message: String {
         switch self {
         case .updateAvailable(let current, let release):
-            var parts = ["当前 \(current)，最新 \(release.displayVersion)。"]
+            var parts = [L.f("当前 %@，最新 %@。", String(describing: current), String(describing: release.displayVersion))]
             if release.isPrerelease {
-                parts.append("这是一个预发布版本。")
+                parts.append(L.t("这是一个预发布版本。"))
             }
             if let notes = release.notes, !notes.isEmpty {
                 // Release notes can be long; the sheet shows the rest.
                 let clipped = notes.count > 600 ? String(notes.prefix(600)) + "…" : notes
                 parts.append(clipped)
             }
-            parts.append("这个版本不会自动安装：下载后手动替换应用即可。")
+            parts.append(L.t("这个版本不会自动安装：下载后手动替换应用即可。"))
             // The sentence above is the fallback, not the whole truth: when the
             // release carries a verifiable archive, the sheet offers an in-app
             // install instead and this line is replaced.
             if release.package?.isInstallable == true {
-                parts[parts.count - 1] = "可以在应用内下载、校验并安装这个版本；安装会在你确认后、退出应用时替换旧版本。"
+                parts[parts.count - 1] = L.t("可以在应用内下载、校验并安装这个版本；安装会在你确认后、退出应用时替换旧版本。")
             }
             return parts.joined(separator: "\n\n")
         case .upToDate(let current, let latest):
             if let latest, latest != current {
-                return "当前 \(current)，服务器上的最新正式版本是 \(latest)，没有比它更新的版本。"
+                return L.f("当前 %@，服务器上的最新正式版本是 %@，没有比它更新的版本。", String(describing: current), String(describing: latest))
             }
-            return "当前 \(current)，服务器上没有更新的版本。"
+            return L.f("当前 %@，服务器上没有更新的版本。", String(describing: current))
         case .noReleases(let current):
-            return "当前 \(current)。这个仓库还没有发布过任何版本，所以没有可比较的对象。"
+            return L.f("当前 %@。这个仓库还没有发布过任何版本，所以没有可比较的对象。", String(describing: current))
         }
     }
 }
@@ -262,16 +262,16 @@ public enum UpdateCheckError: Error, LocalizedError, Sendable {
     public var errorDescription: String? {
         switch self {
         case .network(let detail):
-            return "无法连接到发布服务器：\(detail)"
+            return L.f("无法连接到发布服务器：%@", String(describing: detail))
         case .badStatus(let code):
             switch code {
             case 403, 429:
-                return "发布服务器拒绝了这次检查（HTTP \(code)），通常是请求太频繁，稍后再试。"
+                return L.f("发布服务器拒绝了这次检查（HTTP %@），通常是请求太频繁，稍后再试。", String(describing: code))
             default:
-                return "发布服务器返回了 HTTP \(code)。"
+                return L.f("发布服务器返回了 HTTP %@。", String(describing: code))
             }
         case .malformedResponse:
-            return "发布服务器的响应无法解析。"
+            return L.t("发布服务器的响应无法解析。")
         }
     }
 }

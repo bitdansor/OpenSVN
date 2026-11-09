@@ -40,13 +40,13 @@ public struct DemoWorkspace: Sendable {
 
         public var title: String {
             switch self {
-            case .preparing: return "准备演示目录"
-            case .creatingRepository: return "创建本地仓库"
-            case .importing: return "导入示例文件"
-            case .checkingOut: return "检出工作副本"
-            case .committingServer: return "提交服务器端的改动"
-            case .creatingConflicts: return "制造冲突"
-            case .verifying: return "校验冲突"
+            case .preparing: return L.t("准备演示目录")
+            case .creatingRepository: return L.t("创建本地仓库")
+            case .importing: return L.t("导入示例文件")
+            case .checkingOut: return L.t("检出工作副本")
+            case .committingServer: return L.t("提交服务器端的改动")
+            case .creatingConflicts: return L.t("制造冲突")
+            case .verifying: return L.t("校验冲突")
             }
         }
     }
@@ -189,12 +189,12 @@ public struct DemoWorkspace: Sendable {
             if !fileManager.fileExists(atPath: marker.path), !contents.isEmpty {
                 throw SVNError(
                     code: .permissionDenied,
-                    message: "「\(root.lastPathComponent)」已存在，且不是 OpenSVN 演示目录。为免覆盖你自己的文件，已停止。请换一个位置，或先把它移走。"
+                    message: L.f("「%@」已存在，且不是 OpenSVN 演示目录。为免覆盖你自己的文件，已停止。请换一个位置，或先把它移走。", String(describing: root.lastPathComponent))
                 )
             }
         }
         try fileManager.createDirectory(at: root, withIntermediateDirectories: true)
-        try "此目录由 OpenSVN 生成，仅用于体验合并，可随时整体删除。\n"
+        try L.t("此目录由 OpenSVN 生成，仅用于体验合并，可随时整体删除。\n")
             .write(to: root.appendingPathComponent(Self.markerName), atomically: true, encoding: .utf8)
 
         // Only the entries this builder owns are removed; a stray file the user
@@ -270,14 +270,14 @@ public struct DemoWorkspace: Sendable {
         guard result.exitCode == 0 else {
             throw SVNError(
                 code: .commandFailed(exitCode: result.exitCode),
-                message: "无法读取演示工作副本的状态：\(Self.diagnostic(result))"
+                message: L.f("无法读取演示工作副本的状态：%@", String(describing: Self.diagnostic(result)))
             )
         }
         let conflicts = result.standardOutput.components(separatedBy: "conflicted").count - 1
         guard conflicts >= 3 else {
             throw SVNError(
                 code: .unknown,
-                message: "演示工作副本只生成了 \(conflicts) 处冲突（预期至少 3 处）。请删除「\(root.lastPathComponent)」后重试。"
+                message: L.f("演示工作副本只生成了 %@ 处冲突（预期至少 3 处）。请删除「%@」后重试。", String(describing: conflicts), String(describing: root.lastPathComponent))
             )
         }
     }
@@ -289,7 +289,7 @@ public struct DemoWorkspace: Sendable {
         guard result.exitCode == 0 else {
             throw SVNError(
                 code: .commandFailed(exitCode: result.exitCode),
-                message: "\(step.title)失败：\(Self.diagnostic(result))"
+                message: L.f("%@失败：%@", String(describing: step.title), String(describing: Self.diagnostic(result)))
             )
         }
     }
@@ -314,7 +314,7 @@ public struct DemoWorkspace: Sendable {
     private static func diagnostic(_ result: SVNProcessResult) -> String {
         let text = result.standardError.isEmpty ? result.standardOutput : result.standardError
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "退出码 \(result.exitCode)" : trimmed
+        return trimmed.isEmpty ? L.f("退出码 %@", String(describing: result.exitCode)) : trimmed
     }
 
     // MARK: - Sample content

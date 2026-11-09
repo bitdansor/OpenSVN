@@ -45,18 +45,18 @@ struct RecoveryBanner: View {
             Image(systemName: "doc.questionmark")
                 .foregroundStyle(.orange)
             VStack(alignment: .leading, spacing: 2) {
-                Text("操作记录文件无法读取")
+                Text(L.t("操作记录文件无法读取"))
                     .font(.subheadline.weight(.semibold))
-                Text("已保留为 \(url.lastPathComponent)，无法判断上次是否有操作被中断。")
+                Text(L.f("已保留为 %@，无法判断上次是否有操作被中断。", String(describing: url.lastPathComponent)))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("在 Finder 中显示") {
+            Button(L.t("在 Finder 中显示")) {
                 NSWorkspace.shared.activateFileViewerSelecting([url])
             }
             .controlSize(.small)
-            Button("知道了") { appState.acknowledgeJournalCorruption() }
+            Button(L.t("知道了")) { appState.acknowledgeJournalCorruption() }
                 .controlSize(.small)
         }
     }
@@ -68,10 +68,10 @@ struct RecoveryBanner: View {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
-                Text("上次有 \(appState.recoveryItems.count) 项操作没有正常结束")
+                Text(L.n("上次有 %d 项操作没有正常结束", appState.recoveryItems.count))
                     .font(.subheadline.weight(.semibold))
                 Spacer()
-                Button("全部忽略") {
+                Button(L.t("全部忽略")) {
                     Task { await appState.dismissAllRecovery() }
                 }
                 .controlSize(.small)
@@ -82,7 +82,7 @@ struct RecoveryBanner: View {
             }
 
             if appState.recoveryItems.count > 3 {
-                Text("还有 \(appState.recoveryItems.count - 3) 项未显示")
+                Text(L.n("还有 %d 项未显示", appState.recoveryItems.count - 3))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -107,19 +107,19 @@ struct RecoveryBanner: View {
             Spacer(minLength: 8)
 
             if canClean(entry) {
-                Button("清理") {
+                Button(L.t("清理")) {
                     Task { await appState.recover(entry) }
                 }
                 .controlSize(.small)
-                .help("运行 svn cleanup，把工作副本从中间状态恢复")
+                .help(L.t("运行 svn cleanup，把工作副本从中间状态恢复"))
             }
-            Button("显示") {
+            Button(L.t("显示")) {
                 NSWorkspace.shared.activateFileViewerSelecting([
                     URL(fileURLWithPath: entry.workingCopy)
                 ])
             }
             .controlSize(.small)
-            Button("忽略") {
+            Button(L.t("忽略")) {
                 Task { await appState.dismissRecovery(entry) }
             }
             .controlSize(.small)

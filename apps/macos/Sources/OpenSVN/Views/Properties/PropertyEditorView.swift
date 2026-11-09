@@ -25,7 +25,7 @@ struct PropertyEditorView: View {
                 if let loadError = editor.loadError {
                     failure(loadError)
                 } else if editor.isLoading && editor.properties.isEmpty {
-                    ProgressView("正在读取属性…")
+                    ProgressView(L.t("正在读取属性…"))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     rows(editor)
@@ -48,7 +48,7 @@ struct PropertyEditorView: View {
             Image(systemName: "tag")
                 .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 3) {
-                Text("属性")
+                Text(L.t("属性"))
                     .font(.headline)
                 Text(editor?.displayPath ?? "")
                     .font(.system(.callout, design: .monospaced))
@@ -72,7 +72,7 @@ struct PropertyEditorView: View {
             Text(message)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
-            Button("重试") {
+            Button(L.t("重试")) {
                 Task { await session.reloadProperties() }
             }
         }
@@ -85,9 +85,9 @@ struct PropertyEditorView: View {
             LazyVStack(alignment: .leading, spacing: 14) {
                 if editor.properties.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("这个路径没有设置任何属性。")
+                        Text(L.t("这个路径没有设置任何属性。"))
                             .foregroundStyle(.secondary)
-                        Text("要忽略文件，在下方添加 svn:ignore，每行一个通配符模式；也可以在「变更」页右键未纳入版本控制的文件，直接选择「忽略」。")
+                        Text(L.t("要忽略文件，在下方添加 svn:ignore，每行一个通配符模式；也可以在「变更」页右键未纳入版本控制的文件，直接选择「忽略」。"))
                             .font(.caption)
                             .foregroundStyle(.tertiary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -114,12 +114,12 @@ struct PropertyEditorView: View {
     private var addForm: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
-                TextField("属性名，例如 custom:owner", text: $newName)
+                TextField(L.t("属性名，例如 custom:owner"), text: $newName)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 200)
-                TextField("值", text: $newValue)
+                TextField(L.t("值"), text: $newValue)
                     .textFieldStyle(.roundedBorder)
-                Button("添加") { add() }
+                Button(L.t("添加")) { add() }
                     .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             if let addError {
@@ -128,7 +128,7 @@ struct PropertyEditorView: View {
                     .foregroundStyle(.red)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
-                Text("自定义属性必须带命名空间，例如 custom:owner。以 svn: 开头的是 Subversion 的保留属性。")
+                Text(L.t("自定义属性必须带命名空间，例如 custom:owner。以 svn: 开头的是 Subversion 的保留属性。"))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -139,12 +139,12 @@ struct PropertyEditorView: View {
 
     private var footer: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text("属性是版本化元数据，会随下一次提交一起提交；改动可以用「还原」撤销。")
+            Text(L.t("属性是版本化元数据，会随下一次提交一起提交；改动可以用「还原」撤销。"))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer()
-            Button("关闭") { dismiss() }
+            Button(L.t("关闭")) { dismiss() }
                 .keyboardShortcut(.defaultAction)
         }
         .padding(.horizontal, 16)
@@ -206,23 +206,23 @@ private struct PropertyRow: View {
                 Text(property.name)
                     .font(.system(.callout, design: .monospaced).weight(.medium))
                 if property.isReserved {
-                    Label("内部", systemImage: "lock.fill")
+                    Label(L.t("内部"), systemImage: "lock.fill")
                         .labelStyle(.titleAndIcon)
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                        .help("Subversion 内部使用的属性，只读")
+                        .help(L.t("Subversion 内部使用的属性，只读"))
                 }
                 if property.isIgnoreList {
-                    Text("每行一个通配符模式")
+                    Text(L.t("每行一个通配符模式"))
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
                 Spacer()
                 if isChanged {
-                    Button("应用") { onApply(draft) }
+                    Button(L.t("应用")) { onApply(draft) }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
-                    Button("撤销") { draft = Self.editableValue(of: property) }
+                    Button(L.t("撤销")) { draft = Self.editableValue(of: property) }
                         .controlSize(.small)
                 }
                 if !property.isReserved {
@@ -232,7 +232,7 @@ private struct PropertyRow: View {
                         Image(systemName: "trash")
                     }
                     .buttonStyle(.borderless)
-                    .help("移除这个属性（可用「还原」恢复）")
+                    .help(L.t("移除这个属性（可用「还原」恢复）"))
                 }
             }
 

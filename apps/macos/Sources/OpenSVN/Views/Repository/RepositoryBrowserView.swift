@@ -29,7 +29,7 @@ struct RepositoryBrowserView: View {
                 Button {
                     Task { await browser.refresh() }
                 } label: {
-                    Label("刷新", systemImage: "arrow.clockwise")
+                    Label(L.t("刷新"), systemImage: "arrow.clockwise")
                 }
                 .keyboardShortcut("r", modifiers: .command)
                 .disabled(browser.isLoading)
@@ -46,14 +46,14 @@ struct RepositoryBrowserView: View {
             RemoteActionSheet(browser: browser, request: request)
         }
         .alert(
-            "操作失败",
+            L.t("操作失败"),
             isPresented: Binding(
                 get: { browser.presentedError != nil },
                 set: { if !$0 { browser.dismissError() } }
             ),
             presenting: browser.presentedError
         ) { _ in
-            Button("好", role: .cancel) { browser.dismissError() }
+            Button(L.t("好"), role: .cancel) { browser.dismissError() }
         } message: { message in
             Text(message)
         }
@@ -68,15 +68,15 @@ struct RepositoryBrowserView: View {
 
     private var actionsMenu: some View {
         Menu {
-            Button("新建目录…") { browser.beginMakeDirectory() }
-            Button("在此创建 tag…") { browser.beginTag(from: nil) }
+            Button(L.t("新建目录…")) { browser.beginMakeDirectory() }
+            Button(L.t("在此创建 tag…")) { browser.beginTag(from: nil) }
             Divider()
-            Button("导出此目录…") { exportCurrent() }
-            Button("导入本地目录…") { promptImport() }
+            Button(L.t("导出此目录…")) { exportCurrent() }
+            Button(L.t("导入本地目录…")) { promptImport() }
         } label: {
-            Label("仓库操作", systemImage: "ellipsis.circle")
+            Label(L.t("仓库操作"), systemImage: "ellipsis.circle")
         }
-        .help("新建目录、打 tag、导出、导入")
+        .help(L.t("新建目录、打 tag、导出、导入"))
     }
 
     // MARK: - Breadcrumb
@@ -90,7 +90,7 @@ struct RepositoryBrowserView: View {
             }
             .buttonStyle(.borderless)
             .disabled(browser.location.parent() == nil)
-            .help("上一级")
+            .help(L.t("上一级"))
 
             let items = browser.location.breadcrumb()
             ForEach(Array(items.enumerated()), id: \.offset) { index, item in
@@ -125,15 +125,15 @@ struct RepositoryBrowserView: View {
     @ViewBuilder
     private var content: some View {
         if browser.isLoading, browser.listing == nil {
-            ProgressView("正在读取仓库…")
+            ProgressView(L.t("正在读取仓库…"))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else if let listing = browser.listing, listing.isEmpty {
             ContentUnavailableView {
-                Label("空目录", systemImage: "folder")
+                Label(L.t("空目录"), systemImage: "folder")
             } description: {
-                Text("这个目录里没有任何文件或子目录。")
+                Text(L.t("这个目录里没有任何文件或子目录。"))
             } actions: {
-                Button("新建目录…") { browser.beginMakeDirectory() }
+                Button(L.t("新建目录…")) { browser.beginMakeDirectory() }
             }
         } else if let listing = browser.listing {
             List(selection: $selectedName) {
@@ -189,23 +189,23 @@ struct RepositoryBrowserView: View {
             guard entry.isDirectory else { return }
             Task { await browser.navigate(into: entry) }
         }
-        .help(entry.isDirectory ? "双击进入" : entry.name)
+        .help(entry.isDirectory ? L.t("双击进入") : entry.name)
     }
 
     @ViewBuilder
     private func contextMenu(for entry: RemoteEntry) -> some View {
         if entry.isDirectory {
-            Button("进入") { Task { await browser.navigate(into: entry) } }
+            Button(L.t("进入")) { Task { await browser.navigate(into: entry) } }
             Divider()
-            Button("创建 tag…") { browser.beginTag(from: entry) }
+            Button(L.t("创建 tag…")) { browser.beginTag(from: entry) }
         }
-        Button("复制到…") { browser.beginCopy(of: entry) }
-        Button("移动到…") { browser.beginMove(of: entry) }
+        Button(L.t("复制到…")) { browser.beginCopy(of: entry) }
+        Button(L.t("移动到…")) { browser.beginMove(of: entry) }
         if entry.isDirectory {
-            Button("导出…") { export(entry: entry) }
+            Button(L.t("导出…")) { export(entry: entry) }
         }
         Divider()
-        Button("删除…", role: .destructive) { browser.beginDelete(entry) }
+        Button(L.t("删除…"), role: .destructive) { browser.beginDelete(entry) }
     }
 
     private var statusBar: some View {
@@ -236,7 +236,7 @@ struct RepositoryBrowserView: View {
     private var countLabel: String {
         guard let listing = browser.listing else { return "" }
         let directories = listing.entries.filter(\.isDirectory).count
-        return "\(directories) 个目录 · \(listing.entries.count - directories) 个文件"
+        return L.f("%@ 个目录 · %@ 个文件", String(describing: directories), String(describing: listing.entries.count - directories))
     }
 
     // MARK: - Export
@@ -248,27 +248,27 @@ struct RepositoryBrowserView: View {
         picker.canChooseDirectories = true
         picker.canChooseFiles = false
         picker.allowsMultipleSelection = false
-        picker.prompt = "导入"
-        picker.message = "选择一个尚未纳入版本控制的本地目录"
+        picker.prompt = L.t("导入")
+        picker.message = L.t("选择一个尚未纳入版本控制的本地目录")
         guard picker.runModal() == .OK, let source = picker.url else { return }
 
         let alert = NSAlert()
-        alert.messageText = "导入「\(source.lastPathComponent)」"
-        alert.informativeText = "目标路径与提交说明。导入是一次提交，目标不能已存在。"
+        alert.messageText = L.f("导入「%@」", String(describing: source.lastPathComponent))
+        alert.informativeText = L.t("目标路径与提交说明。导入是一次提交，目标不能已存在。")
         let stack = NSStackView(frame: NSRect(x: 0, y: 0, width: 380, height: 56))
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = 6
         let nameField = NSTextField(frame: NSRect(x: 0, y: 0, width: 380, height: 24))
         nameField.stringValue = source.lastPathComponent
-        nameField.placeholderString = "目录名"
+        nameField.placeholderString = L.t("目录名")
         let messageField = NSTextField(frame: NSRect(x: 0, y: 0, width: 380, height: 24))
-        messageField.placeholderString = "提交说明"
+        messageField.placeholderString = L.t("提交说明")
         stack.addArrangedSubview(nameField)
         stack.addArrangedSubview(messageField)
         alert.accessoryView = stack
-        alert.addButton(withTitle: "导入")
-        alert.addButton(withTitle: "取消")
+        alert.addButton(withTitle: L.t("导入"))
+        alert.addButton(withTitle: L.t("取消"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         let name = nameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let message = messageField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -292,8 +292,8 @@ struct RepositoryBrowserView: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
-        panel.prompt = "导出到此处"
-        panel.message = "选择一个空目录：svn export 不会覆盖已有文件"
+        panel.prompt = L.t("导出到此处")
+        panel.message = L.t("选择一个空目录：svn export 不会覆盖已有文件")
         guard panel.runModal() == .OK, let destination = panel.url else { return }
         Task {
             await browser.export(from: url, to: destination, revision: browser.revision)

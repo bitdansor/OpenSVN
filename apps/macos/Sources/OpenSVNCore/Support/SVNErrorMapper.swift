@@ -157,54 +157,54 @@ public enum SVNErrorMapper {
     private static func userMessage(for code: SVNErrorCode, output: String, commandLine: String) -> String {
         switch code {
         case .workingCopyLocked:
-            return "工作副本被锁定或上一次操作未完成"
+            return L.t("工作副本被锁定或上一次操作未完成")
         case .notAWorkingCopy:
-            return "目标不是 SVN 工作副本"
+            return L.t("目标不是 SVN 工作副本")
         case .workingCopyNeedsUpgrade:
-            return "工作副本格式不受支持"
+            return L.t("工作副本格式不受支持")
         case .permissionDenied:
-            return "工作副本目录或磁盘不可写"
+            return L.t("工作副本目录或磁盘不可写")
         case .repositoryNeedsUpgrade:
-            return "仓库数据格式不受支持"
+            return L.t("仓库数据格式不受支持")
         case .authenticationRequired:
-            return "服务器要求认证"
+            return L.t("服务器要求认证")
         case .authorizationFailed:
-            return "认证被服务器拒绝"
+            return L.t("认证被服务器拒绝")
         case .hostKeyVerificationFailed:
-            return "SSH 主机密钥校验失败"
+            return L.t("SSH 主机密钥校验失败")
         case .networkFailure:
-            return "无法连接仓库服务器"
+            return L.t("无法连接仓库服务器")
         case .outOfDate:
-            return "工作副本已过期"
+            return L.t("工作副本已过期")
         case .conflictRemains:
-            return "存在未解决的冲突"
+            return L.t("存在未解决的冲突")
         case .pathNotFound:
-            return "路径不存在"
+            return L.t("路径不存在")
         case .backupFailed:
-            return "无法在解决冲突前备份文件，操作已中止"
+            return L.t("无法在解决冲突前备份文件，操作已中止")
         case .pathLocked:
-            return "路径已被他人锁定"
+            return L.t("路径已被他人锁定")
         case .notLocked:
-            return "路径没有锁"
+            return L.t("路径没有锁")
         case .cancelled:
-            return "操作已取消"
+            return L.t("操作已取消")
         case .timeout:
-            return "操作超时"
+            return L.t("操作超时")
         case .confirmationRequired:
-            return "需要确认后才能执行"
+            return L.t("需要确认后才能执行")
         case .invalidInvocation:
-            return "命令参数无效"
+            return L.t("命令参数无效")
         case .xmlParseFailure:
-            return "无法解析 svn 输出"
+            return L.t("无法解析 svn 输出")
         case .unsupportedVersion:
-            return "svn 版本不受支持"
+            return L.t("svn 版本不受支持")
         case .svnNotFound:
-            return "找不到 svn 可执行文件"
+            return L.t("找不到 svn 可执行文件")
         case .commandFailed(let exitCode):
             let detail = firstMeaningfulLine(in: output)
-            return detail.isEmpty ? "svn 执行失败（退出码 \(exitCode)）" : detail
+            return detail.isEmpty ? L.f("svn 执行失败（退出码 %@）", String(describing: exitCode)) : detail
         case .unknown:
-            return "未知错误"
+            return L.t("未知错误")
         }
     }
 

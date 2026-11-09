@@ -148,6 +148,13 @@ public struct AppSettings: Sendable {
     /// 重新启动并安装, because replacing the running application is the one thing
     /// here that cannot be undone from inside the app.
     public var autoDownloadUpdates: Bool
+    /// Which language the interface is drawn in.
+    ///
+    /// `.system` by default, so a Mac set to English gets an English OpenSVN
+    /// without anyone opening Settings. The explicit cases exist because a
+    /// developer whose Mac is in English may still want the Chinese UI (or the
+    /// reverse) without changing the whole system.
+    public var language: AppLanguage
 
     public static let defaultTimeout: TimeInterval = 300
     public static let defaultMaxConcurrentWrites = 4
@@ -163,7 +170,8 @@ public struct AppSettings: Sendable {
         previewBeforeUpdate: Bool = true,
         externalDiffCommand: String? = nil,
         checkForUpdatesOnLaunch: Bool = false,
-        autoDownloadUpdates: Bool = false
+        autoDownloadUpdates: Bool = false,
+        language: AppLanguage = .system
     ) {
         self.explicitSVNPath = explicitSVNPath
         self.operationTimeout = operationTimeout
@@ -175,6 +183,7 @@ public struct AppSettings: Sendable {
         self.externalDiffCommand = externalDiffCommand
         self.checkForUpdatesOnLaunch = checkForUpdatesOnLaunch
         self.autoDownloadUpdates = autoDownloadUpdates
+        self.language = language
     }
 
     private static let pathKey = "cn.opensvn.svnPath"
@@ -199,6 +208,7 @@ public struct AppSettings: Sendable {
         let externalDiff = defaults.string(forKey: externalDiffKey)
         let updateCheck = defaults.object(forKey: updateCheckKey) as? Bool ?? false
         let autoDownload = defaults.object(forKey: autoDownloadKey) as? Bool ?? false
+        let language = LanguagePreference.load(from: defaults)
         return AppSettings(
             explicitSVNPath: (path?.isEmpty ?? true) ? nil : path,
             operationTimeout: timeout > 0 ? timeout : defaultTimeout,
@@ -212,7 +222,8 @@ public struct AppSettings: Sendable {
             previewBeforeUpdate: previewUpdate,
             externalDiffCommand: (externalDiff?.isEmpty ?? true) ? nil : externalDiff,
             checkForUpdatesOnLaunch: updateCheck,
-            autoDownloadUpdates: autoDownload
+            autoDownloadUpdates: autoDownload,
+            language: language
         )
     }
 
@@ -227,5 +238,6 @@ public struct AppSettings: Sendable {
         defaults.set(externalDiffCommand, forKey: Self.externalDiffKey)
         defaults.set(checkForUpdatesOnLaunch, forKey: Self.updateCheckKey)
         defaults.set(autoDownloadUpdates, forKey: Self.autoDownloadKey)
+        LanguagePreference.save(language, to: defaults)
     }
 }

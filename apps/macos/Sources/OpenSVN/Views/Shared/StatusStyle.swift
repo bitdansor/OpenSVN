@@ -4,15 +4,15 @@ import OpenSVNCore
 extension StatusCategory {
     var title: String {
         switch self {
-        case .conflicted: return "冲突"
-        case .modified: return "已修改"
-        case .added: return "新增"
-        case .deleted: return "删除"
-        case .unversioned: return "未纳入版本控制"
-        case .external: return "外部工作副本"
-        case .ignored: return "已忽略"
-        case .normal: return "正常"
-        case .other: return "其他"
+        case .conflicted: return L.t("冲突")
+        case .modified: return L.t("已修改")
+        case .added: return L.t("已新增")
+        case .deleted: return L.t("已删除")
+        case .unversioned: return L.t("未纳入版本控制")
+        case .external: return L.t("外部工作副本")
+        case .ignored: return L.t("已忽略")
+        case .normal: return L.t("正常")
+        case .other: return L.t("其他")
         }
     }
 
@@ -79,29 +79,36 @@ struct ConflictBadges: View {
     var body: some View {
         HStack(spacing: 3) {
             if flags.contains(.text) {
-                StatusBadge(text: "文本冲突", color: .red)
+                StatusBadge(text: L.t("文本冲突"), color: .red)
             }
             if flags.contains(.property) {
-                StatusBadge(text: "属性冲突", color: .purple)
+                StatusBadge(text: L.t("属性冲突"), color: .purple)
             }
             if flags.contains(.tree) {
-                StatusBadge(text: "树冲突", color: .red)
+                StatusBadge(text: L.t("树冲突"), color: .red)
             }
         }
     }
 }
 
 /// Relative time formatting used in history and task lists.
+///
+/// Both forms carry `L.locale`: a date written in the system's language next to
+/// a label written in the chosen one reads as a bug, and "3 分钟前" inside an
+/// otherwise English window is exactly that.
 enum RelativeTime {
     static func string(_ date: Date?) -> String {
         guard let date else { return "—" }
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .short
+        formatter.locale = L.locale
         return formatter.localizedString(for: date, relativeTo: Date())
     }
 
     static func absolute(_ date: Date?) -> String {
         guard let date else { return "—" }
-        return date.formatted(date: .abbreviated, time: .shortened)
+        return date.formatted(
+            Date.FormatStyle(date: .abbreviated, time: .shortened, locale: L.locale)
+        )
     }
 }

@@ -33,6 +33,16 @@ final class AppState {
     private(set) var browsers: [UUID: RepositoryBrowser] = [:]
     var selectedBookmarkID: UUID?
     var settings: AppSettings
+    /// The language the interface is drawn in, resolved from `settings.language`
+    /// once at launch and again whenever the choice changes.
+    ///
+    /// This exists only so SwiftUI can notice. `Localization` holds the value the
+    /// string lookups read, but a static in another module is invisible to
+    /// observation, so views would keep the old text until something else
+    /// invalidated them. Views that must re-render carry `.id(interfaceLanguage)`
+    /// (or read it), which turns a language change into a fresh view identity —
+    /// the one reliable way to make every literal in the tree re-resolve at once.
+    private(set) var interfaceLanguage: InterfaceLanguage
     private(set) var installation: SVNInstallation?
     private(set) var service: SVNService?
     private(set) var isStarting = true
@@ -89,10 +99,15 @@ final class AppState {
     let commitMessages = CommitMessageStore()
     private let repositoryStore = RepositoryStore()
     private var authContinuation: CheckedContinuation<SVNCredential?, Never>?
+    private var hasStarted = false
 
     init() {
-        self.settings = AppSettings.load()
+        let loaded = AppSettings.load()
+        self.settings = loaded
         self.bookmarks = repositoryStore.load()
+        // Before the first view is built: a launch that resolved the language a
+        // moment later would paint one frame in the wrong one.
+        self.interfaceLanguage = Localization.apply(loaded.language)
     }
 
     var selectedBookmark: RepositoryBookmark? {
@@ -113,6 +128,17 @@ final class AppState {
     var repositoryBookmarks: [RepositoryBookmark] { bookmarks.filter(\.isRepository) }
 
     // MARK: - Lifecycle
+
+    /// `start()` for the scene, at most once per process.
+    ///
+    /// The window is rebuilt when the interface language changes, so its `.task`
+    /// can fire again; discovery and the recovery-journal read are launch work,
+    /// not refresh work, and must not repeat.
+    func startOnce() async {
+        guard !hasStarted else { return }
+        hasStarted = true
+        await start()
+    }
 
     func start() async {
         isStarting = true
@@ -204,6 +230,9 @@ final class AppState {
     /// working copies on screen for nothing.
     func apply(settings newValue: AppSettings, rebuildService: Bool = true) async {
         let previousPath = settings.explicitSVNPath
+        if newValue.language != settings.language {
+            interfaceLanguage = Localization.apply(newValue.language)
+        }
         settings = newValue
         newValue.save()
         await AppLog.shared.configure(level: newValue.logLevel)
@@ -263,7 +292,7 @@ final class AppState {
     func addRepository(at url: URL) -> RepositorySession? {        guard WorkingCopyLocator.isWorkingCopy(url) else {
             startupError = SVNError(
                 code: .notAWorkingCopy,
-                message: "所选目录不是 SVN 工作副本：\(url.path)"
+                message: L.f("所选目录不是 SVN 工作副本：%@", String(describing: url.path))
             )
             return nil
         }
@@ -295,13 +324,13 @@ final class AppState {
     /// a whole view for it; the URL is validated by `addRepositoryBookmark`.
     func promptForRepositoryBookmark() {
         let alert = NSAlert()
-        alert.messageText = "只看仓库（不检出）"
-        alert.informativeText = "输入仓库地址。浏览、建目录、打 tag 都不需要把文件拉到本地。"
+        alert.messageText = L.t("只看仓库（不检出）")
+        alert.informativeText = L.t("输入仓库地址。浏览、建目录、打 tag 都不需要把文件拉到本地。")
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 380, height: 24))
         field.placeholderString = "https://svn.example.com/repo/trunk"
         alert.accessoryView = field
-        alert.addButton(withTitle: "添加")
-        alert.addButton(withTitle: "取消")
+        alert.addButton(withTitle: L.t("添加"))
+        alert.addButton(withTitle: L.t("取消"))
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         let url = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !url.isEmpty else { return }
@@ -319,7 +348,7 @@ final class AppState {
         guard !trimmed.isEmpty, trimmed.contains("://") || trimmed.hasPrefix("/") else {
             startupError = SVNError(
                 code: .invalidInvocation,
-                message: "仓库地址需要包含协议（例如 https:// 或 svn://）：\(trimmed)"
+                message: L.f("仓库地址需要包含协议（例如 https:// 或 svn://）：%@", String(describing: trimmed))
             )
             return nil
         }
@@ -367,8 +396,8 @@ final class AppState {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-        panel.prompt = "添加"
-        panel.message = "选择 SVN 工作副本目录（包含 .svn 的目录）"
+        panel.prompt = L.t("添加")
+        panel.message = L.t("选择 SVN 工作副本目录（包含 .svn 的目录）")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         addRepository(at: url)
     }
@@ -389,13 +418,13 @@ final class AppState {
 
     func createDemoWorkspace() async {
         guard let installation else {
-            demoPhase = .failed("svn 还没有就绪，无法生成演示。")
+            demoPhase = .failed(L.t("svn 还没有就绪，无法生成演示。"))
             return
         }
         guard let svnadmin = DemoWorkspace.adminTool(nextTo: installation.executableURL) else {
             demoPhase = .failed(
-                "找不到 svnadmin（应当与 svn 在同一目录）。请安装完整版 Subversion，"
-                + "或在终端运行 scripts/create-conflict-demo.sh。"
+                L.t("找不到 svnadmin（应当与 svn 在同一目录）。请安装完整版 Subversion，")
+                + L.t("或在终端运行 scripts/create-conflict-demo.sh。")
             )
             return
         }
@@ -451,7 +480,7 @@ final class AppState {
         guard var prompt = authPrompt else { return }
         let username = rawUsername.trimmingCharacters(in: .whitespaces)
         guard !username.isEmpty else {
-            prompt.errorMessage = "请输入用户名"
+            prompt.errorMessage = L.t("请输入用户名")
             authPrompt = prompt
             return
         }
@@ -510,16 +539,16 @@ final class AppState {
     /// user's decision, made after the state is readable again.
     func recover(_ entry: OperationJournal.Entry) async {
         guard let service else {
-            recoveryError = "SVN 服务尚未就绪，暂时无法清理。"
+            recoveryError = L.t("SVN 服务尚未就绪，暂时无法清理。")
             return
         }
         let url = URL(fileURLWithPath: entry.workingCopy)
         guard FileManager.default.fileExists(atPath: url.path) else {
-            recoveryError = "目录已不存在：\(entry.workingCopy)"
+            recoveryError = L.f("目录已不存在：%@", String(describing: entry.workingCopy))
             return
         }
         do {
-            _ = try await taskCenter.run("清理 \(url.lastPathComponent)") { _ in
+            _ = try await taskCenter.run(L.f("清理 %@", String(describing: url.lastPathComponent))) { _ in
                 try await service.cleanup(at: url)
             }
             await journal.discard(entry.id)
@@ -535,7 +564,7 @@ final class AppState {
         } catch {
             let svnError = (error as? SVNError)
                 ?? SVNError(code: .unknown, message: error.localizedDescription)
-            recoveryError = "清理失败：\(svnError.message)"
+            recoveryError = L.f("清理失败：%@", String(describing: svnError.message))
         }
     }
 
@@ -566,10 +595,10 @@ final class AppState {
         revision: Int64?,
         storePristines: Bool = true
     ) async throws {
-        guard let service else { throw SVNError(code: .svnNotFound, message: "SVN 服务尚未就绪") }
+        guard let service else { throw SVNError(code: .svnNotFound, message: L.t("SVN 服务尚未就绪")) }
 
         func attempt(_ credential: SVNCredential?) async throws {
-            _ = try await taskCenter.run("检出 \(url)") { progress in
+            _ = try await taskCenter.run(L.f("检出 %@", String(describing: url))) { progress in
                 try await service.checkout(
                     url: url,
                     to: destination,
@@ -603,9 +632,9 @@ final class AppState {
     /// asked is still open and owns the field the user needs to fix.
     func createLocalRepository(at location: URL) async throws -> LocalRepository {
         guard let service else {
-            throw SVNError(code: .svnNotFound, message: "SVN 服务尚未就绪")
+            throw SVNError(code: .svnNotFound, message: L.t("SVN 服务尚未就绪"))
         }
-        return try await taskCenter.run("创建本地仓库 \(location.lastPathComponent)") { _ in
+        return try await taskCenter.run(L.f("创建本地仓库 %@", String(describing: location.lastPathComponent))) { _ in
             try await service.createLocalRepository(at: location)
         }
     }
@@ -709,11 +738,11 @@ final class AppState {
     /// offers GitHub's digest (nothing to compare identity against).
     var updateInstallBlocker: String? {
         guard let package = updatePackage else {
-            return "这个版本没有提供可校验的安装包，只能下载后手动安装。"
+            return L.t("这个版本没有提供可校验的安装包，只能下载后手动安装。")
         }
         if package.hasSignedManifest {
             guard UpdateSigningKey.isConfigured else {
-                return "这个发布用项目密钥签了摘要，但当前构建没有内置对应的公钥，无法校验，只能手动下载。"
+                return L.t("这个发布用项目密钥签了摘要，但当前构建没有内置对应的公钥，无法校验，只能手动下载。")
             }
             // Identity comes from the manifest key, so an ad-hoc build can
             // install this without a Developer ID certificate. That is the
@@ -721,10 +750,10 @@ final class AppState {
             return nil
         }
         guard package.archive.sha256 != nil else {
-            return "发布方既没有提供签名清单，也没有提供 SHA-256 摘要，无法校验，只能手动下载。"
+            return L.t("发布方既没有提供签名清单，也没有提供 SHA-256 摘要，无法校验，只能手动下载。")
         }
         guard runningTeamIdentifier != nil else {
-            return "这个发布没有附带签名清单，而当前构建不是 Developer ID 签名，无法确认发布者，因此不会自动安装。"
+            return L.t("这个发布没有附带签名清单，而当前构建不是 Developer ID 签名，无法确认发布者，因此不会自动安装。")
         }
         return nil
     }
@@ -824,14 +853,14 @@ final class AppState {
             if case .cancelled = error {
                 updateDownloadPhase = .idle
             } else {
-                updateDownloadPhase = .failed(error.errorDescription ?? "下载失败。")
+                updateDownloadPhase = .failed(error.errorDescription ?? L.t("下载失败。"))
                 AppLog.shared.record(.warning, "更新下载失败：\(error.errorDescription ?? "")", category: "update")
             }
         } catch let error as UpdateManifestError {
-            updateDownloadPhase = .failed(error.errorDescription ?? "发布清单校验失败。")
+            updateDownloadPhase = .failed(error.errorDescription ?? L.t("发布清单校验失败。"))
             AppLog.shared.record(.warning, "发布清单校验失败：\(error.errorDescription ?? "")", category: "update")
         } catch let error as UpdateInstallError {
-            updateDownloadPhase = .failed(error.errorDescription ?? "更新包校验失败。")
+            updateDownloadPhase = .failed(error.errorDescription ?? L.t("更新包校验失败。"))
             AppLog.shared.record(.warning, "更新包校验失败：\(error.errorDescription ?? "")", category: "update")
         } catch {
             updateDownloadPhase = .failed(error.localizedDescription)
@@ -859,7 +888,7 @@ final class AppState {
             )
             NSApp.terminate(nil)
         } catch let error as UpdateInstallError {
-            updateDownloadPhase = .failed(error.errorDescription ?? "无法启动安装。")
+            updateDownloadPhase = .failed(error.errorDescription ?? L.t("无法启动安装。"))
             AppLog.shared.record(.error, "安装更新失败：\(error.errorDescription ?? "")", category: "update")
         } catch {
             updateDownloadPhase = .failed(error.localizedDescription)

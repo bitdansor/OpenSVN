@@ -283,7 +283,7 @@ public actor SVNService {
         }
         let prefix = String(decoding: Data(text.utf8.prefix(maxBytes)), as: UTF8.self)
         return DiffResult(
-            text: prefix + "\n\n… 差异过大，已截断显示（共 \(bytes) 字节）。",
+            text: prefix + L.f("\n\n… 差异过大，已截断显示（共 %@ 字节）。", String(describing: bytes)),
             isTruncated: true,
             byteCount: bytes
         )
@@ -299,10 +299,10 @@ public actor SVNService {
 
         public var displayName: String {
             switch self {
-            case .infinity: return "完整检出（含子目录）"
-            case .immediates: return "仅直接子项"
-            case .files: return "仅文件"
-            case .empty: return "仅目录本身"
+            case .infinity: return L.t("完整检出（含子目录）")
+            case .immediates: return L.t("仅直接子项")
+            case .files: return L.t("仅文件")
+            case .empty: return L.t("仅目录本身")
             }
         }
     }
@@ -327,7 +327,7 @@ public actor SVNService {
             guard installation.version >= Self.pristineStoreMinimumVersion else {
                 throw SVNError(
                     code: .invalidInvocation,
-                    message: "svn \(installation.version) 不支持按需获取原始副本（Pristines on Demand），需要 1.15 或更高版本"
+                    message: L.f("svn %@ 不支持按需获取原始副本（Pristines on Demand），需要 1.15 或更高版本", String(describing: installation.version))
                 )
             }
         }
@@ -336,11 +336,11 @@ public actor SVNService {
         var isDirectory: ObjCBool = false
         if fileManager.fileExists(atPath: destination.path, isDirectory: &isDirectory) {
             guard isDirectory.boolValue else {
-                throw SVNError(code: .invalidInvocation, message: "目标已存在且不是目录：\(destination.path)")
+                throw SVNError(code: .invalidInvocation, message: L.f("目标已存在且不是目录：%@", String(describing: destination.path)))
             }
             let contents = try fileManager.contentsOfDirectory(atPath: destination.path)
             guard contents.isEmpty else {
-                throw SVNError(code: .invalidInvocation, message: "目标目录非空，无法检出：\(destination.path)")
+                throw SVNError(code: .invalidInvocation, message: L.f("目标目录非空，无法检出：%@", String(describing: destination.path)))
             }
         }
 
@@ -356,7 +356,7 @@ public actor SVNService {
         let ticket = await beginJournal(
             .checkout,
             workingCopy: destination,
-            summary: "检出到 \(destination.lastPathComponent)"
+            summary: L.f("检出到 %@", String(describing: destination.lastPathComponent))
         )
         do {
             try await gate.withLock(key) {
@@ -394,7 +394,7 @@ public actor SVNService {
         if setDepth != nil, revision != nil {
             throw SVNError(
                 code: .invalidInvocation,
-                message: "改深度和指定修订不能在同一次更新里做。svn 会把两者一起应用，若该路径在目标修订中不存在，它会被直接删掉。"
+                message: L.t("改深度和指定修订不能在同一次更新里做。svn 会把两者一起应用，若该路径在目标修订中不存在，它会被直接删掉。")
             )
         }
         if setDepth == .exclude {
@@ -405,8 +405,8 @@ public actor SVNService {
         let ticket = await beginJournal(
             .update,
             workingCopy: URL(fileURLWithPath: key),
-            summary: setDepth.map { "改深度到 \($0.displayName)：\(target.lastPathComponent)" }
-                ?? "更新 \(target.lastPathComponent)"
+            summary: setDepth.map { L.f("改深度到 %@：%@", String(describing: $0.displayName), String(describing: target.lastPathComponent)) }
+                ?? L.f("更新 %@", String(describing: target.lastPathComponent))
         )
         do {
             let summary = try await gate.withLock(key) {
@@ -474,13 +474,13 @@ public actor SVNService {
             $0.item == .unversioned || $0.item == .ignored
         }
         guard stranded.isEmpty else {
-            let names = stranded.prefix(5).map(\.fileName).joined(separator: "、")
-            let more = stranded.count > 5 ? " 等 \(stranded.count) 项" : ""
+            let names = stranded.prefix(5).map(\.fileName).joined(separator: L.t("、"))
+            let more = stranded.count > 5 ? L.f(" 等 %@ 项", String(describing: stranded.count)) : ""
             throw SVNError(
                 code: .confirmationRequired,
-                message: "这个目录里还有未纳入版本控制的文件（\(names)\(more)），不能整体排除。"
-                    + "svn 会把这些文件留在磁盘上、同时丢掉目录的版本控制信息，工作副本还可能被锁住。"
-                    + "请先移走或删除它们，再改深度。",
+                message: L.f("这个目录里还有未纳入版本控制的文件（%@%@），不能整体排除。", String(describing: names), String(describing: more))
+                    + L.t("svn 会把这些文件留在磁盘上、同时丢掉目录的版本控制信息，工作副本还可能被锁住。")
+                    + L.t("请先移走或删除它们，再改深度。"),
                 diagnosticOutput: stranded.map(\.path).joined(separator: "\n")
             )
         }
@@ -499,7 +499,7 @@ public actor SVNService {
         let ticket = await beginJournal(
             .add,
             workingCopy: URL(fileURLWithPath: key),
-            summary: "添加 \(paths.count) 个路径"
+            summary: L.n("添加 %d 个路径", paths.count)
         )
         do {
             try await gate.withLock(key) {
@@ -529,12 +529,12 @@ public actor SVNService {
                 discarded.append(entry.path)
             }
         }
-        let targetList = paths.map(\.lastPathComponent).joined(separator: "、")
+        let targetList = paths.map(\.lastPathComponent).joined(separator: L.t("、"))
         return OperationPreview(
-            summary: "删除「\(targetList)」并纳入版本控制",
+            summary: L.f("删除「%@」并纳入版本控制", String(describing: targetList)),
             detail: discarded.isEmpty
-                ? "这些文件会从磁盘和下次提交中移除。"
-                : "以下 \(discarded.count) 项本地内容会一并丢失：\n" + discarded.prefix(20).joined(separator: "\n"),
+                ? L.t("这些文件会从磁盘和下次提交中移除。")
+                : L.n("以下 %d 项本地内容会一并丢失：\n", discarded.count) + discarded.prefix(20).joined(separator: "\n"),
             risk: discarded.isEmpty ? .medium : .high,
             affectedPaths: paths.map(\.path),
             discardedPaths: discarded
@@ -555,7 +555,7 @@ public actor SVNService {
         let ticket = await beginJournal(
             .delete,
             workingCopy: URL(fileURLWithPath: key),
-            summary: "删除 \(paths.count) 个路径"
+            summary: L.n("删除 %d 个路径", paths.count)
         )
         do {
             try await gate.withLock(key) {
@@ -584,10 +584,10 @@ public actor SVNService {
             }
         }
         return OperationPreview(
-            summary: "还原 \(paths.count) 个路径的本地修改",
+            summary: L.n("还原 %d 个路径的本地修改", paths.count),
             detail: discarded.isEmpty
-                ? "所选路径没有可还原的本地修改。"
-                : "以下本地修改会被丢弃，且无法恢复：\n" + discarded.prefix(20).joined(separator: "\n"),
+                ? L.t("所选路径没有可还原的本地修改。")
+                : L.t("以下本地修改会被丢弃，且无法恢复：\n") + discarded.prefix(20).joined(separator: "\n"),
             risk: discarded.isEmpty ? .low : .high,
             affectedPaths: paths.map(\.path),
             discardedPaths: discarded
@@ -608,7 +608,7 @@ public actor SVNService {
         let ticket = await beginJournal(
             .revert,
             workingCopy: URL(fileURLWithPath: key),
-            summary: "还原 \(paths.count) 个路径"
+            summary: L.n("还原 %d 个路径", paths.count)
         )
         do {
             try await gate.withLock(key) {
@@ -644,18 +644,18 @@ public actor SVNService {
         progress: SVNProgressHandler? = nil
     ) async throws -> CommitSummary {
         guard !paths.isEmpty else {
-            throw SVNError(code: .invalidInvocation, message: "没有选择要提交的路径")
+            throw SVNError(code: .invalidInvocation, message: L.t("没有选择要提交的路径"))
         }
         let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            throw SVNError(code: .invalidInvocation, message: "提交说明不能为空")
+            throw SVNError(code: .invalidInvocation, message: L.t("提交说明不能为空"))
         }
 
         let key = WorkingCopyLocator.serializationKey(for: paths[0])
         let ticket = await beginJournal(
             .commit,
             workingCopy: URL(fileURLWithPath: key),
-            summary: "提交 \(paths.count) 个路径"
+            summary: L.n("提交 %d 个路径", paths.count)
         )
         do {
             let summary = try await gate.withLock(key) {
@@ -666,8 +666,8 @@ public actor SVNService {
                     if let conflicted = snapshot.conflicted.first {
                         throw SVNError(
                             code: .conflictRemains,
-                            message: "存在未解决的冲突：\(conflicted.path)",
-                            diagnosticOutput: "请先解决冲突并标记 resolve 后再提交。"
+                            message: L.f("存在未解决的冲突：%@", String(describing: conflicted.path)),
+                            diagnosticOutput: L.t("请先解决冲突并标记 resolve 后再提交。")
                         )
                     }
                 }
@@ -713,13 +713,13 @@ public actor SVNService {
         credential: SVNCredential? = nil
     ) async throws -> LockOutcome {
         guard !paths.isEmpty else {
-            throw SVNError(code: .invalidInvocation, message: "没有选择要锁定的路径")
+            throw SVNError(code: .invalidInvocation, message: L.t("没有选择要锁定的路径"))
         }
         guard !steal || confirmed else {
             throw SVNError(
                 code: .confirmationRequired,
-                message: "「强制锁定」会抢占他人持有的锁",
-                diagnosticOutput: "持有者将无法提交该路径，直到他注意到锁已易主。"
+                message: L.t("「强制锁定」会抢占他人持有的锁"),
+                diagnosticOutput: L.t("持有者将无法提交该路径，直到他注意到锁已易主。")
             )
         }
 
@@ -727,7 +727,7 @@ public actor SVNService {
         let ticket = await beginJournal(
             .lock,
             workingCopy: URL(fileURLWithPath: key),
-            summary: "锁定 \(paths.count) 个路径"
+            summary: L.n("锁定 %d 个路径", paths.count)
         )
         do {
             let outcome = try await gate.withLock(key) {
@@ -774,13 +774,13 @@ public actor SVNService {
         credential: SVNCredential? = nil
     ) async throws -> UnlockOutcome {
         guard !paths.isEmpty else {
-            throw SVNError(code: .invalidInvocation, message: "没有选择要解锁的路径")
+            throw SVNError(code: .invalidInvocation, message: L.t("没有选择要解锁的路径"))
         }
         guard !breakLock || confirmed else {
             throw SVNError(
                 code: .confirmationRequired,
-                message: "「强制解除」会移除他人持有的锁",
-                diagnosticOutput: "对方可能正在编辑该文件；解除后两人的提交都可能互相覆盖。"
+                message: L.t("「强制解除」会移除他人持有的锁"),
+                diagnosticOutput: L.t("对方可能正在编辑该文件；解除后两人的提交都可能互相覆盖。")
             )
         }
 
@@ -788,7 +788,7 @@ public actor SVNService {
         let ticket = await beginJournal(
             .unlock,
             workingCopy: URL(fileURLWithPath: key),
-            summary: "解锁 \(paths.count) 个路径"
+            summary: L.n("解锁 %d 个路径", paths.count)
         )
         do {
             let outcome = try await gate.withLock(key) {
@@ -834,7 +834,7 @@ public actor SVNService {
         let ticket = await beginJournal(
             .cleanup,
             workingCopy: URL(fileURLWithPath: key),
-            summary: "清理 \(target.lastPathComponent)"
+            summary: L.f("清理 %@", String(describing: target.lastPathComponent))
         )
         do {
             try await gate.withLock(key) {
@@ -877,7 +877,7 @@ public actor SVNService {
         guard !strategy.isDestructive || confirmed else {
             throw SVNError(
                 code: .confirmationRequired,
-                message: "「\(strategy.title)」会覆盖本地或服务器端内容",
+                message: L.f("「%@」会覆盖本地或服务器端内容", String(describing: strategy.title)),
                 diagnosticOutput: strategy.consequence
             )
         }
@@ -886,7 +886,7 @@ public actor SVNService {
         let ticket = await beginJournal(
             .resolve,
             workingCopy: URL(fileURLWithPath: key),
-            summary: "解决 \(paths.count) 个冲突"
+            summary: L.n("解决 %d 个冲突", paths.count)
         )
         do {
             let outcome = try await gate.withLock(key) {
@@ -948,7 +948,7 @@ public actor SVNService {
             ["propset", name],
             value: value,
             on: targets,
-            summary: "设置属性 \(name)"
+            summary: L.f("设置属性 %@", String(describing: name))
         )
     }
 
@@ -980,7 +980,7 @@ public actor SVNService {
             ["propdel", name],
             value: nil,
             on: holders,
-            summary: "删除属性 \(name)"
+            summary: L.f("删除属性 %@", String(describing: name))
         )
         return holders.count
     }
@@ -994,7 +994,7 @@ public actor SVNService {
     public func addIgnorePattern(_ pattern: String, in directory: URL) async throws -> Bool {
         let trimmed = pattern.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            throw SVNError(code: .invalidInvocation, message: "忽略规则不能为空")
+            throw SVNError(code: .invalidInvocation, message: L.t("忽略规则不能为空"))
         }
         let directory = directory.standardizedFileURL
         let existing = try await propertyValue(of: "svn:ignore", at: directory)
@@ -1087,7 +1087,7 @@ public actor SVNService {
         } catch {
             throw SVNError(
                 code: .permissionDenied,
-                message: "无法写入临时文件来传递属性值：\(error.localizedDescription)"
+                message: L.f("无法写入临时文件来传递属性值：%@", String(describing: error.localizedDescription))
             )
         }
         return url
@@ -1138,7 +1138,7 @@ public actor SVNService {
         )
         return RemoteCommit(
             revision: RemoteCommit.parseRevision(result.standardOutput),
-            summary: "已创建 \(Self.leafName(of: url))"
+            summary: L.f("已创建 %@", String(describing: Self.leafName(of: url)))
         )
     }
 
@@ -1168,7 +1168,7 @@ public actor SVNService {
         )
         return RemoteCommit(
             revision: RemoteCommit.parseRevision(result.standardOutput),
-            summary: "已复制到 \(Self.leafName(of: destination))"
+            summary: L.f("已复制到 %@", String(describing: Self.leafName(of: destination)))
         )
     }
 
@@ -1191,7 +1191,7 @@ public actor SVNService {
         )
         return RemoteCommit(
             revision: RemoteCommit.parseRevision(result.standardOutput),
-            summary: "已移动到 \(Self.leafName(of: destination))"
+            summary: L.f("已移动到 %@", String(describing: Self.leafName(of: destination)))
         )
     }
 
@@ -1211,7 +1211,7 @@ public actor SVNService {
         guard confirmed else {
             throw SVNError(
                 code: .confirmationRequired,
-                message: "删除仓库路径需要确认：\(url)"
+                message: L.f("删除仓库路径需要确认：%@", String(describing: url))
             )
         }
         try Self.requireMessage(message)
@@ -1223,7 +1223,7 @@ public actor SVNService {
         )
         return RemoteCommit(
             revision: RemoteCommit.parseRevision(result.standardOutput),
-            summary: "已删除 \(Self.leafName(of: url))"
+            summary: L.f("已删除 %@", String(describing: Self.leafName(of: url)))
         )
     }
 
@@ -1284,7 +1284,7 @@ public actor SVNService {
         )
         return RemoteCommit(
             revision: RemoteCommit.parseRevision(result.standardOutput),
-            summary: "已导入 \(Self.leafName(of: destinationURL))"
+            summary: L.f("已导入 %@", String(describing: Self.leafName(of: destinationURL)))
         )
     }
 
@@ -1374,7 +1374,7 @@ public actor SVNService {
         let ticket = await beginJournal(
             .update,
             workingCopy: URL(fileURLWithPath: key),
-            summary: "合并到 \(request.target.lastPathComponent)"
+            summary: L.f("合并到 %@", String(describing: request.target.lastPathComponent))
         )
         do {
             let outcome = try await gate.withLock(key) {
@@ -1466,7 +1466,7 @@ public actor SVNService {
         let ticket = await beginJournal(
             .update,
             workingCopy: URL(fileURLWithPath: key),
-            summary: "切换 \(request.target.lastPathComponent) 到 \(request.url)"
+            summary: L.f("切换 %@ 到 %@", String(describing: request.target.lastPathComponent), String(describing: request.url))
         )
         do {
             let outcome = try await gate.withLock(key) {
@@ -1509,7 +1509,7 @@ public actor SVNService {
         guard request.dryRun || confirmed else {
             throw SVNError(
                 code: .confirmationRequired,
-                message: "应用补丁会修改工作副本里的文件（补丁也可能新增或删除文件）。请先预览，再确认应用。"
+                message: L.t("应用补丁会修改工作副本里的文件（补丁也可能新增或删除文件）。请先预览，再确认应用。")
             )
         }
 
@@ -1518,7 +1518,7 @@ public actor SVNService {
         let ticket = request.dryRun ? nil : await beginJournal(
             .patch,
             workingCopy: URL(fileURLWithPath: key),
-            summary: "应用补丁 \(request.patchFile.lastPathComponent)"
+            summary: L.f("应用补丁 %@", String(describing: request.patchFile.lastPathComponent))
         )
         do {
             let outcome = try await gate.withLock(key) {
@@ -1553,11 +1553,11 @@ public actor SVNService {
         var isDirectory: ObjCBool = false
         if fileManager.fileExists(atPath: path.path, isDirectory: &isDirectory) {
             guard isDirectory.boolValue else {
-                throw SVNError(code: .invalidInvocation, message: "目标已存在且不是目录：\(path.path)")
+                throw SVNError(code: .invalidInvocation, message: L.f("目标已存在且不是目录：%@", String(describing: path.path)))
             }
             let contents = try fileManager.contentsOfDirectory(atPath: path.path)
             guard contents.isEmpty else {
-                throw SVNError(code: .invalidInvocation, message: "目标目录非空，无法在此创建仓库：\(path.path)")
+                throw SVNError(code: .invalidInvocation, message: L.f("目标目录非空，无法在此创建仓库：%@", String(describing: path.path)))
             }
         } else {
             // svnadmin creates only the final directory, not its parents.
@@ -1571,7 +1571,7 @@ public actor SVNService {
         let ticket = await beginJournal(
             .checkout,
             workingCopy: path,
-            summary: "创建本地仓库 \(path.lastPathComponent)"
+            summary: L.f("创建本地仓库 %@", String(describing: path.lastPathComponent))
         )
         do {
             let repository = try await gate.withLock(key) {
@@ -1594,7 +1594,7 @@ public actor SVNService {
         guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw SVNError(
                 code: .invalidInvocation,
-                message: "仓库操作需要提交说明：svn 会把它写进历史，不能留空"
+                message: L.t("仓库操作需要提交说明：svn 会把它写进历史，不能留空")
             )
         }
     }
@@ -1664,7 +1664,7 @@ public actor SVNService {
                 }
                 throw SVNError(
                     code: .authenticationRequired,
-                    message: scope.map { "需要登录 \($0.host)" } ?? "需要登录",
+                    message: scope.map { L.f("需要登录 %@", String(describing: $0.host)) } ?? L.t("需要登录"),
                     diagnosticOutput: error.diagnosticOutput,
                     svnCode: error.svnCode,
                     exitCode: result.exitCode
@@ -1689,7 +1689,7 @@ public actor SVNService {
         guard let adminURL = DemoWorkspace.adminTool(nextTo: installation.executableURL) else {
             throw SVNError(
                 code: .svnNotFound,
-                message: "找不到 svnadmin：它应与 svn 位于同一目录"
+                message: L.t("找不到 svnadmin：它应与 svn 位于同一目录")
             )
         }
         let adminRunner = SVNProcessRunner(executableURL: adminURL, defaultTimeout: defaultTimeout)
@@ -1703,7 +1703,7 @@ public actor SVNService {
             let text = result.standardError.isEmpty ? result.standardOutput : result.standardError
             throw SVNError(
                 code: .commandFailed(exitCode: result.exitCode),
-                message: "svnadmin 执行失败",
+                message: L.t("svnadmin 执行失败"),
                 diagnosticOutput: LogRedactor.redact(text)
             )
         }
@@ -1756,7 +1756,7 @@ public actor SVNService {
             guard installation.version >= Self.passwordStdinMinimumVersion else {
                 throw SVNError(
                     code: .invalidInvocation,
-                    message: "svn \(installation.version) 不支持从 stdin 读取密码，需要 1.10 或更高版本"
+                    message: L.f("svn %@ 不支持从 stdin 读取密码，需要 1.10 或更高版本", String(describing: installation.version))
                 )
             }
             globalOptions += ["--username", credential.username, "--password-from-stdin"]

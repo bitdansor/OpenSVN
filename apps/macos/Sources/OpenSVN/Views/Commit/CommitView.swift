@@ -51,19 +51,19 @@ struct CommitView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(.red)
             VStack(alignment: .leading, spacing: 1) {
-                Text("有 \(session.conflictedEntries.count) 个未解决的冲突")
+                Text(L.n("有 %d 个未解决的冲突", session.conflictedEntries.count))
                     .font(.callout.weight(.medium))
-                Text("解决冲突并标记 resolve 后才能提交。")
+                Text(L.t("解决冲突并标记 resolve 后才能提交。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
             Spacer()
             if let first = session.conflictedEntries.first {
-                Button("用外部工具解决") {
+                Button(L.t("用外部工具解决")) {
                     session.resolveWithExternalTool(first)
                 }
                 .controlSize(.small)
-                .help("用「扩展设置」里配置的三方合并工具处理「\(session.relativePath(first.path))」")
+                .help(L.f("用「扩展设置」里配置的三方合并工具处理「%@」", String(describing: session.relativePath(first.path))))
             }
         }
         .padding(.horizontal, 14)
@@ -76,10 +76,10 @@ struct CommitView: View {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)
             VStack(alignment: .leading, spacing: 1) {
-                Text(summary.revision.map { "已提交为 r\($0)" } ?? "已提交")
+                Text(summary.revision.map { L.f("已提交为 r%@", String(describing: $0)) } ?? L.t("已提交"))
                     .font(.callout.weight(.medium))
                 if !summary.committedPaths.isEmpty {
-                    Text("包含 \(summary.committedPaths.count) 个路径")
+                    Text(L.n("包含 %d 个路径", summary.committedPaths.count))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -96,14 +96,14 @@ struct CommitView: View {
     private var fileList: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("待提交文件")
+                Text(L.t("待提交文件"))
                     .font(.headline)
                 Spacer()
-                Button("全选") {
+                Button(L.t("全选")) {
                     session.commitSelection = Set(session.changedEntries.filter { !$0.hasConflicts }.map(\.id))
                 }
                 .buttonStyle(.link)
-                Button("全不选") { session.commitSelection.removeAll() }
+                Button(L.t("全不选")) { session.commitSelection.removeAll() }
                     .buttonStyle(.link)
             }
             .padding(.horizontal, 14)
@@ -112,7 +112,7 @@ struct CommitView: View {
             Divider()
 
             if session.changedEntries.isEmpty {
-                ContentUnavailableView("没有可提交的修改", systemImage: "tray")
+                ContentUnavailableView(L.t("没有可提交的修改"), systemImage: "tray")
                     .frame(maxHeight: .infinity)
             } else {
                 List {
@@ -148,11 +148,11 @@ struct CommitView: View {
         .toggleStyle(.checkbox)
         .disabled(entry.hasConflicts)
         .contextMenu {
-            Button("查看此文件历史…") {
+            Button(L.t("查看此文件历史…")) {
                 showingHistorySheet = true
                 Task { await session.showHistory(for: entry) }
             }
-            Button("注解 / 作者…") {
+            Button(L.t("注解 / 作者…")) {
                 session.openBlame(for: entry)
             }
             .disabled(entry.item == .unversioned)
@@ -176,7 +176,7 @@ struct CommitView: View {
                 .padding(.horizontal, 14)
                 .frame(minHeight: 120, idealHeight: 160, maxHeight: 240)
 
-            Text("提交前会再次读取工作副本状态；发现冲突将中止提交，说明与勾选会保留。")
+            Text(L.t("提交前会再次读取工作副本状态；发现冲突将中止提交，说明与勾选会保留。"))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 14)
@@ -198,7 +198,7 @@ struct CommitView: View {
 
     private var messageHeader: some View {
         HStack {
-            Text("提交说明")
+            Text(L.t("提交说明"))
                 .font(.headline)
             if !session.recentCommitMessages.isEmpty {
                 Menu {
@@ -208,14 +208,14 @@ struct CommitView: View {
                         }
                     }
                 } label: {
-                    Label("最近说明", systemImage: "clock.arrow.circlepath")
+                    Label(L.t("最近说明"), systemImage: "clock.arrow.circlepath")
                 }
                 .menuStyle(.borderlessButton)
                 .fixedSize()
-                .help("复用之前的提交说明")
+                .help(L.t("复用之前的提交说明"))
             }
             Spacer()
-            Text("\(session.commitMessage.count) 字符")
+            Text(L.f("%@ 字符", String(describing: session.commitMessage.count)))
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
@@ -235,16 +235,16 @@ struct CommitView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                 } else {
-                    Text("差异预览")
+                    Text(L.t("差异预览"))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
                 if let diff = session.commitPreviewDiff {
                     if diff.isTruncated {
-                        StatusBadge(text: "已截断", color: .orange)
+                        StatusBadge(text: L.t("已截断"), color: .orange)
                     }
-                    Text("\(diff.byteCount) 字节")
+                    Text(L.f("%@ 字节", String(describing: diff.byteCount)))
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -256,17 +256,17 @@ struct CommitView: View {
                 DiffTextView(text: diff.text)
             } else if session.commitPreviewPath != nil {
                 ContentUnavailableView {
-                    Label("没有文本差异", systemImage: "equal.circle")
+                    Label(L.t("没有文本差异"), systemImage: "equal.circle")
                 } description: {
-                    Text("可能是二进制文件、新目录，或只有属性变化。")
+                    Text(L.t("可能是二进制文件、新目录，或只有属性变化。"))
                         .font(.caption)
                 }
                 .frame(maxHeight: .infinity)
             } else {
                 ContentUnavailableView {
-                    Label("选择文件查看差异", systemImage: "cursorarrow.click")
+                    Label(L.t("选择文件查看差异"), systemImage: "cursorarrow.click")
                 } description: {
-                    Text("点击左侧文件名，提交前再确认一次改了什么。")
+                    Text(L.t("点击左侧文件名，提交前再确认一次改了什么。"))
                         .font(.caption)
                 }
                 .frame(maxHeight: .infinity)
@@ -283,7 +283,7 @@ struct CommitView: View {
             Button {
                 Task { await session.commit() }
             } label: {
-                Label("提交 \(session.commitSelection.count) 项", systemImage: "arrow.up.circle.fill")
+                Label(L.n("提交 %d 项", session.commitSelection.count), systemImage: "arrow.up.circle.fill")
             }
             .buttonStyle(.borderedProminent)
             .disabled(session.commitSelection.isEmpty
@@ -319,8 +319,8 @@ struct CommitView: View {
         let entries = session.changedEntries.filter { selection.contains($0.id) }
         let hasSkippedConflicts = session.changedEntries.contains { $0.hasConflicts && !selection.contains($0.id) }
         if hasSkippedConflicts {
-            return "\(entries.count) 项待提交 · 冲突项已排除"
+            return L.n("%d 项待提交 · 冲突项已排除", entries.count)
         }
-        return "\(entries.count) 项待提交"
+        return L.n("%d 项待提交", entries.count)
     }
 }

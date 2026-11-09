@@ -65,23 +65,23 @@ public enum UpdateInstallError: Error, LocalizedError, Sendable, Equatable {
     public var errorDescription: String? {
         switch self {
         case .notAnAppBundle(let path):
-            return "更新包里没有找到应用（\(path)）。"
+            return L.f("更新包里没有找到应用（%@）。", String(describing: path))
         case .unpackFailed(let detail):
-            return "无法解开更新包：\(detail)"
+            return L.f("无法解开更新包：%@", String(describing: detail))
         case .signatureInvalid(let detail):
-            return "更新包的代码签名无效：\(detail)"
+            return L.f("更新包的代码签名无效：%@", String(describing: detail))
         case .notDeveloperIDSigned:
-            return "当前应用是这个 Developer ID 团队签名的，但更新包没有团队标识，已拒绝安装。"
+            return L.t("当前应用是这个 Developer ID 团队签名的，但更新包没有团队标识，已拒绝安装。")
         case .teamIdentifierMismatch(let expected, let found):
-            return "更新包的签名团队是 \(found)，与当前应用的 \(expected) 不一致，已拒绝安装。"
+            return L.f("更新包的签名团队是 %@，与当前应用的 %@ 不一致，已拒绝安装。", String(describing: found), String(describing: expected))
         case .bundleIdentifierMismatch(let expected, let found):
-            return "更新包的标识是 \(found ?? "（缺失）")，不是 \(expected)，已拒绝安装。"
+            return L.f("更新包的标识是 %@，不是 %@，已拒绝安装。", String(describing: found ?? L.t("（缺失）")), String(describing: expected))
         case .versionMismatch(let expected, let found):
-            return "更新包版本是 \(found ?? "（缺失）")，与发布信息里的 \(expected) 不一致，已拒绝安装。"
+            return L.f("更新包版本是 %@，与发布信息里的 %@ 不一致，已拒绝安装。", String(describing: found ?? L.t("（缺失）")), String(describing: expected))
         case .destinationNotWritable(let path):
-            return "没有权限替换 \(path)。请把它移到可写的位置，或手动下载安装。"
+            return L.f("没有权限替换 %@。请把它移到可写的位置，或手动下载安装。", String(describing: path))
         case .helperLaunchFailed(let detail):
-            return "无法启动安装助手：\(detail)"
+            return L.f("无法启动安装助手：%@", String(describing: detail))
         }
     }
 }

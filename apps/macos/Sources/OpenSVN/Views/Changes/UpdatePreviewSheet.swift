@@ -30,7 +30,7 @@ struct UpdatePreviewSheet: View {
                 .font(.system(size: 24))
                 .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 3) {
-                Text("更新「\(session.displayName)」")
+                Text(L.f("更新「%@」", String(describing: session.displayName)))
                     .font(.headline)
                 Text(subtitle)
                     .font(.caption)
@@ -43,13 +43,13 @@ struct UpdatePreviewSheet: View {
 
     private var subtitle: String {
         guard let preview = session.updatePreview?.preview else {
-            return session.updatePreview?.isLoading == true ? "正在向服务器查询…" : "尚未取得服务器状态"
+            return session.updatePreview?.isLoading == true ? L.t("正在向服务器查询…") : L.t("尚未取得服务器状态")
         }
-        let local = preview.workingCopyRevision.map { "r\($0)" } ?? "未知修订"
+        let local = preview.workingCopyRevision.map { "r\($0)" } ?? L.t("未知修订")
         guard let server = preview.serverRevision else {
-            return "本地 \(local)"
+            return L.f("本地 %@", String(describing: local))
         }
-        return "本地 \(local) → 服务器 r\(server)"
+        return L.f("本地 %@ → 服务器 r%@", String(describing: local), String(describing: server))
     }
 
     // MARK: - Content
@@ -59,10 +59,10 @@ struct UpdatePreviewSheet: View {
         if let state = session.updatePreview, state.isLoading {
             VStack(spacing: 12) {
                 ProgressView()
-                Text("正在读取服务器上的变更…")
+                Text(L.t("正在读取服务器上的变更…"))
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                Text("这一步只读取，不会改动工作副本。")
+                Text(L.t("这一步只读取，不会改动工作副本。"))
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
@@ -85,14 +85,14 @@ struct UpdatePreviewSheet: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 30))
                 .foregroundStyle(.orange)
-            Text("无法读取服务器状态")
+            Text(L.t("无法读取服务器状态"))
                 .font(.headline)
             Text(message)
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .textSelection(.enabled)
-            Button("重试") {
+            Button(L.t("重试")) {
                 Task { await session.loadUpdatePreview() }
             }
         }
@@ -105,18 +105,18 @@ struct UpdatePreviewSheet: View {
             Image(systemName: "checkmark.circle")
                 .font(.system(size: 32))
                 .foregroundStyle(.green)
-            Text("已是最新")
+            Text(L.t("已是最新"))
                 .font(.headline)
             if let server = preview.serverRevision {
-                Text("服务器上没有任何比本地更新的内容（服务器 r\(server)）。")
+                Text(L.f("服务器上没有任何比本地更新的内容（服务器 r%@）。", String(describing: server)))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
-                Text("服务器上没有任何比本地更新的内容。")
+                Text(L.t("服务器上没有任何比本地更新的内容。"))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
-            Text("仍然更新会重新应用目录属性，通常没有必要。")
+            Text(L.t("仍然更新会重新应用目录属性，通常没有必要。"))
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
@@ -157,11 +157,11 @@ struct UpdatePreviewSheet: View {
 
     private func summaryBar(_ preview: RemotePreview) -> some View {
         HStack(spacing: 12) {
-            countChip("新增", preview.addedCount, .green)
-            countChip("修改", preview.modifiedCount, .orange)
-            countChip("删除", preview.deletedCount, .red)
+            countChip(L.t("已新增"), preview.addedCount, .green)
+            countChip(L.t("已修改"), preview.modifiedCount, .orange)
+            countChip(L.t("已删除"), preview.deletedCount, .red)
             Spacer()
-            Text("本地 \(session.updatePreview?.localChangeCount ?? 0) 个未提交修改")
+            Text(L.n("本地 %d 个未提交修改", session.updatePreview?.localChangeCount ?? 0))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -183,7 +183,7 @@ struct UpdatePreviewSheet: View {
         HStack(spacing: 6) {
             Image(systemName: "tag")
                 .foregroundStyle(.purple)
-            Text("工作副本根目录的属性也有变更")
+            Text(L.t("工作副本根目录的属性也有变更"))
                 .font(.caption)
             Spacer()
         }
@@ -197,10 +197,10 @@ struct UpdatePreviewSheet: View {
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
-                Text("\(preview.conflictRisks.count) 个文件本地也改过，更新时可能冲突")
+                Text(L.n("%d 个文件本地也改过，更新时可能冲突", preview.conflictRisks.count))
                     .font(.callout.weight(.medium))
             }
-            Text("两边改的是同一处时，svn 会把冲突标记写进文件，并留下冲突副本。更新不会丢失本地内容，但你需要解决冲突后才能提交。")
+            Text(L.t("两边改的是同一处时，svn 会把冲突标记写进文件，并留下冲突副本。更新不会丢失本地内容，但你需要解决冲突后才能提交。"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -221,10 +221,10 @@ struct UpdatePreviewSheet: View {
                 .textSelection(.enabled)
             Spacer(minLength: 8)
             if change.conflictsWithLocal {
-                Label("可能冲突", systemImage: "exclamationmark.triangle.fill")
+                Label(L.t("可能冲突"), systemImage: "exclamationmark.triangle.fill")
                     .font(.caption2)
                     .foregroundStyle(.orange)
-                    .help("本地对该路径有未提交的修改，更新时可能产生冲突")
+                    .help(L.t("本地对该路径有未提交的修改，更新时可能产生冲突"))
             }
             Text(localDescription(for: change))
                 .font(.caption2)
@@ -255,12 +255,12 @@ struct UpdatePreviewSheet: View {
 
     private func localDescription(for change: RemoteChange) -> String {
         switch change.localItem {
-        case .modified: return "本地已修改"
-        case .added: return "本地已新增"
-        case .deleted: return "本地已删除"
-        case .missing: return "本地缺失"
-        case .conflicted: return "本地有冲突"
-        case .unversioned: return "本地未纳入版本控制"
+        case .modified: return L.t("本地已修改")
+        case .added: return L.t("本地已新增")
+        case .deleted: return L.t("本地已删除")
+        case .missing: return L.t("本地缺失")
+        case .conflicted: return L.t("本地有冲突")
+        case .unversioned: return L.t("本地未纳入版本控制")
         default: return ""
         }
     }
@@ -270,21 +270,21 @@ struct UpdatePreviewSheet: View {
     private var footer: some View {
         HStack(spacing: 10) {
             if session.updatePreview?.failure != nil {
-                Text("预检失败时仍然可以直接更新。")
+                Text(L.t("预检失败时仍然可以直接更新。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Button("取消") { session.dismissUpdatePreview() }
+                Button(L.t("取消")) { session.dismissUpdatePreview() }
                     .keyboardShortcut(.cancelAction)
-                Button("仍然更新") {
+                Button(L.t("仍然更新")) {
                     Task { await session.confirmUpdate() }
                 }
             } else {
-                Text("更新只读取服务器并合并到本地；未提交的修改会保留。")
+                Text(L.t("更新只读取服务器并合并到本地；未提交的修改会保留。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Button("取消") { session.dismissUpdatePreview() }
+                Button(L.t("取消")) { session.dismissUpdatePreview() }
                     .keyboardShortcut(.cancelAction)
                 Button(updateButtonTitle) {
                     Task { await session.confirmUpdate() }
@@ -299,9 +299,9 @@ struct UpdatePreviewSheet: View {
 
     private var updateButtonTitle: String {
         guard let preview = session.updatePreview?.preview, let server = preview.serverRevision else {
-            return "更新"
+            return L.t("更新")
         }
-        return preview.isEmpty ? "仍然更新到 r\(server)" : "更新到 r\(server)"
+        return preview.isEmpty ? L.f("仍然更新到 r%@", String(describing: server)) : L.f("更新到 r%@", String(describing: server))
     }
 }
 
@@ -313,9 +313,9 @@ private enum RemoteSection: CaseIterable {
 
     var title: String {
         switch self {
-        case .added: return "将新增"
-        case .modified: return "将修改"
-        case .deleted: return "将删除"
+        case .added: return L.t("将新增")
+        case .modified: return L.t("将修改")
+        case .deleted: return L.t("将删除")
         }
     }
 

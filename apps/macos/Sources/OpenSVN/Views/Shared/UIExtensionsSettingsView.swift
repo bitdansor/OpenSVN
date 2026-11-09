@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import OpenSVNCore
 
 /// Self-contained settings for the UI extensions.
 ///
@@ -25,26 +26,26 @@ struct UIExtensionsSettingsView: View {
     var body: some View {
         Form {
             Section {
-                TextField("URL 模板", text: $ticketTemplate)
+                TextField(L.t("URL 模板"), text: $ticketTemplate)
                     .textFieldStyle(.roundedBorder)
-                Button("恢复默认模板") {
+                Button(L.t("恢复默认模板")) {
                     ticketTemplate = UIExtensionSettings.defaultTicketURLTemplate
                 }
                 .buttonStyle(.link)
             } header: {
-                Text("工单号链接")
+                Text(L.t("工单号链接"))
             } footer: {
-                footer("提交说明与历史消息里的 #123、PROJ-123、issue 123 会变成可点击链接。占位符：{id} 规范化编号、{number} 纯数字、{key} 项目前缀。")
+                footer(L.t("提交说明与历史消息里的 #123、PROJ-123、issue 123 会变成可点击链接。占位符：{id} 规范化编号、{number} 纯数字、{key} 项目前缀。"))
             }
 
             Section {
-                Toggle("任务完成或失败时发送通知", isOn: $notificationsEnabled)
+                Toggle(L.t("任务完成或失败时发送通知"), isOn: $notificationsEnabled)
                 HStack {
-                    Button("现在请求通知授权") {
+                    Button(L.t("现在请求通知授权")) {
                         Task { @MainActor in
                             TaskNotificationBridge.shared.requestAuthorizationIfNeeded(force: true)
                         }
-                        authorizationHint = "已请求授权；若系统未弹出对话框，说明当前构建未签名或已授权过。"
+                        authorizationHint = L.t("已请求授权；若系统未弹出对话框，说明当前构建未签名或已授权过。")
                     }
                     if let authorizationHint {
                         Text(authorizationHint)
@@ -53,30 +54,30 @@ struct UIExtensionsSettingsView: View {
                     }
                 }
             } header: {
-                Text("操作通知")
+                Text(L.t("操作通知"))
             } footer: {
-                footer("使用系统本地通知。未签名、未授权或开关关闭时会自动跳过，不会中断任何操作。")
+                footer(L.t("使用系统本地通知。未签名、未授权或开关关闭时会自动跳过，不会中断任何操作。"))
             }
 
             Section {
                 HStack {
-                    TextField("可执行文件路径", text: $mergeExecutable)
+                    TextField(L.t("可执行文件路径"), text: $mergeExecutable)
                         .textFieldStyle(.roundedBorder)
-                    Button("选择…") { chooseMergeExecutable() }
+                    Button(L.t("选择…")) { chooseMergeExecutable() }
                 }
-                TextField("参数模板", text: $mergeArguments)
+                TextField(L.t("参数模板"), text: $mergeArguments)
                     .textFieldStyle(.roundedBorder)
             } header: {
-                Text("外部合并工具")
+                Text(L.t("外部合并工具"))
             } footer: {
-                footer("冲突解决入口提供「用外部工具解决」。占位符 {base}、{mine}、{theirs}、{merged}、{file} 会替换为文件路径；命令按参数数组执行，不会拼接 shell 字符串。工具需在 {merged} 写出结果并以 0 退出。")
+                footer(L.t("冲突解决入口提供「用外部工具解决」。占位符 {base}、{mine}、{theirs}、{merged}、{file} 会替换为文件路径；命令按参数数组执行，不会拼接 shell 字符串。工具需在 {merged} 写出结果并以 0 退出。"))
             }
         }
         .formStyle(.grouped)
         .frame(width: 560, height: 480)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("完成") { dismiss() }
+                Button(L.t("完成")) { dismiss() }
             }
         }
     }
@@ -94,8 +95,8 @@ struct UIExtensionsSettingsView: View {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = false
-        panel.prompt = "选择"
-        panel.message = "选择用于三方合并的程序"
+        panel.prompt = L.t("选择")
+        panel.message = L.t("选择用于三方合并的程序")
         guard panel.runModal() == .OK, let url = panel.url else { return }
         mergeExecutable = url.path
     }

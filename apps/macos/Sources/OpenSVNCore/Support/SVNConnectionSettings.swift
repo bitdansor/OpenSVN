@@ -57,13 +57,13 @@ public enum ConnectionSettingsError: Error, Sendable, LocalizedError, Equatable 
     public var errorDescription: String? {
         switch self {
         case .invalidProxyPort(let port):
-            return "代理端口无效：\(port)（应为 1–65535）"
+            return L.f("代理端口无效：%@（应为 1–65535）", String(describing: port))
         case .unsafeValue(let value):
-            return "配置值包含不允许的字符：\(value)"
+            return L.f("配置值包含不允许的字符：%@", String(describing: value))
         case .serversFileUnreadable:
-            return "无法读取 servers 配置文件"
+            return L.t("无法读取 servers 配置文件")
         case .serversFileUnwritable:
-            return "无法写入 servers 配置文件"
+            return L.t("无法写入 servers 配置文件")
         }
     }
 }

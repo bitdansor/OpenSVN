@@ -40,7 +40,7 @@ struct CommitFileHistorySheet: View {
             Image(systemName: "clock.arrow.circlepath")
                 .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 1) {
-                Text("文件历史")
+                Text(L.t("文件历史"))
                     .font(.headline)
                 Text(session.logTarget ?? session.displayName)
                     .font(.caption)
@@ -52,7 +52,7 @@ struct CommitFileHistorySheet: View {
             if session.isLogLoading {
                 ProgressView().controlSize(.small)
             }
-            Button("关闭") { dismiss() }
+            Button(L.t("关闭")) { dismiss() }
                 .keyboardShortcut(.cancelAction)
         }
         .padding(12)
@@ -61,7 +61,7 @@ struct CommitFileHistorySheet: View {
     @ViewBuilder
     private var list: some View {
         if session.filteredLog.isEmpty && session.isLogLoading {
-            ProgressView("正在读取历史…")
+            ProgressView(L.t("正在读取历史…"))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
             List(selection: $selectedRevision) {
@@ -89,7 +89,7 @@ struct CommitFileHistorySheet: View {
                     Button {
                         Task { await session.loadLog(reset: false) }
                     } label: {
-                        HStack { Spacer(); Text("加载更早的提交"); Spacer() }
+                        HStack { Spacer(); Text(L.t("加载更早的提交")); Spacer() }
                     }
                     .buttonStyle(.borderless)
                 }
@@ -118,11 +118,11 @@ struct CommitFileHistorySheet: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Divider()
-                    TicketLinkedText(text: entry.message.isEmpty ? "（无提交说明）" : entry.message)
+                    TicketLinkedText(text: entry.message.isEmpty ? L.t("（无提交说明）") : entry.message)
                         .font(.body)
                     if !entry.changedPaths.isEmpty {
                         Divider()
-                        Text("变更路径（\(entry.changedPaths.count)）")
+                        Text(L.f("变更路径（%@）", String(describing: entry.changedPaths.count)))
                             .font(.headline)
                         ForEach(entry.changedPaths, id: \.self) { path in
                             HStack(spacing: 6) {
@@ -141,12 +141,12 @@ struct CommitFileHistorySheet: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         } else {
-            ContentUnavailableView("选择一个修订版本", systemImage: "clock.arrow.circlepath")
+            ContentUnavailableView(L.t("选择一个修订版本"), systemImage: "clock.arrow.circlepath")
                 .frame(maxHeight: .infinity)
         }
     }
 
     private func firstLine(of message: String) -> String {
-        message.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? "（无提交说明）"
+        message.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? L.t("（无提交说明）")
     }
 }

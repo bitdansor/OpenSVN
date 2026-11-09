@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import OpenSVNCore
 
 /// A read-only text view whose ticket references are clickable links.
 ///
@@ -32,7 +33,7 @@ struct TicketLinksBar: View {
         let matches = TicketLinkDetector.matches(in: text)
         if !matches.isEmpty {
             HStack(spacing: 8) {
-                Text("识别到工单")
+                Text(L.t("识别到工单"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
                 ForEach(matches, id: \.offset) { match in

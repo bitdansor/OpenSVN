@@ -26,21 +26,21 @@ public enum LogLevel: String, CaseIterable, Codable, Sendable, Identifiable {
 
     public var displayName: String {
         switch self {
-        case .off: return "关闭"
-        case .error: return "仅错误"
-        case .warning: return "错误与警告"
-        case .info: return "常规"
-        case .debug: return "调试"
+        case .off: return L.t("不记录")
+        case .error: return L.t("仅错误")
+        case .warning: return L.t("错误与警告")
+        case .info: return L.t("常规")
+        case .debug: return L.t("调试")
         }
     }
 
     public var explanation: String {
         switch self {
-        case .off: return "不写日志文件。出问题时没有可查记录。"
-        case .error: return "只记录失败的操作。"
-        case .warning: return "记录失败与可疑情况，适合日常使用。"
-        case .info: return "记录每次 SVN 命令的结果，不含完整输出。"
-        case .debug: return "记录完整的命令与输出（已脱敏），仅用于排查问题。"
+        case .off: return L.t("不写日志文件。出问题时没有可查记录。")
+        case .error: return L.t("只记录失败的操作。")
+        case .warning: return L.t("记录失败与可疑情况，适合日常使用。")
+        case .info: return L.t("记录每次 SVN 命令的结果，不含完整输出。")
+        case .debug: return L.t("记录完整的命令与输出（已脱敏），仅用于排查问题。")
         }
     }
 }
@@ -132,6 +132,13 @@ public actor AppLog {
 
     /// Fire-and-forget entry point. Callers are usually inside a `svn` operation
     /// and must not await disk I/O to write a diagnostic line.
+    ///
+    /// A `message` is deliberately **not** run through the localisation catalog,
+    /// even though almost every other user-facing string is. The log is read by
+    /// whoever debugs the app, in whatever language they speak, against bug
+    /// reports from users who chose a different one — one fixed language keeps a
+    /// whole report greppable. Anything the user is meant to read is surfaced
+    /// through the UI separately, already translated.
     public nonisolated func record(_ level: LogLevel, _ message: String, category: String = "app") {
         Task { await self.append(level, message, category: category) }
     }

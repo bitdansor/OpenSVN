@@ -1,6 +1,7 @@
 import AppKit
 import QuickLookUI
 import SwiftUI
+import OpenSVNCore
 
 /// A single-item Quick Look preview backed by `QLPreviewView`.
 ///
@@ -14,7 +15,7 @@ struct QuickLookPreview: NSViewRepresentable {
         // Returning a labelled placeholder keeps the sheet usable when Quick
         // Look cannot create a view, instead of forcing an unwrap that crashes.
         guard let view = QLPreviewView(frame: .zero, style: .normal) else {
-            let label = NSTextField(labelWithString: "无法创建快速查看预览")
+            let label = NSTextField(labelWithString: L.t("无法创建快速查看预览"))
             label.alignment = .center
             label.textColor = .secondaryLabelColor
             return label
@@ -53,7 +54,7 @@ struct QuickLookSheet: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer()
-                Button("关闭") { dismiss() }
+                Button(L.t("关闭")) { dismiss() }
                     .keyboardShortcut(.cancelAction)
             }
             .padding(12)

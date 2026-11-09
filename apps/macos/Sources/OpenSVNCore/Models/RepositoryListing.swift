@@ -146,7 +146,7 @@ public struct RepositoryPath: Sendable, Hashable {
             if !leaf.isEmpty { return leaf }
         }
         if let host = URL(string: rootURL ?? url)?.host, !host.isEmpty { return host }
-        return "仓库"
+        return L.t("仓库")
     }
 }
 

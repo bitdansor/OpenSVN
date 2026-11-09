@@ -71,21 +71,21 @@ public enum SVNPropertyName {
     public static func validate(_ name: String) throws {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
-            throw SVNError(code: .invalidInvocation, message: "属性名不能为空")
+            throw SVNError(code: .invalidInvocation, message: L.t("属性名不能为空"))
         }
         guard trimmed == name else {
-            throw SVNError(code: .invalidInvocation, message: "属性名不能以空白开头或结尾")
+            throw SVNError(code: .invalidInvocation, message: L.t("属性名不能以空白开头或结尾"))
         }
         guard name.unicodeScalars.allSatisfy(allowed.contains) else {
             throw SVNError(
                 code: .invalidInvocation,
-                message: "属性名只能包含字母、数字、冒号、点、下划线和短横线：\(name)"
+                message: L.f("属性名只能包含字母、数字、冒号、点、下划线和短横线：%@", String(describing: name))
             )
         }
         if name.hasPrefix("svn:entry:") || name.hasPrefix("svn:wc:") {
             throw SVNError(
                 code: .invalidInvocation,
-                message: "「\(name)」是 Subversion 内部使用的属性，不能手动设置"
+                message: L.f("「%@」是 Subversion 内部使用的属性，不能手动设置", String(describing: name))
             )
         }
         // Custom properties need a namespace so they cannot collide with future
@@ -93,7 +93,7 @@ public enum SVNPropertyName {
         guard name.contains(":") else {
             throw SVNError(
                 code: .invalidInvocation,
-                message: "自定义属性必须带命名空间，例如 custom:\(name)"
+                message: L.f("自定义属性必须带命名空间，例如 custom:%@", String(describing: name))
             )
         }
     }

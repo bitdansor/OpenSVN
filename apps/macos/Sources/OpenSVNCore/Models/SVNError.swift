@@ -101,47 +101,47 @@ public enum SVNErrorCode: Sendable, Hashable, Codable {
     public var remediation: String? {
         switch self {
         case .workingCopyLocked:
-            return "工作副本被锁定。请先执行 Cleanup 清理内部锁。"
+            return L.t("工作副本被锁定。请先执行 Cleanup 清理内部锁。")
         case .workingCopyNeedsUpgrade:
-            return "该工作副本由更新版本的 Subversion 创建，OpenSVN 不会自动升级它。请使用兼容版本的客户端。"
+            return L.t("该工作副本由更新版本的 Subversion 创建，OpenSVN 不会自动升级它。请使用兼容版本的客户端。")
         case .permissionDenied:
-            return "工作副本目录或磁盘不可写。请检查文件权限、只读卷或磁盘空间；Cleanup 无法解决只读磁盘。"
+            return L.t("工作副本目录或磁盘不可写。请检查文件权限、只读卷或磁盘空间；Cleanup 无法解决只读磁盘。")
         case .repositoryNeedsUpgrade:
-            return "仓库的数据格式不在当前 svn 的支持范围内。OpenSVN 不会自动升级仓库，请使用与该仓库匹配的 svn，或由仓库管理员升级。"
+            return L.t("仓库的数据格式不在当前 svn 的支持范围内。OpenSVN 不会自动升级仓库，请使用与该仓库匹配的 svn，或由仓库管理员升级。")
         case .notAWorkingCopy:
-            return "所选目录不是 SVN 工作副本，或已被移动。"
+            return L.t("所选目录不是 SVN 工作副本，或已被移动。")
         case .authenticationRequired:
-            return "需要输入该仓库的用户名与密码。"
+            return L.t("需要输入该仓库的用户名与密码。")
         case .authorizationFailed:
-            return "凭据已被服务器拒绝，请检查用户名、密码或访问权限。"
+            return L.t("凭据已被服务器拒绝，请检查用户名、密码或访问权限。")
         case .networkFailure:
-            return "无法连接服务器，请检查网络、代理或仓库地址。"
+            return L.t("无法连接服务器，请检查网络、代理或仓库地址。")
         case .outOfDate:
-            return "本地副本已过期，请先 Update 再提交。"
+            return L.t("本地副本已过期，请先 Update 再提交。")
         case .conflictRemains:
-            return "仍有未解决的冲突，解决后需标记 resolve 才能提交。"
+            return L.t("仍有未解决的冲突，解决后需标记 resolve 才能提交。")
         case .backupFailed:
-            return "无法在解决冲突前备份文件，操作已中止以免数据丢失。请检查磁盘空间与目录写权限。"
+            return L.t("无法在解决冲突前备份文件，操作已中止以免数据丢失。请检查磁盘空间与目录写权限。")
         case .pathLocked:
-            return "该路径已被他人锁定。请对方解除锁定，或在确认风险后使用「强制锁定」抢占。"
+            return L.t("该路径已被他人锁定。请对方解除锁定，或在确认风险后使用「强制锁定」抢占。")
         case .notLocked:
-            return "该路径当前没有锁。它可能已被他人释放或抢占，刷新锁定状态后再操作。"
+            return L.t("该路径当前没有锁。它可能已被他人释放或抢占，刷新锁定状态后再操作。")
         case .hostKeyVerificationFailed:
-            return "服务器 SSH 主机密钥未被信任，请核对指纹后再连接。"
+            return L.t("服务器 SSH 主机密钥未被信任，请核对指纹后再连接。")
         case .timeout:
-            return "操作超时，可重试或检查网络。"
+            return L.t("操作超时，可重试或检查网络。")
         case .cancelled:
-            return "操作已取消。工作副本可能处于中间状态，必要时执行 Cleanup。"
+            return L.t("操作已取消。工作副本可能处于中间状态，必要时执行 Cleanup。")
         case .confirmationRequired:
-            return "该操作会修改或丢弃本地数据，需要确认后才能执行。"
+            return L.t("该操作会修改或丢弃本地数据，需要确认后才能执行。")
         case .svnNotFound:
-            return "未找到可用的 svn 可执行文件，请在设置中指定路径或安装运行时。"
+            return L.t("未找到可用的 svn 可执行文件，请在设置中指定路径或安装运行时。")
         case .unsupportedVersion:
-            return "当前 svn 版本不在支持区间内，请升级 OpenSVN 或改用受支持的 svn。"
+            return L.t("当前 svn 版本不在支持区间内，请升级 OpenSVN 或改用受支持的 svn。")
         case .pathNotFound:
-            return "目标路径不存在或已被删除。"
+            return L.t("目标路径不存在或已被删除。")
         case .invalidInvocation, .xmlParseFailure, .commandFailed, .unknown:
-            return "请查看诊断日志，如可复现请附上日志提交 issue。"
+            return L.t("请查看诊断日志，如可复现请附上日志提交 issue。")
         }
     }
 }
@@ -183,10 +183,10 @@ public struct SVNError: Error, Sendable, Hashable, LocalizedError {
     public var recoverySuggestion: String? { code.remediation }
 
     public static func cancelled() -> SVNError {
-        SVNError(code: .cancelled, message: "操作已取消")
+        SVNError(code: .cancelled, message: L.t("操作已取消"))
     }
 
     public static func timeout(seconds: TimeInterval) -> SVNError {
-        SVNError(code: .timeout, message: "操作超时（\(Int(seconds)) 秒）")
+        SVNError(code: .timeout, message: L.f("操作超时（%@ 秒）", String(describing: Int(seconds))))
     }
 }

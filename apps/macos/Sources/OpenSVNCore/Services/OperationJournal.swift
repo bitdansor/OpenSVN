@@ -48,18 +48,18 @@ public actor OperationJournal {
             /// Short label for the recovery banner. Never an svn token.
             public var title: String {
                 switch self {
-                case .checkout: return "检出"
-                case .update: return "更新"
-                case .commit: return "提交"
-                case .add: return "添加"
-                case .delete: return "删除"
-                case .revert: return "还原"
-                case .resolve: return "解决冲突"
-                case .cleanup: return "清理"
-                case .property: return "修改属性"
-                case .lock: return "锁定"
-                case .unlock: return "解锁"
-                case .patch: return "应用补丁"
+                case .checkout: return L.t("检出")
+                case .update: return L.t("更新")
+                case .commit: return L.t("提交")
+                case .add: return L.t("添加")
+                case .delete: return L.t("删除")
+                case .revert: return L.t("还原")
+                case .resolve: return L.t("解决冲突")
+                case .cleanup: return L.t("清理")
+                case .property: return L.t("修改属性")
+                case .lock: return L.t("锁定")
+                case .unlock: return L.t("解锁")
+                case .patch: return L.t("应用补丁")
                 }
             }
         }
@@ -101,23 +101,23 @@ public actor OperationJournal {
         public var recoveryAdvice: String {
             switch kind {
             case .commit:
-                return "提交可能已经到达服务器，也可能没有。先刷新状态确认，不要直接重复提交。"
+                return L.t("提交可能已经到达服务器，也可能没有。先刷新状态确认，不要直接重复提交。")
             case .checkout:
-                return "检出可能只完成了一部分。确认目录内容后再决定是继续还是删掉重来。"
+                return L.t("检出可能只完成了一部分。确认目录内容后再决定是继续还是删掉重来。")
             case .update, .revert, .resolve, .delete, .add, .property:
-                return "工作副本可能停在中间状态。运行「清理」后再刷新状态。"
+                return L.t("工作副本可能停在中间状态。运行「清理」后再刷新状态。")
             case .patch:
                 // A patch interrupted halfway is the same shape of problem as an
                 // update, but it also leaves `.svnpatch.rej` files next to the
                 // paths that did not match. Reverting is safe here: the patch
                 // only changed local files and was never committed.
-                return "工作副本可能停在中间状态，未匹配的部分会留下 .svnpatch.rej。运行「清理」后查看状态；确认不要这些改动用「还原」。"
+                return L.t("工作副本可能停在中间状态，未匹配的部分会留下 .svnpatch.rej。运行「清理」后查看状态；确认不要这些改动用「还原」。")
             case .lock:
-                return "锁可能已在服务器上生效。刷新锁定状态确认，再决定是否重试。"
+                return L.t("锁可能已在服务器上生效。刷新锁定状态确认，再决定是否重试。")
             case .unlock:
-                return "锁可能已释放。刷新锁定状态确认，不要直接重复解锁。"
+                return L.t("锁可能已释放。刷新锁定状态确认，不要直接重复解锁。")
             case .cleanup:
-                return "上次清理没有完成。重新运行「清理」即可。"
+                return L.t("上次清理没有完成。重新运行「清理」即可。")
             }
         }
     }

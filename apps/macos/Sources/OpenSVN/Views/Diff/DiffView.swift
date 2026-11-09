@@ -12,22 +12,22 @@ struct DiffView: View {
             if let diff = session.diff, !diff.isEmpty {
                 DiffTextView(text: diff.text)
             } else if session.isLoading {
-                ProgressView("正在生成差异…")
+                ProgressView(L.t("正在生成差异…"))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if session.lastDiffUsedExternalTool {
                 // An external tool almost always prints nothing. Saying "没有差异"
                 // here would be the opposite of what is happening.
                 ContentUnavailableView {
-                    Label("已交给外部工具", systemImage: "arrow.up.forward.app")
+                    Label(L.t("已交给外部工具"), systemImage: "arrow.up.forward.app")
                 } description: {
-                    Text("差异由外部 diff 命令打开，窗口可能已经出现在前台。要改回内置视图，到设置里清空外部 diff 命令。")
+                    Text(L.t("差异由外部 diff 命令打开，窗口可能已经出现在前台。要改回内置视图，到设置里清空外部 diff 命令。"))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ContentUnavailableView {
-                    Label("没有差异", systemImage: "plus.forwardslash.minus")
+                    Label(L.t("没有差异"), systemImage: "plus.forwardslash.minus")
                 } description: {
-                    Text("在「变更」页双击文件，或在「历史」页选择修订版本后查看差异。")
+                    Text(L.t("在「变更」页双击文件，或在「历史」页选择修订版本后查看差异。"))
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -38,22 +38,22 @@ struct DiffView: View {
         HStack(spacing: 8) {
             Image(systemName: "doc.text.magnifyingglass")
                 .foregroundStyle(.secondary)
-            Text(session.diffTitle.isEmpty ? "差异" : session.diffTitle)
+            Text(session.diffTitle.isEmpty ? L.t("差异") : session.diffTitle)
                 .font(.callout.weight(.medium))
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer()
             if let diff = session.diff {
                 if diff.isTruncated {
-                    StatusBadge(text: "已截断", color: .orange)
+                    StatusBadge(text: L.t("已截断"), color: .orange)
                 }
-                Text("\(diff.byteCount) 字节")
+                Text(L.f("%@ 字节", String(describing: diff.byteCount)))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
                 Button {
                     copyToPasteboard(diff.text)
                 } label: {
-                    Label("复制", systemImage: "doc.on.doc")
+                    Label(L.t("复制"), systemImage: "doc.on.doc")
                 }
                 .buttonStyle(.borderless)
             }
@@ -90,7 +90,7 @@ struct DiffTextView: View {
                         .background(background(for: String(line)))
                 }
                 if lines.count > lineLimit {
-                    Text("… 其余 \(lines.count - lineLimit) 行未显示")
+                    Text(L.n("… 其余 %d 行未显示", lines.count - lineLimit))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .padding(12)

@@ -1,6 +1,6 @@
 # OpenSVN for macOS (Swift 6 + SwiftUI/AppKit)
 
-> **Status: implemented and tested.** 361 tests in 66 suites pass (`swift test`),
+> **Status: implemented and tested.** 388 tests in 71 suites pass (`swift test`),
 > including round trips against a real svn 1.14.5. The app builds, launches, and
 > covers the working-copy loop end to end: checkout, edit, update preview,
 > three-way conflict resolution, commit, merge/switch, branch and repository
@@ -53,6 +53,55 @@ CONFIG=release scripts/build-macos-app.sh   # release, bundles its own svn runti
 
 Locked-down environments that deny `~/.swiftpm` need
 `HOME="$PWD/.build-home" swift build`; see the README at the repository root.
+
+## Interface language
+
+The interface is Chinese or English, chosen at launch from the system language
+and overridable in Settings → General. The switch takes effect immediately: no
+relaunch, no window to reopen.
+
+The mechanism is a dictionary, not `.strings` + `Bundle`. A `Bundle`'s language
+is fixed when it is created, so a `.lproj` table could only ever be honoured at
+launch — the opposite of "immediately". Instead:
+
+- **The key is the Chinese source text**, exactly as `NSLocalizedString` uses the
+  source string as its key. A missing translation therefore degrades to correct
+  Chinese rather than to `settings.interface.language.title`.
+- `L.t("…")` for plain text, `L.f("… %@", x)` when there are arguments,
+  `L.n("… %d …", count)` for a count. `L.n` splits the English entry on `|` into
+  singular and plural; the count is an `Int`, so its key must use `%d` — `%@`
+  would make `String(format:)` read the integer as an object pointer.
+- `LocalizationCatalog` merges the per-screen `Strings*.swift` tables in
+  `Sources/OpenSVNCore/Support/Strings/`. Adding UI text means adding an entry to
+  the table for that screen.
+- `Localization` holds the active language behind a lock, because it is read from
+  the main actor and from `SVNService`'s own executor.
+- Switching assigns `AppState.interfaceLanguage`; the main window and the
+  Settings window carry `.id(appState.interfaceLanguage)`, so a new identity
+  rebuilds their view trees and every literal re-resolves. The launch work sits
+  behind `AppState.startOnce()` so the rebuild cannot re-run it.
+
+Two things are deliberately **not** translated, and both are enforced rather than
+left to memory:
+
+1. **Log lines.** `AppLog.record` output is read by whoever debugs the app,
+   against bug reports from users who chose the other language. One fixed
+   language keeps a whole report greppable.
+2. **The demo fixture.** `DemoWorkspace` writes folder names, commit messages and
+   property values that are sample *data*. Translating them would put a
+   "translation" into a history the user is meant to read as real history.
+
+`Tests/OpenSVNCoreTests/LocalizationCoverageTests.swift` scans the sources and
+fails on any Chinese literal that does not go through the catalog, on a key the
+catalog does not define, and on a catalog entry nothing references. Both
+exemptions above are explicit sets in that file — a new unwrapped string fails
+the build instead of shipping untranslated.
+
+System-owned chrome (the About/Hide/Quit items and the standard File/Edit menus)
+follows the *system* language, which is why `Info.plist` declares both `en` and
+`zh-Hans` and makes English the development region. With the default "follow
+system" the two always agree; a manual override can leave those few system items
+in the system language, since macOS resolves them at launch.
 
 ## Non-negotiables in this code
 

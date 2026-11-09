@@ -38,7 +38,7 @@ public struct SwitchRequest: Sendable, Hashable {
 
     public func validate() throws {
         guard !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw SVNError(code: .invalidInvocation, message: "切换目标 URL 不能为空")
+            throw SVNError(code: .invalidInvocation, message: L.t("切换目标 URL 不能为空"))
         }
     }
 }
@@ -61,24 +61,24 @@ public enum SwitchArguments {
 public enum SwitchPreview {
     public static func make(from request: SwitchRequest) -> OperationPreview {
         let targetName = request.target.lastPathComponent
-        let summary = "将「\(targetName)」切换到「\(leaf(request.url))」"
+        let summary = L.f("将「%@」切换到「%@」", String(describing: targetName), String(describing: leaf(request.url)))
 
         var notes: [String] = [
-            "切换会把工作副本整体指向同一仓库内的另一个 URL（分支）；仓库 UUID 由 svn 校验，切到别的仓库会失败。",
-            "本地未提交的修改会被尽量保留，但与切换后内容冲突时会进入待解决状态，不会自动合并。",
-            "本预览不扫描工作副本，切换前请先刷新状态查看并妥善处理本地改动。"
+            L.t("切换会把工作副本整体指向同一仓库内的另一个 URL（分支）；仓库 UUID 由 svn 校验，切到别的仓库会失败。"),
+            L.t("本地未提交的修改会被尽量保留，但与切换后内容冲突时会进入待解决状态，不会自动合并。"),
+            L.t("本预览不扫描工作副本，切换前请先刷新状态查看并妥善处理本地改动。")
         ]
         if let revision = request.revision {
-            notes.append("目标修订号：-r \(revision)。")
+            notes.append(L.f("目标修订号：-r %@。", String(describing: revision)))
         }
         if request.ignoreExternals {
-            notes.append("已启用 --ignore-externals：外挂工作副本不会被更新。")
+            notes.append(L.t("已启用 --ignore-externals：外挂工作副本不会被更新。"))
         }
         if request.force {
-            notes.append("已启用 --force：未纳入版本控制的同名文件可能被覆盖。")
+            notes.append(L.t("已启用 --force：未纳入版本控制的同名文件可能被覆盖。"))
         }
         if request.accept.isOverwriting {
-            notes.append("已指定 --accept \(request.accept.rawValue)：冲突处理会覆盖本地或服务器端内容，不可撤销。")
+            notes.append(L.f("已指定 --accept %@：冲突处理会覆盖本地或服务器端内容，不可撤销。", String(describing: request.accept.rawValue)))
         }
 
         return OperationPreview(

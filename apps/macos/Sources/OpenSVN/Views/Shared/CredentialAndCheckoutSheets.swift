@@ -19,7 +19,7 @@ struct CredentialSheet: View {
                     .font(.title2)
                     .foregroundStyle(.tint)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("需要认证")
+                    Text(L.t("需要认证"))
                         .font(.headline)
                     Text(host)
                         .font(.caption)
@@ -34,22 +34,22 @@ struct CredentialSheet: View {
             }
 
             Form {
-                TextField("用户名", text: $username)
+                TextField(L.t("用户名"), text: $username)
                     .focused($focusedField, equals: .username)
-                SecureField("密码", text: $password)
+                SecureField(L.t("密码"), text: $password)
                     .focused($focusedField, equals: .password)
             }
             .textFieldStyle(.roundedBorder)
 
-            Text("凭据只保存在 macOS 钥匙串。密码通过标准输入传给 svn，不会出现在命令行参数中。")
+            Text(L.t("凭据只保存在 macOS 钥匙串。密码通过标准输入传给 svn，不会出现在命令行参数中。"))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
             HStack {
                 Spacer()
-                Button("取消") { appState.cancelCredentialPrompt() }
+                Button(L.t("取消")) { appState.cancelCredentialPrompt() }
                     .keyboardShortcut(.cancelAction)
-                Button("登录") {
+                Button(L.t("登录")) {
                     appState.submitCredential(username: username, password: password)
                 }
                 .keyboardShortcut(.defaultAction)
@@ -84,29 +84,29 @@ struct CheckoutSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("检出仓库")
+            Text(L.t("检出仓库"))
                 .font(.headline)
 
             Form {
-                TextField("仓库 URL", text: $url, prompt: Text("https://example.com/svn/trunk"))
+                TextField(L.t("仓库 URL"), text: $url, prompt: Text("https://example.com/svn/trunk"))
                     .textFieldStyle(.roundedBorder)
 
                 HStack {
-                    TextField("目标目录", text: $destination)
+                    TextField(L.t("目标目录"), text: $destination)
                         .textFieldStyle(.roundedBorder)
-                    Button("选择…") { chooseDestination() }
+                    Button(L.t("选择…")) { chooseDestination() }
                 }
 
-                Picker("检出深度", selection: $depth) {
+                Picker(L.t("检出深度"), selection: $depth) {
                     ForEach(SVNService.CheckoutDepth.allCases, id: \.self) { depth in
                         Text(depth.displayName).tag(depth)
                     }
                 }
 
-                TextField("修订版本（可选）", text: $revisionText, prompt: Text("留空表示 HEAD"))
+                TextField(L.t("修订版本（可选）"), text: $revisionText, prompt: Text(L.t("留空表示 HEAD")))
                     .textFieldStyle(.roundedBorder)
 
-                Toggle("不保存原始副本，按需从仓库获取（--store-pristine=no）", isOn: $storePristines)
+                Toggle(L.t("不保存原始副本，按需从仓库获取（--store-pristine=no）"), isOn: $storePristines)
                     .toggleStyle(.checkbox)
                     .disabled(!supportsPristinesOnDemand)
             }
@@ -121,15 +121,15 @@ struct CheckoutSheet: View {
                     .foregroundStyle(.red)
             }
 
-            Text("检出在后台执行，可在任务中心查看进度或取消。")
+            Text(L.t("检出在后台执行，可在任务中心查看进度或取消。"))
                 .font(.caption2)
                 .foregroundStyle(.secondary)
 
             HStack {
                 Spacer()
-                Button("取消") { dismiss() }
+                Button(L.t("取消")) { dismiss() }
                     .keyboardShortcut(.cancelAction)
-                Button(isRunning ? "检出中…" : "检出") {
+                Button(isRunning ? L.t("检出中…") : L.t("检出")) {
                     Task { await checkout() }
                 }
                 .keyboardShortcut(.defaultAction)
@@ -145,9 +145,9 @@ struct CheckoutSheet: View {
 
     private var pristinesNote: String {
         guard supportsPristinesOnDemand else {
-            return "按需获取原始副本需要 svn 1.15 或更高版本；当前 \(appState.installation?.version.description ?? "未知版本")，因此该选项不可用。"
+            return L.f("按需获取原始副本需要 svn 1.15 或更高版本；当前 %@，因此该选项不可用。", String(describing: appState.installation?.version.description ?? L.t("未知版本")))
         }
-        return "关闭后工作副本不再本地保存原始副本，磁盘占用更小，但格式会升级到 32：svn 1.14 及更旧客户端将无法打开这个工作副本，且无法降级。"
+        return L.t("关闭后工作副本不再本地保存原始副本，磁盘占用更小，但格式会升级到 32：svn 1.14 及更旧客户端将无法打开这个工作副本，且无法降级。")
     }
 
     private func chooseDestination() {
@@ -155,8 +155,8 @@ struct CheckoutSheet: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
-        panel.prompt = "选择"
-        panel.message = "选择检出目标目录（可为空目录）"
+        panel.prompt = L.t("选择")
+        panel.message = L.t("选择检出目标目录（可为空目录）")
         guard panel.runModal() == .OK, let chosen = panel.url else { return }
         destination = chosen.appendingPathComponent(url.split(separator: "/").last.map(String.init) ?? "checkout").path
     }

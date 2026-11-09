@@ -22,8 +22,8 @@ struct MergeSheet: View {
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .automatic: return "跟踪合并（一次来源）"
-            case .twoURL: return "比较两个 URL"
+            case .automatic: return L.t("跟踪合并（一次来源）")
+            case .twoURL: return L.t("比较两个 URL")
             }
         }
     }
@@ -36,9 +36,9 @@ struct MergeSheet: View {
         var id: String { rawValue }
         var title: String {
             switch self {
-            case .all: return "全部未合并的修订"
-            case .range: return "指定范围"
-            case .changes: return "挑拣单个修订"
+            case .all: return L.t("全部未合并的修订")
+            case .range: return L.t("指定范围")
+            case .changes: return L.t("挑拣单个修订")
             }
         }
     }
@@ -85,9 +85,9 @@ struct MergeSheet: View {
                 .font(.system(size: 22))
                 .foregroundStyle(.tint)
             VStack(alignment: .leading, spacing: 3) {
-                Text("合并到「\(session.displayName)」")
+                Text(L.f("合并到「%@」", String(describing: session.displayName)))
                     .font(.headline)
-                Text("合并只改工作副本：结果还需要一次提交才会进入仓库。")
+                Text(L.t("合并只改工作副本：结果还需要一次提交才会进入仓库。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -100,31 +100,31 @@ struct MergeSheet: View {
 
     private var styleSection: some View {
         Section {
-            Picker("方式", selection: $style) {
+            Picker(L.t("方式"), selection: $style) {
                 ForEach(Style.allCases) { candidate in
                     Text(candidate.title).tag(candidate)
                 }
             }
             .pickerStyle(.radioGroup)
         } header: {
-            Text("合并方式")
+            Text(L.t("合并方式"))
         } footer: {
             Text(style == .automatic
-                 ? "svn merge SOURCE：由 svn:mergeinfo 决定哪些修订还没合并过。合并一个分支回主干、把主干的修复合到分支，都用这一种。"
-                 : "svn merge SOURCE1 SOURCE2：把两个 URL 之间的差异应用过来，不依赖 svn:mergeinfo。")
+                 ? L.t("svn merge SOURCE：由 svn:mergeinfo 决定哪些修订还没合并过。合并一个分支回主干、把主干的修复合到分支，都用这一种。")
+                 : L.t("svn merge SOURCE1 SOURCE2：把两个 URL 之间的差异应用过来，不依赖 svn:mergeinfo。"))
                 .font(.caption2)
         }
     }
 
     private var sourceSection: some View {
-        Section("来源") {
-            LabeledContent("来源 URL") {
+        Section(L.t("来源")) {
+            LabeledContent(L.t("来源 URL")) {
                 TextField("https://…/branches/feature", text: $sourceURL)
                     .textFieldStyle(.roundedBorder)
                     .labelsHidden()
             }
             if style == .twoURL {
-                LabeledContent("对比 URL") {
+                LabeledContent(L.t("对比 URL")) {
                     TextField("https://…/tags/v2", text: $rightURL)
                         .textFieldStyle(.roundedBorder)
                         .labelsHidden()
@@ -134,9 +134,9 @@ struct MergeSheet: View {
     }
 
     private var revisionSection: some View {
-        Section("修订") {
+        Section(L.t("修订")) {
             if style == .automatic {
-                Picker("范围", selection: $revisionChoice) {
+                Picker(L.t("范围"), selection: $revisionChoice) {
                     ForEach(RevisionChoice.allCases) { candidate in
                         Text(candidate.title).tag(candidate)
                     }
@@ -146,21 +146,21 @@ struct MergeSheet: View {
                 case .all:
                     EmptyView()
                 case .range:
-                    LabeledContent("起始:结束") {
+                    LabeledContent(L.t("起始:结束")) {
                         TextField("12:34", text: $rangeText)
                             .textFieldStyle(.roundedBorder)
                             .labelsHidden()
                     }
-                    Text("结束小于起始就是反向合并——这是撤销某段已提交改动的正规做法。")
+                    Text(L.t("结束小于起始就是反向合并——这是撤销某段已提交改动的正规做法。"))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 case .changes:
-                    LabeledContent("修订号") {
+                    LabeledContent(L.t("修订号")) {
                         TextField("12,14,20", text: $changesText)
                             .textFieldStyle(.roundedBorder)
                             .labelsHidden()
                     }
-                    Text("逗号分隔的单个修订号，相当于对每个修订各做一次 -c。")
+                    Text(L.t("逗号分隔的单个修订号，相当于对每个修订各做一次 -c。"))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                 }
@@ -172,16 +172,16 @@ struct MergeSheet: View {
                         if isCheckingEligible {
                             ProgressView().controlSize(.small)
                         } else {
-                            Label("查询未合并的修订", systemImage: "magnifyingglass")
+                            Label(L.t("查询未合并的修订"), systemImage: "magnifyingglass")
                         }
                     }
                     .disabled(isCheckingEligible || trimmedSource.isEmpty)
-                    .help("svn mergeinfo --show-revs eligible：只读，不碰工作副本")
+                    .help(L.t("svn mergeinfo --show-revs eligible：只读，不碰工作副本"))
 
                     if let eligible {
                         Text(eligible.isEmpty
-                             ? "没有待合并的修订"
-                             : "待合并 r\(revisionList(eligible))")
+                             ? L.t("没有待合并的修订")
+                             : L.f("待合并 r%@", String(describing: revisionList(eligible))))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -190,7 +190,7 @@ struct MergeSheet: View {
                     Spacer()
                 }
             } else {
-                Text("两 URL 比较不分修订范围：差异就是两个 URL 的当前内容之间的差异。")
+                Text(L.t("两 URL 比较不分修订范围：差异就是两个 URL 的当前内容之间的差异。"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -198,21 +198,21 @@ struct MergeSheet: View {
     }
 
     private var optionsSection: some View {
-        Section("选项") {
-            Toggle("只记录合并（--record-only）", isOn: $recordOnly)
-                .help("只把修订记进 svn:mergeinfo，不改动任何文件：用于「这段修改我已经手工搬过去了」")
-            Toggle("忽略祖先关系（--ignore-ancestry）", isOn: $ignoreAncestry)
-                .help("不检查两个 URL 是否有复制历史。两 URL 比较常用；跟踪合并会因此失去一部分保护")
+        Section(L.t("选项")) {
+            Toggle(L.t("只记录合并（--record-only）"), isOn: $recordOnly)
+                .help(L.t("只把修订记进 svn:mergeinfo，不改动任何文件：用于「这段修改我已经手工搬过去了」"))
+            Toggle(L.t("忽略祖先关系（--ignore-ancestry）"), isOn: $ignoreAncestry)
+                .help(L.t("不检查两个 URL 是否有复制历史。两 URL 比较常用；跟踪合并会因此失去一部分保护"))
 
-            Picker("冲突处理", selection: $accept) {
-                Text("留给我处理（postpone）").tag(SVNAccept.postpone)
-                Text("保留我的整份文件（mine-full）").tag(SVNAccept.mineFull)
-                Text("采用来源的整份文件（theirs-full）").tag(SVNAccept.theirsFull)
-                Text("冲突处保留我的（mine-conflict）").tag(SVNAccept.mineConflict)
-                Text("冲突处采用来源的（theirs-conflict）").tag(SVNAccept.theirsConflict)
+            Picker(L.t("冲突处理"), selection: $accept) {
+                Text(L.t("留给我处理（postpone）")).tag(SVNAccept.postpone)
+                Text(L.t("保留我的整份文件（mine-full）")).tag(SVNAccept.mineFull)
+                Text(L.t("采用来源的整份文件（theirs-full）")).tag(SVNAccept.theirsFull)
+                Text(L.t("冲突处保留我的（mine-conflict）")).tag(SVNAccept.mineConflict)
+                Text(L.t("冲突处采用来源的（theirs-conflict）")).tag(SVNAccept.theirsConflict)
             }
             if accept.isOverwriting {
-                Text("“整份文件”类策略会覆盖本地或来源的完整内容，且没有撤销：冲突被替换掉之后，原本的三份副本只能从备份里找回。")
+                Text(L.t("“整份文件”类策略会覆盖本地或来源的完整内容，且没有撤销：冲突被替换掉之后，原本的三份副本只能从备份里找回。"))
                     .font(.caption2)
                     .foregroundStyle(.red)
             }
@@ -231,7 +231,7 @@ struct MergeSheet: View {
             HStack(spacing: 8) {
                 Image(systemName: riskIcon)
                     .foregroundStyle(riskColor)
-                Text(preview?.summary ?? "填写来源后这里会显示这次合并做什么")
+                Text(preview?.summary ?? L.t("填写来源后这里会显示这次合并做什么"))
                     .font(.callout.weight(.medium))
                     .lineLimit(2)
                 Spacer()
@@ -253,10 +253,10 @@ struct MergeSheet: View {
         HStack(spacing: 10) {
             if isRunning { ProgressView().controlSize(.small) }
             Spacer()
-            Button("取消") { dismiss() }
+            Button(L.t("取消")) { dismiss() }
                 .keyboardShortcut(.cancelAction)
                 .disabled(isRunning)
-            Button(isRunning ? "合并中…" : "合并") {
+            Button(isRunning ? L.t("合并中…") : L.t("合并")) {
                 Task { await runMerge() }
             }
             .buttonStyle(.borderedProminent)

@@ -8,10 +8,10 @@ struct TaskCenterView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Text("任务中心")
+                Text(L.t("任务中心"))
                     .font(.headline)
                 Spacer()
-                Button("清除已完成") { appState.taskCenter.dismissFinished() }
+                Button(L.t("清除已完成")) { appState.taskCenter.dismissFinished() }
                     .disabled(appState.taskCenter.items.allSatisfy(\.isRunning))
             }
             .padding(14)
@@ -19,7 +19,7 @@ struct TaskCenterView: View {
             Divider()
 
             if appState.taskCenter.items.isEmpty {
-                ContentUnavailableView("没有任务", systemImage: "checklist")
+                ContentUnavailableView(L.t("没有任务"), systemImage: "checklist")
                     .frame(maxHeight: .infinity)
             } else {
                 List(appState.taskCenter.items) { item in
@@ -31,7 +31,7 @@ struct TaskCenterView: View {
         .frame(width: 520, height: 420)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("完成") { dismiss() }
+                Button(L.t("完成")) { dismiss() }
             }
         }
     }
@@ -45,7 +45,7 @@ struct TaskCenterView: View {
                     Text(item.title)
                         .font(.callout.weight(.medium))
                     if item.attempts > 1 {
-                        Text("第 \(item.attempts) 次尝试")
+                        Text(L.n("第 %d 次尝试", item.attempts))
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                     }
@@ -58,7 +58,7 @@ struct TaskCenterView: View {
                         .truncationMode(.middle)
                 }
                 if let duration = item.duration {
-                    Text(String(format: "%.1f 秒", duration))
+                    Text(String(format: L.t("%.1f 秒"), duration))
                         .font(.caption2)
                         .foregroundStyle(.tertiary)
                 }
@@ -67,14 +67,14 @@ struct TaskCenterView: View {
             Spacer()
 
             if item.isRunning {
-                Button("取消") { appState.taskCenter.cancel(item.id) }
+                Button(L.t("取消")) { appState.taskCenter.cancel(item.id) }
                     .buttonStyle(.borderless)
             } else if item.canRetry {
-                Button("重试") {
+                Button(L.t("重试")) {
                     Task { await appState.retryTask(item.id) }
                 }
                 .buttonStyle(.borderless)
-                .help("重新执行同一项请求。不会跳过任何确认，也不改变第一次失败时的参数。")
+                .help(L.t("重新执行同一项请求。不会跳过任何确认，也不改变第一次失败时的参数。"))
             }
         }
         .padding(.vertical, 3)

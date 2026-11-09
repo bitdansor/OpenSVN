@@ -11,7 +11,7 @@ public enum SVNXMLParser {
     public static func parseStatus(_ data: Data) throws -> StatusSnapshot {
         let document = try loadDocument(data, kind: "status")
         guard let root = document.rootElement(), root.name == "status" else {
-            throw parseError("根元素不是 <status>", data)
+            throw parseError(L.t("根元素不是 <status>"), data)
         }
 
         let targetPath = root.elements(forName: "target").first?
@@ -160,7 +160,7 @@ public enum SVNXMLParser {
     public static func parseLog(_ data: Data) throws -> [LogEntry] {
         let document = try loadDocument(data, kind: "log")
         guard let root = document.rootElement(), root.name == "log" else {
-            throw parseError("根元素不是 <log>", data)
+            throw parseError(L.t("根元素不是 <log>"), data)
         }
 
         return root.elements(forName: "logentry").compactMap { entryElement in
@@ -198,10 +198,10 @@ public enum SVNXMLParser {
     public static func parseList(_ data: Data) throws -> RepositoryListing {
         let document = try loadDocument(data, kind: "list")
         guard let root = document.rootElement(), root.name == "lists" else {
-            throw parseError("根元素不是 <lists>", data)
+            throw parseError(L.t("根元素不是 <lists>"), data)
         }
         guard let listElement = root.elements(forName: "list").first else {
-            throw parseError("<lists> 中没有 <list>", data)
+            throw parseError(L.t("<lists> 中没有 <list>"), data)
         }
 
         let entries = listElement.elements(forName: "entry").compactMap { element -> RemoteEntry? in
@@ -235,10 +235,10 @@ public enum SVNXMLParser {
     public static func parseBlame(_ data: Data) throws -> BlameResult {
         let document = try loadDocument(data, kind: "blame")
         guard let root = document.rootElement(), root.name == "blame" else {
-            throw parseError("根元素不是 <blame>", data)
+            throw parseError(L.t("根元素不是 <blame>"), data)
         }
         guard let target = root.elements(forName: "target").first else {
-            throw parseError("<blame> 中没有 <target>", data)
+            throw parseError(L.t("<blame> 中没有 <target>"), data)
         }
 
         let lines = target.elements(forName: "entry").compactMap { element -> BlameLine? in
@@ -265,12 +265,12 @@ public enum SVNXMLParser {
     public static func parseInfo(_ data: Data) throws -> InfoReport {
         let document = try loadDocument(data, kind: "info")
         guard let root = document.rootElement(), root.name == "info" else {
-            throw parseError("根元素不是 <info>", data)
+            throw parseError(L.t("根元素不是 <info>"), data)
         }
 
         let entries = root.elements(forName: "entry").compactMap(parseInfoEntry)
         guard !entries.isEmpty else {
-            throw parseError("<info> 中没有 <entry>", data)
+            throw parseError(L.t("<info> 中没有 <entry>"), data)
         }
         return InfoReport(entries: entries)
     }
@@ -326,7 +326,7 @@ public enum SVNXMLParser {
     public static func parseProperties(_ data: Data) throws -> [PropertyTarget] {
         let document = try loadDocument(data, kind: "propget")
         guard let root = document.rootElement(), root.name == "properties" else {
-            throw parseError("根元素不是 <properties>", data)
+            throw parseError(L.t("根元素不是 <properties>"), data)
         }
 
         return root.elements(forName: "target").map { element in
@@ -346,14 +346,14 @@ public enum SVNXMLParser {
 
     private static func loadDocument(_ data: Data, kind: String) throws -> XMLDocument {
         guard !data.isEmpty else {
-            throw parseError("空的 \(kind) XML", data)
+            throw parseError(L.f("空的 %@ XML", String(describing: kind)), data)
         }
         do {
             return try XMLDocument(data: data, options: [])
         } catch {
             throw SVNError(
                 code: .xmlParseFailure,
-                message: "无法解析 svn \(kind) XML：\(error.localizedDescription)",
+                message: L.f("无法解析 svn %@ XML：%@", String(describing: kind), String(describing: error.localizedDescription)),
                 diagnosticOutput: String(decoding: data.prefix(2048), as: UTF8.self)
             )
         }

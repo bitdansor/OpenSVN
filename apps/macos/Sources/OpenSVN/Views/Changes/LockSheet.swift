@@ -35,7 +35,7 @@ struct LockSheet: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.headline)
-                Text("锁定会阻止其他人提交这些路径，直到锁被解除。")
+                Text(L.t("锁定会阻止其他人提交这些路径，直到锁被解除。"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -70,10 +70,10 @@ struct LockSheet: View {
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundStyle(.orange)
-                Text("\(editor.foreignLockCount) 个路径已被他人锁定")
+                Text(L.n("%d 个路径已被他人锁定", editor.foreignLockCount))
                     .font(.callout.weight(.medium))
             }
-            Text("普通锁定会失败。要拿到这些路径，必须勾选下面的「强制抢占」。")
+            Text(L.t("普通锁定会失败。要拿到这些路径，必须勾选下面的「强制抢占」。"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -95,9 +95,9 @@ struct LockSheet: View {
             set: { session.lockEditor?.steal = $0 }
         )) {
             VStack(alignment: .leading, spacing: 2) {
-                Text("强制抢占（--force）")
+                Text(L.t("强制抢占（--force）"))
                     .font(.callout)
-                Text("移除当前持有人在这个路径上的锁。只有确认对方不再需要时才勾选。")
+                Text(L.t("移除当前持有人在这个路径上的锁。只有确认对方不再需要时才勾选。"))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -107,15 +107,15 @@ struct LockSheet: View {
 
     private var commentField: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("锁定说明（可选）")
+            Text(L.t("锁定说明（可选）"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            TextField("例如：正在修复登录问题", text: Binding(
+            TextField(L.t("例如：正在修复登录问题"), text: Binding(
                 get: { session.lockEditor?.comment ?? "" },
                 set: { session.lockEditor?.comment = $0 }
             ))
             .textFieldStyle(.roundedBorder)
-            Text("说明会保存在仓库里，其他人看得到。")
+            Text(L.t("说明会保存在仓库里，其他人看得到。"))
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
@@ -124,14 +124,14 @@ struct LockSheet: View {
     private var footer: some View {
         HStack {
             if let editor = session.lockEditor, editor.ownLockCount > 0 {
-                Text("其中 \(editor.ownLockCount) 项已由本工作副本锁定")
+                Text(L.n("其中 %d 项已由本工作副本锁定", editor.ownLockCount))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            Button("取消") { session.closeLockEditor() }
+            Button(L.t("取消")) { session.closeLockEditor() }
                 .keyboardShortcut(.cancelAction)
-            Button("锁定") {
+            Button(L.t("锁定")) {
                 Task { await session.confirmLock() }
             }
             .buttonStyle(.borderedProminent)
@@ -141,7 +141,7 @@ struct LockSheet: View {
     }
 
     private var title: String {
-        guard let editor = session.lockEditor else { return "锁定" }
-        return editor.isBatch ? "锁定 \(editor.paths.count) 项" : "锁定「\(editor.displayPaths.first ?? "")」"
+        guard let editor = session.lockEditor else { return L.t("锁定") }
+        return editor.isBatch ? L.n("锁定 %d 项", editor.paths.count) : L.f("锁定「%@」", String(describing: editor.displayPaths.first ?? ""))
     }
 }

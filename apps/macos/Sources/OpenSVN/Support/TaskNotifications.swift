@@ -39,9 +39,9 @@ final class TaskNotificationBridge {
             guard shouldNotify, let previous, previous == .running else { continue }
             switch item.status {
             case .finished:
-                notify(title: "任务完成", body: item.title)
+                notify(title: L.t("任务完成"), body: item.title)
             case .failed(let message):
-                notify(title: "任务失败", body: "\(item.title)：\(message)")
+                notify(title: L.t("任务失败"), body: "\(item.title)：\(message)")
             default:
                 break
             }

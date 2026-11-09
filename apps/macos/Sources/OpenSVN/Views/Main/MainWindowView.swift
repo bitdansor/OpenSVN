@@ -67,25 +67,25 @@ struct MainWindowView: View {
                 Button {
                     appState.presentAddWorkingCopyPanel()
                 } label: {
-                    Label("添加工作副本", systemImage: "folder.badge.plus")
+                    Label(L.t("添加工作副本"), systemImage: "folder.badge.plus")
                 }
-                .help("添加一个已存在的工作副本")
+                .help(L.t("添加一个已存在的工作副本"))
 
                 Button {
                     appState.showingCheckoutSheet = true
                 } label: {
-                    Label("检出", systemImage: "square.and.arrow.down")
+                    Label(L.t("检出"), systemImage: "square.and.arrow.down")
                 }
-                .help("从仓库检出新的工作副本")
+                .help(L.t("从仓库检出新的工作副本"))
 
                 Button {
                     appState.showingTaskCenter = true
                 } label: {
-                    Label("任务", systemImage: appState.taskCenter.runningCount > 0
+                    Label(L.t("任务"), systemImage: appState.taskCenter.runningCount > 0
                           ? "arrow.triangle.2.circlepath.circle.fill"
                           : "list.bullet.rectangle")
                 }
-                .help("任务中心")
+                .help(L.t("任务中心"))
 
                 quickActionsMenu
             }
@@ -103,7 +103,7 @@ struct MainWindowView: View {
                 .environment(appState)
         }
         .alert(
-            "无法使用 SVN",
+            L.t("无法使用 SVN"),
             isPresented: Binding(
                 get: { appState.startupError != nil },
                 set: { if !$0 { appState.startupError = nil } }
@@ -113,8 +113,8 @@ struct MainWindowView: View {
             // Settings is a scene with its own window (⌘,). Opening it as a
             // sheet would put the fix for the problem behind a dialog that
             // blocks the window describing it.
-            Button("打开设置…") { openSettings() }
-            Button("好", role: .cancel) { appState.startupError = nil }
+            Button(L.t("打开设置…")) { openSettings() }
+            Button(L.t("好"), role: .cancel) { appState.startupError = nil }
         } message: { error in
             Text(error.errorDescription ?? error.message)
         }
@@ -163,34 +163,34 @@ struct MainWindowView: View {
     /// commands without each of them owning a menu.
     private var quickActionsMenu: some View {
         Menu {
-            Button("快速查看") {
+            Button(L.t("快速查看")) {
                 if let url = selectedFileURLs.first { quickLookURL = url }
             }
             .disabled(selectedFileURLs.isEmpty)
 
-            Button("在终端打开") {
+            Button(L.t("在终端打开")) {
                 if let directory = terminalDirectory {
                     FileActions.openInTerminal(directory)
                 }
             }
             .disabled(terminalDirectory == nil)
 
-            Button("在 Finder 中显示") {
+            Button(L.t("在 Finder 中显示")) {
                 FileActions.revealInFinder(finderURLs)
             }
             .disabled(finderURLs.isEmpty)
 
             Divider()
 
-            Button("导出所选…") { exportSelected() }
+            Button(L.t("导出所选…")) { exportSelected() }
                 .disabled(appState.selectedSession == nil)
 
-            Button("新建本地仓库…") {
+            Button(L.t("新建本地仓库…")) {
                 appState.showingNewRepositorySheet = true
             }
-            .help("用 svnadmin 在这台 Mac 上创建仓库，不需要服务器")
+            .help(L.t("用 svnadmin 在这台 Mac 上创建仓库，不需要服务器"))
 
-            Button("用外部工具解决冲突…") {
+            Button(L.t("用外部工具解决冲突…")) {
                 if let session = appState.selectedSession,
                    let entry = session.conflictedEntries.first {
                     session.resolveWithExternalTool(entry)
@@ -200,12 +200,12 @@ struct MainWindowView: View {
 
             Divider()
 
-            Button("新建窗口") { openWindow(id: "main") }
-            Button("扩展设置…") { showingExtensionsSettings = true }
+            Button(L.t("新建窗口")) { openWindow(id: "main") }
+            Button(L.t("扩展设置…")) { showingExtensionsSettings = true }
         } label: {
-            Label("快捷操作", systemImage: "ellipsis.circle")
+            Label(L.t("快捷操作"), systemImage: "ellipsis.circle")
         }
-        .help("快速查看、在终端打开、导出、外部合并、扩展设置与新建窗口")
+        .help(L.t("快速查看、在终端打开、导出、外部合并、扩展设置与新建窗口"))
     }
 
     private var selectedFileURLs: [URL] {
@@ -238,8 +238,8 @@ struct MainWindowView: View {
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.canCreateDirectories = true
-        panel.prompt = "导出到此处"
-        panel.message = "选择目标目录：svn export 不会覆盖已有文件"
+        panel.prompt = L.t("导出到此处")
+        panel.message = L.t("选择目标目录：svn export 不会覆盖已有文件")
         guard panel.runModal() == .OK, let directory = panel.url else { return }
         let paths = Array(session.selectedPaths)
         Task { await session.export(to: directory, paths: paths) }
@@ -256,29 +256,29 @@ private struct WelcomeView: View {
                 .foregroundStyle(.secondary)
             Text("OpenSVN")
                 .font(.largeTitle.weight(.semibold))
-            Text("选择左侧的工作副本，或添加一个新的。")
+            Text(L.t("选择左侧的工作副本，或添加一个新的。"))
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 12) {
-                Button("添加工作副本…") { appState.presentAddWorkingCopyPanel() }
-                Button("检出仓库…") { appState.showingCheckoutSheet = true }
+                Button(L.t("添加工作副本…")) { appState.presentAddWorkingCopyPanel() }
+                Button(L.t("检出仓库…")) { appState.showingCheckoutSheet = true }
                     .buttonStyle(.borderedProminent)
             }
 
-            Button("在这台 Mac 上新建一个本地仓库（不需要服务器）") {
+            Button(L.t("在这台 Mac 上新建一个本地仓库（不需要服务器）")) {
                 appState.showingNewRepositorySheet = true
             }
             .buttonStyle(.link)
             .font(.callout)
 
-            Button("想先试试三方合并？用一份带冲突的演示数据") {
+            Button(L.t("想先试试三方合并？用一份带冲突的演示数据")) {
                 appState.showingDemoSheet = true
             }
             .buttonStyle(.link)
             .font(.callout)
 
             if let installation = appState.installation {
-                Text("使用 svn \(installation.version.description) · \(installation.source.displayName)")
+                Text(L.f("使用 svn %@ · %@", String(describing: installation.version.description), String(describing: installation.source.displayName)))
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             } else if appState.isStarting {
