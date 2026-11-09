@@ -12,11 +12,11 @@ repository that already works from the command line keeps working here. The macO
 app is Swift 6 with SwiftUI/AppKit; the Windows app is a C++20 core behind a C ABI
 with a C# WinUI 3 shell. No Electron, no Qt, no embedded browser.
 
-> **Status: `v0.1.0-dev`, and no release has been tagged yet.** A tag build
-> produces `OpenSVN-<ver>-macos-arm64.zip` with a signed `SHA256SUMS` and
-> publishes it, so a downloadable build is one `git tag` away; nothing has been
-> tagged so far. Until then the only app to run is the `build/OpenSVN.app`
-> you build yourself. macOS is the mature half: 361 tests
+> **Status: `v0.1.0`.** The release page carries a disk image
+> (`OpenSVN-<ver>-macos-arm64.dmg`), the zip the in-app updater reads, and a
+> `SHA256SUMS` signed with the project's Ed25519 key. Releases are ad-hoc signed
+> rather than notarised, so the first launch asks for one approval — the steps are
+> under [Quick start](#quick-start-macos). macOS is the mature half: 361 tests
 > across 66 suites pass, including a round trip against a real svn 1.14.5, and the
 > whole working-copy loop is reachable from the window. The Windows app builds and
 > passes its 110-test native suite, but has never run against a real `svn.exe` —

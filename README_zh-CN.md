@@ -10,11 +10,11 @@ OpenSVN 把真实的 `svn` 命令作为子进程调用，不重新实现工作�
 macOS 端是 Swift 6 + SwiftUI/AppKit；Windows 端是 C++20 核心 + C ABI + C# WinUI 3 外壳。
 不使用 Electron、Qt 或内嵌浏览器。
 
-> **当前状态：`v0.1.0-dev`，还没有打过发布 tag。** 打 tag 会产出
-> `OpenSVN-<ver>-macos-arm64.zip` 与签好名的 `SHA256SUMS` 并直接发布，所以可下载的构建
-> 只差一个 `git tag`；在此之前，唯一的应用是你自己构建的 `build/OpenSVN.app`。
-> macOS 是成熟的一侧：**361 个测试 / 66 个套件**全部通过，其中包含对真实 svn 1.14.5
-> 的往返验证，整条工作副本流程都能在窗口里走完。Windows 端可以构建、**110 个原生测试**
+> **当前状态：`v0.1.0`。** 发布页提供 DMG（`OpenSVN-<ver>-macos-arm64.dmg`）、应用内更新器
+> 读取的 zip，以及用项目 Ed25519 密钥签名的 `SHA256SUMS`。产物是 ad-hoc 签名、未公证，
+> 所以首次打开需要一次授权，步骤见「快速上手（macOS）」。macOS 是成熟的一侧：
+> **361 个测试 / 66 个套件**全部通过，其中包含对真实 svn 1.14.5 的往返验证，
+> 整条工作副本流程都能在窗口里走完。Windows 端可以构建、**110 个原生测试**
 > 全部通过，但只跑过 `fake_svn` 这个测试替身，从未在真实 `svn.exe` 上运行，也没有安装包。
 > 分平台细节见 [apps/macos/README.md](apps/macos/README.md)、
 > [apps/windows/README.md](apps/windows/README.md)。
