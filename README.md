@@ -78,26 +78,26 @@ third_party/           Dependency inventory and licence obligations
 
 ## Quick start (macOS)
 
-Build the app first (below), or download a release. Releases are ad-hoc signed —
-no Apple Developer certificate — so Gatekeeper stops the first launch once: on
-macOS 14, right-click → Open; **on macOS 15 and later that shortcut is gone**, so
-double-click, dismiss the dialog, then 系统设置 → 隐私与安全性 → 仍要打开 and
-authorise it. It happens once: later versions arrive through 检查更新…, which
-Gatekeeper does not evaluate. A bundle you build from source carries no quarantine
-flag at all. The interface is in Chinese, so the labels below are the literal
-strings you will see.
+Download the disk image from the releases page, open it, and drag OpenSVN onto
+the Applications folder. That is the whole installation — no terminal, no
+unpacking, no decision about where the app should live.
 
-To skip that step, install from a terminal — `curl` writes no quarantine flag, so
-the app opens straight away:
+Releases are ad-hoc signed rather than notarised. Notarisation requires an Apple
+Developer ID certificate, which costs $99 every year, and this project
+distributes itself through a public repository. So macOS asks for one approval
+the first time the app runs:
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/bitdansor/OpenSVN/main/scripts/install-macos.sh | bash
-```
+- **macOS 15 and later** — double-click, dismiss the warning, then open
+  系统设置 → 隐私与安全性 and choose 仍要打开. Right-click → Open no longer works.
+- **macOS 14** — right-click → Open, then confirm.
 
-The script checks the archive's SHA-256 against the release's `SHA256SUMS` before
-copying it to `/Applications`. Be clear about what that means: **the first install
-trusts TLS to github.com only.** A shell script has no Ed25519 verifier, so the
-signed chain starts with the first in-app update.
+That is once per installation, and it is the only time: later versions arrive
+through 检查更新…, which replaces the bundle in place and never passes through
+Gatekeeper. A bundle built from source carries no quarantine flag and never sees
+this step at all.
+
+The interface is in Chinese, so the labels below are the literal strings you will
+see.
 
 1. **Check out** — **检出** in the toolbar, or **检出仓库…** (⇧⌘O): fill **仓库 URL**
    and **目标目录**. To look around without creating a working copy, use

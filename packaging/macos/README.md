@@ -9,7 +9,7 @@ Stage 6. What ships today, and what is still missing:
 | `entitlements.plist` | **done** — intentionally empty; the file documents why no hardened-runtime exception is needed |
 | `../../scripts/sign-macos-app.sh` | **done** — inside-out signing with `--options runtime`, Developer ID verification, manifest re-measurement |
 | `notarize.sh` | **done** — `notarytool submit --wait`, rejection-log retrieval, `stapler staple`, `spctl` check |
-| `dmg.json` | **missing** — `create-dmg` layout. S6-7 changes the artifact from a `.zip` to `OpenSVN-<ver>-macos-<arch>.dmg` at the same time. |
+| `../../scripts/package-macos-dmg.sh` | **done** — `hdiutil` UDZO image holding the bundle, an `Applications` symlink and `Installation Notes.txt`. Deliberately not `create-dmg`: a `.DS_Store` layout cannot be generated reliably on a CI runner, and the symlink is the part users actually need. |
 | `../../scripts/update-signing-key.swift` | **done** — generates the Ed25519 release key and signs `SHA256SUMS`; no Apple account involved |
 
 ## The app icon
@@ -109,17 +109,22 @@ nothing can check would turn the updater's verification into decoration.
 
 ## Free distribution: signing the digest list
 
-The whole chain is three files: `OpenSVN-<ver>-macos-arm64.zip`, `SHA256SUMS`,
+The updater's chain is three files: `OpenSVN-<ver>-macos-arm64.zip`, `SHA256SUMS`,
 `SHA256SUMS.sig`. The last one is a detached Ed25519 signature over the exact
 bytes of `SHA256SUMS`, base64, one line.
+
+A release also ships `OpenSVN-<ver>-macos-arm64.dmg`, built from the same bundle
+by `scripts/package-macos-dmg.sh`. It gets a line in `SHA256SUMS` too, but the
+updater never reads it: the image exists so a first install has something to
+double-click, while the zip exists so the app has something to unpack.
 
 ```bash
 # once per project, on your own machine
 swift scripts/update-signing-key.swift generate      # writes .secrets/update-signing-key (0600)
 swift scripts/update-signing-key.swift public-key    # paste the output into UpdateSigningKey.swift
 
-# once per release, after the zip exists
-shasum -a 256 OpenSVN-0.2.0-macos-arm64.zip > SHA256SUMS
+# once per release, after the artifacts exist
+shasum -a 256 OpenSVN-0.2.0-macos-arm64.zip OpenSVN-0.2.0-macos-arm64.dmg > SHA256SUMS
 swift scripts/update-signing-key.swift sign SHA256SUMS
 swift scripts/update-signing-key.swift verify SHA256SUMS   # the same check the app performs
 ```
@@ -140,7 +145,9 @@ quarantined and has to be approved once:
 An in-app update never hits this: the archive is fetched by the app itself, which
 carries no quarantine flag, and the install script strips the attribute anyway.
 
-A user who would rather not be prompted at all can install from a terminal:
+The main README does not offer this path, because trading a system dialog for a
+pipeline of shell code is a bad deal for most people. It stays here for the
+reader who would rather not be prompted at all:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/bitdansor/OpenSVN/main/scripts/install-macos.sh | bash

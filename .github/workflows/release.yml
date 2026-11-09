@@ -178,7 +178,18 @@ jobs:
           # run `codesign -dv`.
           NAME="OpenSVN-${VERSION}-macos-arm64.zip"
           ditto -c -k --keepParent build/OpenSVN.app "$NAME"
-          shasum -a 256 "$NAME" > SHA256SUMS
+
+          # Two artifacts, two jobs. The zip is what the updater fetches and
+          # unpacks into a staging directory; nobody is meant to see it. The DMG
+          # is what a person double-clicks, and it exists because "download a
+          # zip, then work out where the app should live" is a decision a first
+          # install should not be asking for.
+          DMG="OpenSVN-${VERSION}-macos-arm64.dmg"
+          OUT="$PWD/$DMG" scripts/package-macos-dmg.sh
+
+          # Both are listed: the updater only looks up the archive's own line, and
+          # a user who verifies the disk image by hand needs a digest for it too.
+          shasum -a 256 "$NAME" "$DMG" > SHA256SUMS
 
           if [[ "${MANIFEST_SIGNING}" == "1" ]]; then
             # The private key exists only for the length of these two commands.
@@ -205,6 +216,7 @@ jobs:
           name: macos
           path: |
             OpenSVN-*-macos-*.zip
+            OpenSVN-*-macos-*.dmg
             SHA256SUMS
             SHA256SUMS.sig
             build/notarization.json
@@ -248,6 +260,12 @@ jobs:
             echo "::error::no macOS artifact found"
             exit 1
           fi
+          # The zip alone is not a usable release: it is the updater's input, and
+          # handing it to a first-time user was the thing the DMG replaced.
+          if ! compgen -G "macos/OpenSVN-*-macos-*.dmg" >/dev/null; then
+            echo "::error::no disk image found; a first install would have nothing to double-click"
+            exit 1
+          fi
           # The updater refuses an update whose digest list is not signed, so
           # publishing one would ship a release that can only be downloaded by
           # hand. That is a legitimate state, but it is not this job's default —
@@ -278,7 +296,8 @@ jobs:
         run: |
           set -euo pipefail
           gh release create "$TAG" \
-            macos/OpenSVN-*-macos-*.zip macos/SHA256SUMS macos/SHA256SUMS.sig \
+            macos/OpenSVN-*-macos-*.dmg macos/OpenSVN-*-macos-*.zip \
+            macos/SHA256SUMS macos/SHA256SUMS.sig \
             --title "OpenSVN ${TAG#v}" \
             --generate-notes \
             --verify-tag

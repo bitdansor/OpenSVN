@@ -40,6 +40,20 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   without the one-time 仍要打开 detour. It verifies integrity, not authorship, and
   the script says so: a shell has no Ed25519 verifier, so authenticity begins with
   the first in-app update.
+- **A disk image for the install a person actually performs.**
+  `scripts/package-macos-dmg.sh` builds `OpenSVN-<ver>-macos-<arch>.dmg` from the
+  same bundle — the app, an `Applications` symlink, and `Installation Notes.txt`.
+  The zip stays, but only as the updater's input: handing a zip to a first-time
+  user asked them to unpack it and decide where the app belonged. `release.yml`
+  now produces both, refuses to publish without the image, and lists both in
+  `SHA256SUMS`.
+- **The remaining Gatekeeper prompt is stated as a cost, not hidden.** A disk
+  image changes the installation gesture; it cannot change the trust decision,
+  because notarisation requires an Apple-issued Developer ID certificate. The
+  image therefore says what the first launch will ask for on each macOS version
+  and what the alternative costs. `install-macos.sh` moved out of the main
+  README: trading one dialog for a shell pipeline is the worse deal for most
+  people, and offering it first implied otherwise.
 - Publishing no longer waits on a certificate: `release.yml` signs the digest
   list when `UPDATE_SIGNING_KEY` exists, and creates the GitHub release once the
   artifact is verifiable. Without a signed list a tag build still fails, because
