@@ -78,10 +78,14 @@ third_party/           Dependency inventory and licence obligations
 
 ## Quick start (macOS)
 
-Build the app first (below). There is nothing to download, and the bundle is
-ad-hoc signed, so the first launch needs Finder → right-click → Open, or System
-Settings → Privacy & Security → Open Anyway. The interface is in Chinese, so the
-labels below are the literal strings you will see.
+Build the app first (below), or download a release. Releases are ad-hoc signed —
+no Apple Developer certificate — so Gatekeeper stops the first launch once: on
+macOS 14, right-click → Open; **on macOS 15 and later that shortcut is gone**, so
+double-click, dismiss the dialog, then 系统设置 → 隐私与安全性 → 仍要打开 and
+authorise it. It happens once: later versions arrive through 检查更新…, which
+Gatekeeper does not evaluate. A bundle you build from source carries no quarantine
+flag at all. The interface is in Chinese, so the labels below are the literal
+strings you will see.
 
 1. **Check out** — **检出** in the toolbar, or **检出仓库…** (⇧⌘O): fill **仓库 URL**
    and **目标目录**. To look around without creating a working copy, use
